@@ -1,0 +1,912 @@
+import { useState, useEffect } from 'react';
+import {
+  Building2, Plus, Pencil, Trash2, Users, Shield, Loader2, Target,
+  Cloud, Mail, DollarSign, ChevronDown, ChevronRight, Send, Eye, EyeOff,
+  Palette, Image as ImageIcon, Server,
+} from 'lucide-react';
+import { companyApi, platformApi } from '../api/endpoints.js';
+import { useFetch } from '../hooks/useApi.js';
+import { useToast } from '../context/ToastContext.jsx';
+import { apiError } from '../api/client.js';
+import PageTitle from '../components/layout/PageTitle.jsx';
+import { Card } from '../components/ui/Card.jsx';
+import Button from '../components/ui/Button.jsx';
+import Modal from '../components/ui/Modal.jsx';
+import Spinner from '../components/ui/Spinner.jsx';
+import EmptyState from '../components/ui/EmptyState.jsx';
+import { Field, Input, Textarea } from '../components/ui/Field.jsx';
+
+// ── Currency presets ──────────────────────────────────────────────────────────
+const CURRENCY_PRESETS = [
+  { code: 'INR', symbol: '₹',  locale: 'en-IN',  label: 'INR — Indian Rupee (₹)' },
+  { code: 'AED', symbol: 'AED', locale: 'en-AE',  label: 'AED — UAE Dirham' },
+  { code: 'USD', symbol: '$',   locale: 'en-US',  label: 'USD — US Dollar ($)' },
+  { code: 'EUR', symbol: '€',   locale: 'en-EU',  label: 'EUR — Euro (€)' },
+  { code: 'GBP', symbol: '£',   locale: 'en-GB',  label: 'GBP — British Pound (£)' },
+  { code: 'SAR', symbol: 'SAR', locale: 'ar-SA',  label: 'SAR — Saudi Riyal' },
+  { code: 'QAR', symbol: 'QAR', locale: 'ar-QA',  label: 'QAR — Qatari Riyal' },
+  { code: 'OTHER', symbol: '',  locale: '',        label: 'Other (custom)' },
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const blank = () => ({
+  name: '', slug: '', contactEmail: '', notes: '', active: true,
+  limits: { maxAdmins: 1, maxEmployees: 5, maxLeads: 0 },
+  currency: { code: 'INR', symbol: '₹', locale: 'en-IN' },
+});
+
+const Usage = ({ used, limit }) => {
+  const unlimited = !limit || limit === 0;
+  const over = !unlimited && used >= limit;
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+      style={{
+        backgroundColor: over ? 'rgba(220,38,38,.12)' : 'var(--bg-card-head)',
+        color: over ? '#DC2626' : 'var(--text-secondary)',
+      }}
+    >
+      {used} / {unlimited ? '∞' : limit}
+    </span>
+  );
+};
+
+// ── Section expander ──────────────────────────────────────────────────────────
+const Section = ({ icon, title, children, defaultOpen = false }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-bold"
+        style={{ background: 'var(--bg-card-head)', color: 'var(--text-primary)', borderRadius: 'inherit' }}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {icon}
+        <span className="flex-1">{title}</span>
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+      </button>
+      {open && <div className="space-y-3 px-3 pb-3 pt-2">{children}</div>}
+    </div>
+  );
+};
+
+// ── Password field with show/hide ─────────────────────────────────────────────
+const SecretInput = ({ value, onChange, placeholder }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <Input
+        type={show ? 'text' : 'password'}
+        value={value}
+        placeholder={placeholder}
+        onChange={onChange}
+        style={{ paddingRight: '2.2rem' }}
+      />
+      <button
+        type="button"
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-3"
+        onClick={() => setShow((v) => !v)}
+        tabIndex={-1}
+      >
+        {show ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
+    </div>
+  );
+};
+
+// ── Main Company Modal ────────────────────────────────────────────────────────
+function CompanyModal({ company, onClose, onSaved }) {
+  const { show } = useToast();
+  const isEdit = !!company?.id;
+
+  const initCurrency = () => {
+    if (!company?.currency) return { code: 'INR', symbol: '₹', locale: 'en-IN' };
+    return { code: company.currency.code || 'INR', symbol: company.currency.symbol || '₹', locale: company.currency.locale || 'en-IN' };
+  };
+
+  const [form, setForm] = useState(
+    company
+      ? {
+          name: company.name, slug: company.slug,
+          contactEmail: company.contactEmail || '',
+          notes: company.notes || '', active: company.active,
+          limits: { maxAdmins: company.limits?.maxAdmins ?? 1, maxEmployees: company.limits?.maxEmployees ?? 5, maxLeads: company.limits?.maxLeads ?? 0 },
+          currency: initCurrency(),
+        }
+      : blank()
+  );
+  const [busy, setBusy] = useState(false);
+  // Admin credentials, only used when creating a new company.
+  const [admin, setAdmin] = useState({ name: '', username: '', password: '' });
+  const [showPwd, setShowPwd] = useState(false);
+
+  const setLimit = (k, v) => setForm((f) => ({ ...f, limits: { ...f.limits, [k]: v } }));
+  const setCur = (k, v) => setForm((f) => ({ ...f, currency: { ...f.currency, [k]: v } }));
+
+  const handlePreset = (e) => {
+    const preset = CURRENCY_PRESETS.find((p) => p.code === e.target.value);
+    if (preset && preset.code !== 'OTHER') {
+      setForm((f) => ({ ...f, currency: { code: preset.code, symbol: preset.symbol, locale: preset.locale } }));
+    } else {
+      setForm((f) => ({ ...f, currency: { ...f.currency, code: '' } }));
+    }
+  };
+
+  const save = async () => {
+    if (!form.name.trim()) return show('Company name is required.', 'error');
+
+    // On create, an admin can optionally be set up. If any admin field is filled,
+    // require all three.
+    const adminFilled = !isEdit && (admin.name.trim() || admin.username.trim() || admin.password);
+    if (adminFilled) {
+      if (!admin.name.trim() || !admin.username.trim() || !admin.password) {
+        return show('Fill all admin fields (name, username, password) or leave them all blank.', 'error');
+      }
+      if (admin.password.length < 6) return show('Admin password must be at least 6 characters.', 'error');
+    }
+
+    setBusy(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        contactEmail: form.contactEmail,
+        notes: form.notes,
+        active: form.active,
+        limits: {
+          maxAdmins: Math.max(0, Number(form.limits.maxAdmins) || 0),
+          maxEmployees: Math.max(0, Number(form.limits.maxEmployees) || 0),
+          maxLeads: Math.max(0, Number(form.limits.maxLeads) || 0),
+        },
+        currency: form.currency,
+      };
+      if (!isEdit) payload.slug = form.slug;
+      if (isEdit) {
+        await companyApi.update(company.id, payload);
+        show('Company updated.', 'success');
+      } else {
+        if (adminFilled) {
+          payload.admin = {
+            name: admin.name.trim(),
+            username: admin.username.trim(),
+            password: admin.password,
+          };
+        }
+        const res = await companyApi.create(payload);
+        show(
+          res?.admin
+            ? `Company created with admin "${res.admin.username}".`
+            : 'Company created.',
+          'success'
+        );
+      }
+      onSaved();
+      onClose();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  const selectedPresetCode = CURRENCY_PRESETS.find(
+    (p) => p.code === form.currency.code
+  )?.code || 'OTHER';
+
+  return (
+    <Modal open onClose={onClose} title={isEdit ? `Edit ${company.name}` : 'New Company'} width="sm:max-w-[560px]">
+      <div className="space-y-3.5">
+        <Field label="Company Name">
+          <Input value={form.name} placeholder="e.g. Sole & Stride" onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        </Field>
+        {!isEdit && (
+          <Field label="Slug (optional — auto-generated from name)">
+            <Input value={form.slug} placeholder="sole-and-stride" onChange={(e) => setForm({ ...form, slug: e.target.value })} />
+          </Field>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Max Admins (0 = unlimited)">
+            <Input type="number" min={0} value={form.limits.maxAdmins} onChange={(e) => setLimit('maxAdmins', e.target.value)} />
+          </Field>
+          <Field label="Max Employees (0 = unlimited)">
+            <Input type="number" min={0} value={form.limits.maxEmployees} onChange={(e) => setLimit('maxEmployees', e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Max Leads (0 = unlimited)">
+          <Input type="number" min={0} value={form.limits.maxLeads} onChange={(e) => setLimit('maxLeads', e.target.value)} />
+        </Field>
+
+        {/* ── Currency ─────────────────────────────────────────────────────── */}
+        <Section icon={<DollarSign size={13} />} title="Currency" defaultOpen>
+          <Field label="Currency Preset">
+            <select
+              value={selectedPresetCode}
+              onChange={handlePreset}
+              className="w-full rounded border px-2 py-1.5 text-xs"
+              style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
+            >
+              {CURRENCY_PRESETS.map((p) => (
+                <option key={p.code} value={p.code}>{p.label}</option>
+              ))}
+            </select>
+          </Field>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="Code (e.g. INR)">
+              <Input value={form.currency.code} placeholder="INR" onChange={(e) => setCur('code', e.target.value.toUpperCase())} />
+            </Field>
+            <Field label="Symbol (e.g. ₹)">
+              <Input value={form.currency.symbol} placeholder="₹" onChange={(e) => setCur('symbol', e.target.value)} />
+            </Field>
+            <Field label="Locale (e.g. en-IN)">
+              <Input value={form.currency.locale} placeholder="en-IN" onChange={(e) => setCur('locale', e.target.value)} />
+            </Field>
+          </div>
+        </Section>
+
+        <Field label="Contact Email (optional)">
+          <Input value={form.contactEmail} placeholder="owner@company.com" onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} />
+        </Field>
+        <Field label="Notes (optional)">
+          <Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+        </Field>
+
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+          <input type="checkbox" className="h-4 w-4 accent-purple-500" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
+          Active (employees can log in &amp; data is usable)
+        </label>
+
+        {!isEdit && (
+          <div className="rounded-lg border p-3" style={{ borderColor: 'var(--border-card)' }}>
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+              <Shield size={13} /> Admin Login (created with the company)
+            </div>
+            <p className="mb-2.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+              Set up the company's first admin now. Leave blank to add an admin later.
+            </p>
+            <div className="space-y-2.5">
+              <Field label="Admin Name">
+                <Input value={admin.name} placeholder="e.g. Priya Nair"
+                  onChange={(e) => setAdmin({ ...admin, name: e.target.value })} />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Username">
+                  <Input value={admin.username} placeholder="login username"
+                    onChange={(e) => setAdmin({ ...admin, username: e.target.value })} />
+                </Field>
+                <Field label="Password (min 6 chars)">
+                  <div className="relative">
+                    <Input type={showPwd ? 'text' : 'password'} value={admin.password} placeholder="••••••"
+                      onChange={(e) => setAdmin({ ...admin, password: e.target.value })}
+                      style={{ paddingRight: '2.2rem' }} />
+                    <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-3"
+                      onClick={() => setShowPwd((v) => !v)} tabIndex={-1}>
+                      {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </Field>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button disabled={busy} onClick={save}>
+          {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save Company'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Cloudinary Settings Modal ──────────────────────────────────────────────────
+function CloudinaryModal({ company, onClose }) {
+  const { show } = useToast();
+  const [form, setForm] = useState({
+    cloudName: company.cloudinary?.cloudName || '',
+    apiKey:    company.cloudinary?.apiKey    || '',
+    apiSecret: '',
+  });
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await companyApi.setCloudinary(company.id, form);
+      show('Cloudinary credentials saved.', 'success');
+      onClose();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Cloudinary — ${company.name}`} width="sm:max-w-[480px]">
+      <div className="space-y-3">
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          These credentials override the global Cloudinary env vars for this company's invoice PDFs.
+        </p>
+        <Field label="Cloud Name">
+          <Input value={form.cloudName} placeholder="my-cloud-name" onChange={(e) => setForm({ ...form, cloudName: e.target.value })} />
+        </Field>
+        <Field label="API Key">
+          <Input value={form.apiKey} placeholder="123456789012345" onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
+        </Field>
+        <Field label="API Secret">
+          <SecretInput value={form.apiSecret} placeholder="Leave blank to keep existing" onChange={(e) => setForm({ ...form, apiSecret: e.target.value })} />
+        </Field>
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button disabled={busy} onClick={save}>
+          {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save Credentials'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Email Report Settings Modal ────────────────────────────────────────────────
+function EmailReportModal({ company, onClose }) {
+  const { show } = useToast();
+  const [form, setForm] = useState({
+    enabled:      company.emailReport?.enabled      ?? false,
+    adminEmail:   company.emailReport?.adminEmail   || '',
+    senderEmail:  company.emailReport?.senderEmail  || '',
+    senderName:   company.emailReport?.senderName   || '',
+    brevoApiKey:  '', // always blank on open — server never returns the key
+    sendAt:       company.emailReport?.sendAt       || '08:00',
+  });
+  const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await companyApi.setEmailReport(company.id, form);
+      show('Email report settings saved.', 'success');
+      onClose();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  const sendTest = async () => {
+    setTesting(true);
+    try {
+      // Save first so the latest key/email values are persisted, then test.
+      await companyApi.setEmailReport(company.id, form);
+      const r = await companyApi.testEmailReport(company.id);
+      show(r.message || 'Test email sent!', 'success');
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setTesting(false); }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Daily Email Report — ${company.name}`} width="sm:max-w-[520px]">
+      <div className="space-y-3">
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-purple-500"
+            checked={form.enabled}
+            onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+          />
+          Enable daily report emails for this company
+        </label>
+
+        <Field label="Admin Email (recipient)">
+          <Input
+            type="email"
+            value={form.adminEmail}
+            placeholder="admin@company.com"
+            onChange={(e) => setForm({ ...form, adminEmail: e.target.value })}
+          />
+        </Field>
+
+        <Field label="Send At (HH:MM — server local time)">
+          <Input
+            type="time"
+            value={form.sendAt}
+            onChange={(e) => setForm({ ...form, sendAt: e.target.value })}
+          />
+        </Field>
+
+        <div className="pt-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+          Brevo Settings
+        </div>
+
+        <Field label="Brevo API Key">
+          <SecretInput
+            value={form.brevoApiKey}
+            placeholder="Leave blank to keep existing (xkeysib-…)"
+            onChange={(e) => setForm({ ...form, brevoApiKey: e.target.value })}
+          />
+        </Field>
+
+        <Field label="Sender Email (must be verified in Brevo)">
+          <Input
+            type="email"
+            value={form.senderEmail}
+            placeholder="reports@yourcompany.com"
+            onChange={(e) => setForm({ ...form, senderEmail: e.target.value })}
+          />
+        </Field>
+
+        <Field label="Sender Name (optional)">
+          <Input
+            value={form.senderName}
+            placeholder={company.name}
+            onChange={(e) => setForm({ ...form, senderName: e.target.value })}
+          />
+        </Field>
+
+        <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+          Get your API key from{' '}
+          <a href="https://app.brevo.com/settings/keys/api" target="_blank" rel="noreferrer"
+            className="underline text-purple-600">
+            Brevo → Settings → API Keys
+          </a>.
+          The sender email must be a verified sender in your Brevo account.
+        </p>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between gap-2">
+        <Button variant="outline" disabled={testing} onClick={sendTest}>
+          {testing ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Sending…</> : <><Send size={13} className="mr-1.5" />Send Test Now</>}
+        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={busy} onClick={save}>
+            {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save Settings'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Branding / Receipt Settings Modal ─────────────────────────────────────────
+// Per-company white-label: header name shown in the app sidebar, logo, plus all
+// the fields printed on the receipt / tax-invoice PDF (heading, legal name,
+// address, tax label/%, footer, declaration) and the dashboard cards heading.
+function BrandingModal({ company, onClose }) {
+  const { show } = useToast();
+  const b = company.branding || {};
+  const [form, setForm] = useState({
+    headerName:     b.headerName     || '',
+    headerTagline:  b.headerTagline  || '',
+    logoUrl:        b.logoUrl        || '',
+    cardsHeading:   b.cardsHeading   || '',
+    receiptHeading: b.receiptHeading || 'Tax Invoice',
+    legalName:      b.legalName      || '',
+    addressLine1:   b.addressLine1   || '',
+    addressLine2:   b.addressLine2   || '',
+    city:           b.city           || '',
+    phone:          b.phone          || '',
+    email:          b.email          || '',
+    website:        b.website        || '',
+    trn:            b.trn            || '',
+    taxLabel:       b.taxLabel       || 'VAT',
+    taxPercent:     b.taxPercent     ?? 5,
+    footerNote:     b.footerNote     || 'This is a Computer Generated Invoice',
+    declaration:    b.declaration    || '',
+  });
+  const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const onLogoFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return show('Please choose an image file.', 'error');
+    if (file.size > 1.5 * 1024 * 1024) return show('Image too large — please use one under 1.5 MB.', 'error');
+
+    setUploading(true);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => reject(new Error('Could not read the file.'));
+        r.readAsDataURL(file);
+      });
+      const res = await companyApi.uploadLogo(company.id, dataUrl);
+      set('logoUrl', res.logoUrl);
+      show('Logo uploaded.', 'success');
+    } catch (err) { show(apiError(err), 'error'); }
+    finally { setUploading(false); }
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await companyApi.setBranding(company.id, {
+        ...form,
+        taxPercent: Math.min(100, Math.max(0, Number(form.taxPercent) || 0)),
+      });
+      show('Branding & receipt settings saved.', 'success');
+      onClose();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Branding & Receipt — ${company.name}`} width="sm:max-w-[600px]">
+      <div className="space-y-3.5">
+        {/* ── App / sidebar branding ─────────────────────────────────────── */}
+        <Section icon={<ImageIcon size={13} />} title="App Header & Logo" defaultOpen>
+          <Field label="Header Name (shown in sidebar / top bar)">
+            <Input value={form.headerName} placeholder={company.name} onChange={(e) => set('headerName', e.target.value)} />
+          </Field>
+          <Field label="Header Tagline (optional)">
+            <Input value={form.headerTagline} placeholder="e.g. FOOTWEAR" onChange={(e) => set('headerTagline', e.target.value)} />
+          </Field>
+          <Field label="Logo Image (shown fixed in sidebar)">
+            <Input value={form.logoUrl} placeholder="https://res.cloudinary.com/.../logo.png" onChange={(e) => set('logoUrl', e.target.value)} />
+            <div className="mt-1.5 flex items-center gap-2">
+              <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-bold ${uploading ? 'opacity-60' : ''}`} style={{ borderColor: 'var(--border-card)', color: 'var(--text-primary)' }}>
+                {uploading ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />}
+                {uploading ? 'Uploading…' : 'Upload image'}
+                <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={onLogoFile} />
+              </label>
+              <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>or paste a URL above · PNG/JPG, &lt;1.5 MB</span>
+            </div>
+          </Field>
+          {form.logoUrl ? (
+            <div className="flex items-center gap-2 rounded border p-2" style={{ borderColor: 'var(--border)' }}>
+              <img src={form.logoUrl} alt="Logo preview" className="h-10 w-10 rounded object-contain"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Logo preview</span>
+            </div>
+          ) : null}
+          <Field label="Dashboard / Report Cards Heading (optional)">
+            <Input value={form.cardsHeading} placeholder="e.g. Today's Overview" onChange={(e) => set('cardsHeading', e.target.value)} />
+          </Field>
+        </Section>
+
+        {/* ── Receipt / Tax Invoice ──────────────────────────────────────── */}
+        <Section icon={<Palette size={13} />} title="Receipt / Tax Invoice">
+          <Field label="Receipt Heading (title at top of PDF)">
+            <Input value={form.receiptHeading} placeholder="Tax Invoice" onChange={(e) => set('receiptHeading', e.target.value)} />
+          </Field>
+          <Field label="Legal / Trading Name (printed on receipt)">
+            <Input value={form.legalName} placeholder={company.name} onChange={(e) => set('legalName', e.target.value)} />
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Address Line 1">
+              <Input value={form.addressLine1} onChange={(e) => set('addressLine1', e.target.value)} />
+            </Field>
+            <Field label="Address Line 2">
+              <Input value={form.addressLine2} onChange={(e) => set('addressLine2', e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="City / Emirate">
+              <Input value={form.city} onChange={(e) => set('city', e.target.value)} />
+            </Field>
+            <Field label="Phone">
+              <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Email">
+              <Input value={form.email} onChange={(e) => set('email', e.target.value)} />
+            </Field>
+            <Field label="Website">
+              <Input value={form.website} onChange={(e) => set('website', e.target.value)} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="TRN / Tax No.">
+              <Input value={form.trn} onChange={(e) => set('trn', e.target.value)} />
+            </Field>
+            <Field label="Tax Label">
+              <Input value={form.taxLabel} placeholder="VAT" onChange={(e) => set('taxLabel', e.target.value)} />
+            </Field>
+            <Field label="Tax %">
+              <Input type="number" min={0} max={100} value={form.taxPercent} onChange={(e) => set('taxPercent', e.target.value)} />
+            </Field>
+          </div>
+          <Field label="Declaration (printed near signature)">
+            <Textarea rows={2} value={form.declaration} onChange={(e) => set('declaration', e.target.value)} />
+          </Field>
+          <Field label="Footer Note">
+            <Input value={form.footerNote} onChange={(e) => set('footerNote', e.target.value)} />
+          </Field>
+        </Section>
+
+        <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+          These settings are applied per company. Header name &amp; logo appear in the app
+          sidebar after the company&apos;s users log in; the receipt fields are used on all
+          newly generated / regenerated invoice PDFs.
+        </p>
+      </div>
+
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button disabled={busy} onClick={save}>
+          {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save Branding'}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Platform Email (Expiry Notifications) ─────────────────────────────────────
+// Platform-wide Brevo connection used to email subscription-expiry warnings to
+// each company's admin. Separate from each company's own daily-report Brevo.
+function PlatformEmailCard() {
+  const { show } = useToast();
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [testTo, setTestTo] = useState('');
+  const [form, setForm] = useState({
+    enabled: false, brevoApiKey: '', senderEmail: '', senderName: '',
+    remindDays: 5, ccOwnerEmail: '', hasApiKey: false,
+  });
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    platformApi.getSettings()
+      .then((s) => {
+        const e = s.expiryEmail || {};
+        setForm({
+          enabled: !!e.enabled,
+          brevoApiKey: '', // never returned; blank = keep existing
+          senderEmail: e.senderEmail || '',
+          senderName: e.senderName || '',
+          remindDays: e.remindDays ?? 5,
+          ccOwnerEmail: e.ccOwnerEmail || '',
+          hasApiKey: !!e.hasApiKey,
+        });
+        setLoaded(true);
+      })
+      .catch((err) => show(apiError(err), 'error'));
+  }, [open, loaded, show]);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const s = await platformApi.setExpiryEmail({
+        enabled: form.enabled,
+        brevoApiKey: form.brevoApiKey, // blank keeps existing
+        senderEmail: form.senderEmail,
+        senderName: form.senderName,
+        remindDays: Number(form.remindDays) || 5,
+        ccOwnerEmail: form.ccOwnerEmail,
+      });
+      setForm((f) => ({ ...f, brevoApiKey: '', hasApiKey: !!s.expiryEmail?.hasApiKey }));
+      show('Platform expiry-email settings saved.', 'success');
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  const sendTest = async () => {
+    if (!testTo.trim()) return show('Enter an email to send the test to.', 'error');
+    setTesting(true);
+    try {
+      // Save first so the latest key/sender are persisted, then test.
+      await platformApi.setExpiryEmail({
+        enabled: form.enabled, brevoApiKey: form.brevoApiKey, senderEmail: form.senderEmail,
+        senderName: form.senderName, remindDays: Number(form.remindDays) || 5, ccOwnerEmail: form.ccOwnerEmail,
+      });
+      const r = await platformApi.testExpiryEmail(testTo.trim());
+      show(r.message || 'Test sent.', 'success');
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setTesting(false); }
+  };
+
+  return (
+    <Card className="mb-4">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-bold"
+        style={{ color: 'var(--text-primary)' }}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Server size={15} />
+        <span className="flex-1">Platform Email — Subscription Expiry Notifications</span>
+        {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+      </button>
+
+      {open && (
+        <div className="space-y-3 border-t px-4 py-3.5" style={{ borderColor: 'var(--border-card)' }}>
+          {!loaded ? <Spinner label="Loading…" /> : (
+            <>
+              <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                One Brevo connection used to email expiry warnings to <strong>every company's admin</strong>.
+                This is separate from each company's daily-report email.
+              </p>
+
+              <label className="flex cursor-pointer items-center gap-2 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+                <input type="checkbox" className="h-4 w-4 accent-purple-500"
+                  checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
+                Enable expiry email notifications
+              </label>
+
+              <Field label={`Brevo API Key ${form.hasApiKey ? '(saved — leave blank to keep)' : ''}`}>
+                <div className="relative">
+                  <Input
+                    type={showKey ? 'text' : 'password'}
+                    value={form.brevoApiKey}
+                    placeholder={form.hasApiKey ? '•••••••• (key saved)' : 'xkeysib-…'}
+                    onChange={(e) => setForm({ ...form, brevoApiKey: e.target.value })}
+                    style={{ paddingRight: '2.2rem' }}
+                  />
+                  <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-3"
+                    onClick={() => setShowKey((v) => !v)} tabIndex={-1}>
+                    {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </Field>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Sender Email (verified in Brevo)">
+                  <Input type="email" value={form.senderEmail} placeholder="billing@yourplatform.com"
+                    onChange={(e) => setForm({ ...form, senderEmail: e.target.value })} />
+                </Field>
+                <Field label="Sender Name">
+                  <Input value={form.senderName} placeholder="Subscriptions"
+                    onChange={(e) => setForm({ ...form, senderName: e.target.value })} />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Remind how many days before expiry">
+                  <Input type="number" min={1} max={60} value={form.remindDays}
+                    onChange={(e) => setForm({ ...form, remindDays: e.target.value })} />
+                </Field>
+                <Field label="BCC owner (optional)">
+                  <Input type="email" value={form.ccOwnerEmail} placeholder="owner@yourplatform.com"
+                    onChange={(e) => setForm({ ...form, ccOwnerEmail: e.target.value })} />
+                </Field>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-2 border-t pt-3" style={{ borderColor: 'var(--border-card)' }}>
+                <div className="flex-1 min-w-[180px]">
+                  <Field label="Send a test to">
+                    <Input type="email" value={testTo} placeholder="you@example.com"
+                      onChange={(e) => setTestTo(e.target.value)} />
+                  </Field>
+                </div>
+                <Button variant="outline" disabled={testing} onClick={sendTest}>
+                  {testing ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Sending…</> : <><Send size={13} className="mr-1.5" />Send Test</>}
+                </Button>
+                <Button disabled={busy} onClick={save}>
+                  {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save'}
+                </Button>
+              </div>
+
+              <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                Get your key from{' '}
+                <a href="https://app.brevo.com/settings/keys/api" target="_blank" rel="noreferrer"
+                  className="underline text-purple-600">Brevo → Settings → API Keys</a>.
+                The sender must be a verified sender in that Brevo account.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Main Developer Page ───────────────────────────────────────────────────────
+export default function Developer() {
+  const { show } = useToast();
+  const { data: companies, loading, refetch } = useFetch(() => companyApi.list(), []);
+  const [editing, setEditing] = useState(null);       // company obj or 'new'
+  const [cloudModal, setCloudModal] = useState(null); // company obj
+  const [emailModal, setEmailModal] = useState(null); // company obj
+  const [brandModal, setBrandModal] = useState(null); // company obj
+
+  const remove = async (c) => {
+    if (!confirm(`Delete company "${c.name}"? This is only allowed if it has no users.`)) return;
+    try { await companyApi.remove(c.id); show('Company deleted.'); refetch(); }
+    catch (e) { show(apiError(e), 'error'); }
+  };
+
+  if (loading) return <Spinner label="Loading companies…" />;
+
+  return (
+    <>
+      <PageTitle
+        icon={<Building2 size={18} />}
+        badge={companies?.length}
+        actions={<Button onClick={() => setEditing('new')}><Plus size={14} className="mr-1.5" />New Company</Button>}
+      >
+        Companies
+      </PageTitle>
+
+      <PlatformEmailCard />
+
+      <Card className="overflow-x-auto">
+        {!companies?.length ? (
+          <EmptyState title="No companies yet" hint="Create the first company to onboard a tenant." />
+        ) : (
+          <table className="w-full min-w-[880px] border-collapse">
+            <thead>
+              <tr className="bg-navy-800 text-white">
+                {['Sl. No', 'Company', 'Currency', 'Admins', 'Employees', 'Leads', 'Status', 'Actions'].map((h) => (
+                  <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {companies.map((c, i) => (
+                <tr key={c.id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale">
+                  <td className="px-2.5 py-2 text-xs text-ink-3">{i + 1}</td>
+                  <td className="px-2.5 py-2 text-xs font-bold">
+                    {c.name}
+                    {c.contactEmail ? <div className="text-[10px] font-normal text-ink-3">{c.contactEmail}</div> : null}
+                  </td>
+                  <td className="px-2.5 py-2 text-xs">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-700">
+                      {c.currency?.symbol || '₹'} {c.currency?.code || 'INR'}
+                    </span>
+                  </td>
+                  <td className="px-2.5 py-2 text-xs"><span className="flex items-center gap-1.5"><Shield size={12} className="text-ink-3" /><Usage used={c.usage?.admins ?? 0} limit={c.limits?.maxAdmins} /></span></td>
+                  <td className="px-2.5 py-2 text-xs"><span className="flex items-center gap-1.5"><Users size={12} className="text-ink-3" /><Usage used={c.usage?.employees ?? 0} limit={c.limits?.maxEmployees} /></span></td>
+                  <td className="px-2.5 py-2 text-xs"><span className="flex items-center gap-1.5"><Target size={12} className="text-ink-3" /><Usage used={c.usage?.leads ?? 0} limit={c.limits?.maxLeads} /></span></td>
+                  <td className="px-2.5 py-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className={`status ${c.active ? 'bg-ok-light text-ok' : 'bg-gray-100 text-ink-3'}`}>{c.active ? 'Active' : 'Inactive'}</span>
+                      {c.emailReport?.enabled && (
+                        <span className="status bg-purple-50 text-purple-700 text-[10px] inline-flex items-center gap-1"><Mail size={10} /> Report {c.emailReport.sendAt}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-2.5 py-2">
+                    <div className="flex gap-1 flex-wrap">
+                      <Button size="sm" variant="outline" title="Edit company" onClick={() => setEditing(c)}><Pencil size={13} /></Button>
+                      <Button size="sm" variant="outline" title="Branding & receipt settings" onClick={() => setBrandModal(c)}>
+                        <Palette size={13} />
+                      </Button>
+                      <Button size="sm" variant="outline" title="Cloudinary settings" onClick={() => setCloudModal(c)}>
+                        <Cloud size={13} />
+                      </Button>
+                      <Button size="sm" variant="outline" title="Email report settings" onClick={() => setEmailModal(c)}>
+                        <Mail size={13} />
+                      </Button>
+                      <Button size="sm" variant="red" title="Delete" onClick={() => remove(c)}><Trash2 size={13} /></Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      {editing && (
+        <CompanyModal
+          company={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={refetch}
+        />
+      )}
+
+      {cloudModal && (
+        <CloudinaryModal
+          company={cloudModal}
+          onClose={() => { setCloudModal(null); refetch(); }}
+        />
+      )}
+
+      {emailModal && (
+        <EmailReportModal
+          company={emailModal}
+          onClose={() => { setEmailModal(null); refetch(); }}
+        />
+      )}
+
+      {brandModal && (
+        <BrandingModal
+          company={brandModal}
+          onClose={() => { setBrandModal(null); refetch(); }}
+        />
+      )}
+    </>
+  );
+}
