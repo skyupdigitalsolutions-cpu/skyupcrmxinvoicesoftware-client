@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import AppLayout from './components/layout/AppLayout.jsx';
 import Login from './pages/Login.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Orders from './pages/Orders.jsx';
 import OrderForm from './pages/OrderForm.jsx';
@@ -29,27 +30,31 @@ export default function App() {
   const { user, loading, isDeveloper } = useAuth();
   return (
     <Routes>
-      <Route path="/login" element={user && !loading ? <Navigate to={isDeveloper ? '/developer' : '/dashboard'} replace /> : <Login />} />
+      {/* ── Public routes (no auth required) ──────────────────────────────── */}
+      <Route path="/login"
+        element={user && !loading ? <Navigate to={isDeveloper ? '/developer' : '/dashboard'} replace /> : <Login />}
+      />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
-      {/* Developer panel */}
-      <Route path="/developer" element={<DevShell><DeveloperDashboard /></DevShell>} />
-      <Route path="/developer/companies" element={<DevShell><Developer /></DevShell>} />
+      {/* ── Developer panel ────────────────────────────────────────────────── */}
+      <Route path="/developer"               element={<DevShell><DeveloperDashboard /></DevShell>} />
+      <Route path="/developer/companies"     element={<DevShell><Developer /></DevShell>} />
       <Route path="/developer/subscriptions" element={<DevShell><Subscription /></DevShell>} />
 
-      {/* Company app */}
-      <Route path="/dashboard" element={<Shell><Dashboard /></Shell>} />
-      <Route path="/orders" element={<Shell><Orders /></Shell>} />
-      <Route path="/orders/new" element={<Shell><OrderForm /></Shell>} />
-      <Route path="/orders/:id/edit" element={<Shell><OrderForm /></Shell>} />
-      <Route path="/invoices" element={<Shell><Invoices /></Shell>} />
-      <Route path="/tracker" element={<Shell><Tracker /></Shell>} />
-      <Route path="/leads" element={<Shell><Leads /></Shell>} />
-      <Route path="/leads/:id" element={<Shell><LeadDetail /></Shell>} />
-      <Route path="/reports" element={<Shell admin><Reports /></Shell>} />
-      <Route path="/daily-report" element={<Shell><DailyReport /></Shell>} />
-      <Route path="/users" element={<Shell admin><Users /></Shell>} />
-      <Route path="/attendance" element={<Shell><Attendance /></Shell>} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* ── Company app ────────────────────────────────────────────────────── */}
+      <Route path="/dashboard"        element={<Shell><Dashboard /></Shell>} />
+      <Route path="/orders"           element={<Shell><Orders /></Shell>} />
+      <Route path="/orders/new"       element={<Shell><OrderForm /></Shell>} />
+      <Route path="/orders/:id/edit"  element={<Shell><OrderForm /></Shell>} />
+      <Route path="/invoices"         element={<Shell><Invoices /></Shell>} />
+      <Route path="/tracker"          element={<Shell><Tracker /></Shell>} />
+      <Route path="/leads"            element={<Shell><Leads /></Shell>} />
+      <Route path="/leads/:id"        element={<Shell><LeadDetail /></Shell>} />
+      <Route path="/reports"          element={<Shell admin><Reports /></Shell>} />
+      <Route path="/daily-report"     element={<Shell><DailyReport /></Shell>} />
+      <Route path="/users"            element={<Shell admin><Users /></Shell>} />
+      <Route path="/attendance"       element={<Shell><Attendance /></Shell>} />
+      <Route path="*"                 element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }

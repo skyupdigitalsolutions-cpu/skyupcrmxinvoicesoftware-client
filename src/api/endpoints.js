@@ -1,9 +1,11 @@
 import { api } from './client.js';
 
 export const authApi = {
-  login: (body) => api.post('/auth/login', body).then((r) => r.data),
-  logout: () => api.post('/auth/logout').then((r) => r.data),
-  me: () => api.get('/auth/me').then((r) => r.data),
+  login:          (body) => api.post('/auth/login', body).then((r) => r.data),
+  logout:         ()     => api.post('/auth/logout').then((r) => r.data),
+  me:             ()     => api.get('/auth/me').then((r) => r.data),
+  forgotPassword: (body) => api.post('/auth/forgot-password', body).then((r) => r.data),
+  resetPassword:  (body) => api.post('/auth/reset-password', body).then((r) => r.data),
 };
 
 export const orderApi = {

@@ -105,6 +105,7 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: user?.name || '',
     username: user?.username || '',
+    email: user?.email || '',
     password: '',
     loc: {
       enabled: user?.clockInLocation?.enabled ?? false,
@@ -154,7 +155,7 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
     setBusy(true);
     try {
       if (isEdit) {
-        const payload = { name: form.name.trim(), clockInLocation: buildLoc() };
+        const payload = { name: form.name.trim(), email: form.email.trim(), clockInLocation: buildLoc() };
         if (form.password) payload.password = form.password;
         await userApi.update(user.id, payload);
         show('User updated.', 'success');
@@ -162,6 +163,7 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
         await userApi.create({
           name: form.name.trim(),
           username: form.username.trim().toLowerCase(),
+          email: form.email.trim(),
           password: form.password,
           role: 'sales',
           clockInLocation: buildLoc(),
@@ -186,6 +188,11 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
             onChange={(e) => set('username', e.target.value)} />
           {isEdit && <p className="mt-1 text-[10px] text-ink-3">Username can't be changed.</p>}
           {!isEdit && <p className="mt-1 text-[10px] text-ink-3">Saved in lowercase. Min 3 characters.</p>}
+        </Field>
+        <Field label="Email Address (used for password reset)">
+          <Input type="email" value={form.email} placeholder="employee@company.com"
+            onChange={(e) => set('email', e.target.value)} />
+          <p className="mt-1 text-[10px] text-ink-3">Required for the "Forgot password" flow.</p>
         </Field>
         <Field label={isEdit ? 'New Password (leave blank to keep current)' : 'Password'}>
           <Input type="password" value={form.password} placeholder={isEdit ? 'Leave blank to keep' : 'Min 6 characters'}

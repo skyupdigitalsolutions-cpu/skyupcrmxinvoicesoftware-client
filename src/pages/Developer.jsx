@@ -118,7 +118,7 @@ function CompanyModal({ company, onClose, onSaved }) {
   );
   const [busy, setBusy] = useState(false);
   // Admin credentials, only used when creating a new company.
-  const [admin, setAdmin] = useState({ name: '', username: '', password: '' });
+  const [admin, setAdmin] = useState({ name: '', username: '', password: '', email: '' });
   const [showPwd, setShowPwd] = useState(false);
 
   const setLimit = (k, v) => setForm((f) => ({ ...f, limits: { ...f.limits, [k]: v } }));
@@ -170,6 +170,7 @@ function CompanyModal({ company, onClose, onSaved }) {
             name: admin.name.trim(),
             username: admin.username.trim(),
             password: admin.password,
+            email: admin.email.trim(),
           };
         }
         const res = await companyApi.create(payload);
@@ -265,6 +266,10 @@ function CompanyModal({ company, onClose, onSaved }) {
               <Field label="Admin Name">
                 <Input value={admin.name} placeholder="e.g. Priya Nair"
                   onChange={(e) => setAdmin({ ...admin, name: e.target.value })} />
+              </Field>
+              <Field label="Email Address (for password reset)">
+                <Input type="email" value={admin.email} placeholder="admin@company.com"
+                  onChange={(e) => setAdmin({ ...admin, email: e.target.value })} />
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Username">
