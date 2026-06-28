@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Building2, Plus, Pencil, Trash2, Users, Shield, Loader2, Target,
   Cloud, Mail, DollarSign, ChevronDown, ChevronRight, Send, Eye, EyeOff,
-  Palette, Image as ImageIcon, Server,
+  Palette, Image as ImageIcon, Server, CheckCircle2, XCircle, ShieldCheck,
 } from 'lucide-react';
 import { companyApi, platformApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -357,6 +357,34 @@ function EmailReportModal({ company, onClose }) {
   });
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  // null = not verified yet, true = valid, false = invalid
+  const [keyStatus, setKeyStatus] = useState(null);
+  const [keyStatusMsg, setKeyStatusMsg] = useState('');
+
+  // Reset key status whenever the key field changes
+  const handleKeyChange = (e) => {
+    setForm({ ...form, brevoApiKey: e.target.value });
+    setKeyStatus(null);
+    setKeyStatusMsg('');
+  };
+
+  const verifyKey = async () => {
+    if (!form.brevoApiKey.trim()) {
+      show('Enter a Brevo API key to verify.', 'error');
+      return;
+    }
+    setVerifying(true);
+    setKeyStatus(null);
+    try {
+      const r = await companyApi.verifyBrevoKey(company.id, form.brevoApiKey);
+      setKeyStatus(true);
+      setKeyStatusMsg(r.email ? `Valid — account: ${r.email}${r.plan ? ` (${r.plan})` : ''}` : 'Key is valid.');
+    } catch (e) {
+      setKeyStatus(false);
+      setKeyStatusMsg(apiError(e) || 'Invalid key.');
+    } finally { setVerifying(false); }
+  };
 
   const save = async () => {
     setBusy(true);
@@ -414,11 +442,32 @@ function EmailReportModal({ company, onClose }) {
         </div>
 
         <Field label="Brevo API Key">
-          <SecretInput
-            value={form.brevoApiKey}
-            placeholder="Leave blank to keep existing (xkeysib-…)"
-            onChange={(e) => setForm({ ...form, brevoApiKey: e.target.value })}
-          />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <SecretInput
+                value={form.brevoApiKey}
+                placeholder="Leave blank to keep existing (xkeysib-…)"
+                onChange={handleKeyChange}
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={verifying || !form.brevoApiKey.trim()}
+              onClick={verifyKey}
+              title="Verify this API key with Brevo (no email sent)"
+            >
+              {verifying
+                ? <Loader2 size={13} className="animate-spin" />
+                : <ShieldCheck size={13} />}
+            </Button>
+          </div>
+          {keyStatus !== null && (
+            <p className={`mt-1 flex items-center gap-1 text-[11px] font-medium ${keyStatus ? 'text-green-600' : 'text-red-600'}`}>
+              {keyStatus ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+              {keyStatusMsg}
+            </p>
+          )}
         </Field>
 
         <Field label="Sender Email (must be verified in Brevo)">
