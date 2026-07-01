@@ -33,9 +33,13 @@ const DEV_NAV = [
 // Company-wise brand mark: fixed logo (if set) + header name + optional tagline.
 // Used ONLY in the top header so each company sees its own logo + name.
 function BrandMark({ branding, size = 'sm' }) {
-  const name    = branding?.headerName || 'Sole & Stride';
-  const tagline = branding?.headerTagline ?? (branding?.headerName ? '' : 'FOOTWEAR');
-  const logo    = branding?.logoUrl || '';
+  // Company-wise: show the tenant's own header name + logo when they've set it;
+  // otherwise fall back to the fixed platform brand from ThemeContext, never a
+  // hardcoded company name.
+  const { branding: platform } = useTheme();
+  const name    = branding?.headerName || platform.companyName;
+  const tagline = branding?.headerTagline || '';
+  const logo    = branding?.logoUrl || platform.logo || '';
   const nameCls = size === 'lg' ? 'text-base' : 'text-sm';
 
   return (
