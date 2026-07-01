@@ -3,9 +3,10 @@ import { createContext, useContext, useEffect, useState } from "react";
 const ThemeContext = createContext();
 
 const DEFAULT_BRANDING = {
-  companyName:    "Skyupcrm",
+  // ── Edit these to rebrand the whole app (tab title, favicon, colours). ──
+  companyName:    "SkyUp CRM",         // shown in the browser tab
   logo:           "/skyup_logo.svg",
-  favicon:        "/skyup_logo.svg",
+  favicon:        "/skyup_logo.svg",   // drop a small square icon in /public and point here
   primaryColor:   "#2563EB",
   secondaryColor: "#1E40AF",
 };
@@ -34,8 +35,19 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     document.documentElement.style.setProperty("--primary", branding.primaryColor);
     document.documentElement.style.setProperty("--secondary", branding.secondaryColor);
-    const favicon = document.querySelector("link[rel='icon']");
-    if (favicon) favicon.href = branding.favicon || "/favicon.svg";
+
+    // Tab title.
+    if (branding.companyName) document.title = branding.companyName;
+
+    // Favicon. index.html now ships a <link rel="icon">, but create one if it's
+    // ever missing so the icon still updates instead of silently no-op'ing.
+    let favicon = document.querySelector("link[rel='icon']");
+    if (!favicon) {
+      favicon = document.createElement("link");
+      favicon.rel = "icon";
+      document.head.appendChild(favicon);
+    }
+    favicon.href = branding.favicon || "/favicon.svg";
   }, [branding]);
 
   const toggle = () => setDark((prev) => !prev);
