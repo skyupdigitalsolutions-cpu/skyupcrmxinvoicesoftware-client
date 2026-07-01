@@ -69,7 +69,7 @@ function DevCredit() {
   const year = new Date().getFullYear();
   return (
     <div
-      className="mt-2 px-5 pt-3 text-[10px] leading-relaxed"
+      className="shrink-0 px-5 pt-3 text-[10px] leading-relaxed"
       style={{ borderTop: '1px solid var(--header-border)', color: 'var(--text-muted)' }}
     >
       <div>© {year} · Developed by</div>
@@ -333,8 +333,10 @@ export default function AppLayout({ children }) {
           className="hidden w-[200px] flex-shrink-0 self-stretch border-r lg:block"
           style={{ backgroundColor: 'var(--bg-sidebar)', borderColor: 'var(--header-border)' }}
         >
-          <div className="sticky top-[52px] py-4">
-            <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} />
+          <div className="sticky top-[52px] flex h-[calc(100vh-52px)] flex-col py-4">
+            <div className="flex-1 overflow-y-auto">
+              <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} />
+            </div>
             <DevCredit />
           </div>
         </aside>
@@ -347,7 +349,7 @@ export default function AppLayout({ children }) {
               onClick={() => setMobileOpen(false)}
             />
             <aside
-              className="absolute left-0 top-0 h-full w-[240px] max-w-[80vw] overflow-y-auto border-r shadow-xl"
+              className="absolute left-0 top-0 flex h-full w-[240px] max-w-[80vw] flex-col border-r shadow-xl"
               style={{ backgroundColor: 'var(--bg-sidebar)', borderColor: 'var(--header-border)' }}
             >
               <div
@@ -366,10 +368,10 @@ export default function AppLayout({ children }) {
                   <X size={16} />
                 </button>
               </div>
-              <div className="py-2">
+              <div className="flex-1 overflow-y-auto py-2">
                 <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} onNavigate={() => setMobileOpen(false)} />
-                <DevCredit />
               </div>
+              <DevCredit />
             </aside>
           </div>
         )}
