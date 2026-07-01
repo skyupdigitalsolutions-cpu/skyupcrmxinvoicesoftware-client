@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
 import { PauseCircle } from 'lucide-react';
 import { api, setAccessToken, onAuthFailure, onAccountPaused } from '../api/client.js';
 import { authApi } from '../api/endpoints.js';
+import { setActiveCurrency } from '../utils/format.js';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -51,6 +52,13 @@ export function AuthProvider({ children }) {
   const branding = company?.branding || null;
   const currency = company?.currency || null;
   const subscription = company?.subscription || null;
+
+  // Push the tenant's currency into the shared formatter so fmt()/fmtAED()/etc.
+  // render this company's symbol + locale everywhere. Resets to the default
+  // when there's no company (developer / logged out).
+  useEffect(() => {
+    setActiveCurrency(currency);
+  }, [currency?.code, currency?.symbol, currency?.locale]);
 
   // When the server reports the subscription is paused (402), show a blocking
   // notice over everything. Developers are never paused, so this only affects
