@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogIn, Mail, ArrowLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useTheme } from '../context/ThemeContext.jsx';
 import { authApi } from '../api/endpoints.js';
 import { apiError } from '../api/client.js';
 
@@ -98,6 +99,7 @@ function ForgotPasswordPanel({ onBack }) {
 // ── Main login page ───────────────────────────────────────────────────────────
 export default function Login() {
   const { login }  = useAuth();
+  const { branding } = useTheme();
   const navigate   = useNavigate();
   const [form, setForm]       = useState({ username: '', password: '' });
   const [err, setErr]         = useState('');
@@ -123,10 +125,22 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-navy to-navy-700 p-4">
       <div className="w-full max-w-[380px] rounded-2xl bg-white p-7 shadow-[0_20px_60px_rgba(0,0,0,.4)] sm:p-9">
 
-        {/* Brand header — shown on both panels */}
+        {/* Brand header — shown on both panels. Pulls the fixed platform brand
+            from ThemeContext (no company context exists before login). */}
         <div className="mb-7 text-center">
+          {branding.logo ? (
+            <img
+              src={branding.logo}
+              alt={branding.companyName}
+              className="mx-auto mb-3 h-12 w-auto object-contain"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
+          ) : null}
           <div className="text-2xl font-black leading-tight tracking-wide text-navy">
-            Sole &amp; Stride <span style={{ color: 'var(--primary)' }}>FOOTWEAR</span>
+            {branding.companyName}
+          </div>
+          <div className="mt-1 text-xs font-medium tracking-wide text-ink-3">
+            Sign in to continue
           </div>
         </div>
 
