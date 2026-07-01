@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 const ThemeContext = createContext();
 
 const DEFAULT_BRANDING = {
-  companyName:    "Sole & Stride",
+  companyName:    "Skyupcrm",
   logo:           "/sole-stride-logo.svg",
   favicon:        "/favicon.svg",
   primaryColor:   "#2563EB",
