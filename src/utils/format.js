@@ -1,18 +1,48 @@
-export const fmtN = (n, locale = 'en-IN') =>
+// ── Active company currency ───────────────────────────────────────────────────
+// Set once from the logged-in company (see AuthContext) so every formatter in
+// the app renders that tenant's symbol/locale — no per-component threading.
+// Falls back to AED/en-AE (the original hardcoded behaviour) until it is set,
+// which only matters for the brief moment before the session is restored.
+let _activeCurrency = { code: 'AED', symbol: 'AED ', locale: 'en-AE' };
+
+export const setActiveCurrency = (currency) => {
+  _activeCurrency = {
+    code:   currency?.code   || 'AED',
+    symbol: currency?.symbol || 'AED ',
+    locale: currency?.locale || 'en-AE',
+  };
+};
+
+export const getActiveCurrency = () => _activeCurrency;
+
+// Current currency code, e.g. for export column headers: `Amount (${curCode()})`.
+export const curCode = () => _activeCurrency.code;
+
+export const fmtN = (n, locale = _activeCurrency.locale) =>
   Number(n || 0).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// Legacy AED helpers (kept for backward compat)
-export const fmtDHS = (n) => `DHS ${fmtN(n, 'en-AE')}`;
-export const fmtAED = (n) => `AED ${fmtN(n, 'en-AE')}`;
+// Amount with the active company's symbol, e.g. "₹1,234.00" or "AED 1,234.00".
+export const fmt = (n) => `${_activeCurrency.symbol}${fmtN(n, _activeCurrency.locale)}`;
+
+// Bare number in the active locale, no symbol. Use for export cells whose
+// column header already carries the currency (replaces the old
+// `.replace('AED ', '')` string-stripping, which broke once the symbol varied).
+export const fmtNum = (n) => fmtN(n, _activeCurrency.locale);
+
+// Legacy names — kept so existing call sites keep working, now currency-aware.
+// Both resolve to the active company currency rather than a hardcoded AED/DHS.
+export const fmtDHS = (n) => fmt(n);
+export const fmtAED = (n) => fmt(n);
 
 // Platform billing is in Indian Rupees (developer panel — your revenue from
-// tenants), independent of each company's own display currency.
+// tenants), independent of each company's own display currency. Always ₹.
 export const fmtINR = (n) => `₹${fmtN(n, 'en-IN')}`;
 
 /**
- * Format a number using a company's currency settings.
- * Falls back to INR if no currency is configured.
- * @param {Object|null} currency  – { code, symbol, locale } from company
+ * Format a number using an EXPLICIT currency object (not the active one).
+ * Useful when rendering a company other than the logged-in tenant (e.g. the
+ * developer panel listing many companies).
+ * @param {Object|null} currency  – { code, symbol, locale }
  * @param {number}      n
  */
 export const fmtCurrency = (currency, n) => {
@@ -22,8 +52,8 @@ export const fmtCurrency = (currency, n) => {
 };
 
 /**
- * Returns a formatter function bound to a company's currency.
- * Usage:  const fmt = currencyFormatter(company.currency);  fmt(1234.5)
+ * Returns a formatter bound to a specific currency object.
+ * Usage:  const f = currencyFormatter(company.currency);  f(1234.5)
  */
 export const currencyFormatter = (currency) => (n) => fmtCurrency(currency, n);
 
