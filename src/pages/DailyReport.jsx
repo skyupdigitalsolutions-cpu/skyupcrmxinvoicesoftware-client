@@ -11,7 +11,7 @@ import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { exportSectionsPdf, exportSectionsCsv } from '../utils/exportPdf.js';
 import {
-  formatDate, fmtDateTime, fmtTimeOnly, fmtAED, statusClass,
+  formatDate, fmtDateTime, fmtTimeOnly, fmt, fmtNum, curCode, statusClass,
   attendanceStatusLabel, attendanceStatusClass,
 } from '../utils/format.js';
 
@@ -58,7 +58,8 @@ function Bar({ label, value, total, color }) {
 }
 
 export default function DailyReport() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, branding } = useAuth();
+  const taxPct = Number.isFinite(branding?.taxPercent) ? branding.taxPercent : 5;
   const { show } = useToast();
   const [tab, setTab] = useState('overview');
   const [viewDate, setViewDate] = useState(new Date());
@@ -108,19 +109,19 @@ export default function DailyReport() {
     },
     {
       title: 'Orders',
-      columns: ['Sl. No', 'Order #', 'Customer', 'City / Country', 'Items', 'Status', 'Salesperson', 'Amount (AED)', 'Due (AED)', 'Date'],
+      columns: ['Sl. No', 'Order #', 'Customer', 'City / Country', 'Items', 'Status', 'Salesperson', `Amount (${curCode()})`, `Due (${curCode()})`, 'Date'],
       rows: orders.map((o, i) => [
         i + 1, `#${o.orderNo}`, o.customer, `${o.city || '—'}${o.country ? `, ${o.country}` : ''}`,
         o.itemCount, o.status, o.salespersonName || '—',
-        fmtAED(o.grandTotal).replace('AED ', ''), fmtAED(o.due).replace('AED ', ''), fmtDateTime(o.date),
+        fmtNum(o.grandTotal), fmtNum(o.due), fmtDateTime(o.date),
       ]),
     },
     {
       title: 'Invoices',
-      columns: ['Sl. No', 'Invoice #', 'Order #', 'Customer', 'Country', 'Salesperson', 'Sub Total (AED)', 'VAT (AED)', 'Total (AED)', 'Payment', 'Date'],
+      columns: ['Sl. No', 'Invoice #', 'Order #', 'Customer', 'Country', 'Salesperson', `Sub Total (${curCode()})`, `VAT (${curCode()})`, `Total (${curCode()})`, 'Payment', 'Date'],
       rows: invoices.map((v, i) => [
         i + 1, `INV-${v.invoiceNo}`, `#${v.orderNo}`, v.customer, v.country || '—', v.salespersonName || '—',
-        fmtAED(v.subTotal).replace('AED ', ''), fmtAED(v.vatAmt).replace('AED ', ''), fmtAED(v.total).replace('AED ', ''),
+        fmtNum(v.subTotal), fmtNum(v.vatAmt), fmtNum(v.total),
         v.paymentStatus, fmtDateTime(v.date),
       ]),
     },
@@ -374,8 +375,8 @@ export default function DailyReport() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3.5 md:grid-cols-3">
             <StatCard label="Orders" value={summary.totalOrders || 0} sub={formatDate(viewDate)} tone="border-gold" />
-            <StatCard label="Revenue" value={fmtAED(summary.ordersRevenue || 0)} sub="Order value" tone="border-ok" />
-            <StatCard label="Due" value={fmtAED(summary.ordersDue || 0)} sub="Outstanding" tone="border-warn" />
+            <StatCard label="Revenue" value={fmt(summary.ordersRevenue || 0)} sub="Order value" tone="border-ok" />
+            <StatCard label="Due" value={fmt(summary.ordersDue || 0)} sub="Outstanding" tone="border-warn" />
           </div>
           <Card><CardHead title={`Orders · ${formatDate(viewDate)}`} /><CardBody className="!p-0">
             {orders.length === 0 ? <EmptyState title="No orders" hint="No orders were placed on this date." /> : (
@@ -394,8 +395,8 @@ export default function DailyReport() {
                         <td className="px-3 py-3 text-xs">{o.itemCount}</td>
                         <td className="px-3 py-3"><span className={`rounded px-2 py-0.5 text-[10px] font-bold ${statusClass(o.status)}`}>{o.status}</span></td>
                         <td className="px-3 py-3 text-xs text-ink-2">{o.salespersonName || '—'}</td>
-                        <td className="px-3 py-3 text-xs font-bold text-navy">{fmtAED(o.grandTotal)}</td>
-                        <td className="px-3 py-3 text-xs font-bold text-warn">{fmtAED(o.due)}</td>
+                        <td className="px-3 py-3 text-xs font-bold text-navy">{fmt(o.grandTotal)}</td>
+                        <td className="px-3 py-3 text-xs font-bold text-warn">{fmt(o.due)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -411,8 +412,8 @@ export default function DailyReport() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3.5 md:grid-cols-3">
             <StatCard label="Invoices" value={summary.totalInvoices || 0} sub={formatDate(viewDate)} tone="border-gold" />
-            <StatCard label="Invoiced Revenue" value={fmtAED(summary.invoicedRevenue || 0)} sub="Total" tone="border-ok" />
-            <StatCard label="VAT Collected" value={fmtAED(summary.vatCollected || 0)} sub="5% VAT" tone="border-info" />
+            <StatCard label="Invoiced Revenue" value={fmt(summary.invoicedRevenue || 0)} sub="Total" tone="border-ok" />
+            <StatCard label="VAT Collected" value={fmt(summary.vatCollected || 0)} sub={`${taxPct}% ${branding?.taxLabel || 'VAT'}`} tone="border-info" />
           </div>
           <Card><CardHead title={`Invoices · ${formatDate(viewDate)}`} /><CardBody className="!p-0">
             {invoices.length === 0 ? <EmptyState title="No invoices" hint="No invoices were raised on this date." /> : (
@@ -430,9 +431,9 @@ export default function DailyReport() {
                         <td className="px-3 py-3 text-xs">{v.customer}</td>
                         <td className="px-3 py-3 text-xs text-ink-3">{v.country || '—'}</td>
                         <td className="px-3 py-3 text-xs text-ink-2">{v.salespersonName || '—'}</td>
-                        <td className="px-3 py-3 text-xs">{fmtAED(v.subTotal)}</td>
-                        <td className="px-3 py-3 text-xs">{fmtAED(v.vatAmt)}</td>
-                        <td className="px-3 py-3 text-xs font-bold text-navy">{fmtAED(v.total)}</td>
+                        <td className="px-3 py-3 text-xs">{fmt(v.subTotal)}</td>
+                        <td className="px-3 py-3 text-xs">{fmt(v.vatAmt)}</td>
+                        <td className="px-3 py-3 text-xs font-bold text-navy">{fmt(v.total)}</td>
                         <td className="px-3 py-3">
                           <span className={`rounded px-2 py-0.5 text-[10px] font-bold ${v.paymentStatus === 'Paid' ? 'bg-ok-light text-ok' : v.paymentStatus === 'Partial' ? 'bg-warn-light text-warn' : 'bg-danger-light text-danger'}`}>
                             {v.paymentStatus}
