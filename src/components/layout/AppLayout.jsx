@@ -59,7 +59,7 @@ function BrandMark({ branding, size = 'sm' }) {
 // developer's website. Replaces the fixed product brand that used to sit at the
 // top of the sidebar.
 const DEVELOPER_NAME = 'SkyUp Digital Solutions';
-const DEVELOPER_URL  = 'https://skyupdigitalsolutions.com';
+const DEVELOPER_URL  = 'https://www.skyupdigitalsolutions.com';
 
 function DevCredit() {
   const year = new Date().getFullYear();
