@@ -4,8 +4,8 @@ const ThemeContext = createContext();
 
 const DEFAULT_BRANDING = {
   companyName:    "Skyupcrm",
-  logo:           "/sole-stride-logo.svg",
-  favicon:        "/favicon.svg",
+  logo:           "/skyup_logo.svg",
+  favicon:        "/skyup_logo.svg",
   primaryColor:   "#2563EB",
   secondaryColor: "#1E40AF",
 };
