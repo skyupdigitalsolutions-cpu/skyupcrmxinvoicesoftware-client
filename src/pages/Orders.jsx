@@ -286,7 +286,11 @@ export default function Orders() {
   };
 
   const convert = async (o) => {
-    if (!confirm(`Convert order #${o.orderNo} to a tax invoice?`)) return;
+    const already = o.status === 'Invoiced' || o.invoiceId;
+    const msg = already
+      ? `Order #${o.orderNo} already has an invoice. Create an additional invoice?`
+      : `Convert order #${o.orderNo} to a tax invoice?`;
+    if (!confirm(msg)) return;
     try {
       const inv = await invoiceApi.fromOrder(o._id);
       show(`Invoice #${inv.invoiceNo} created.`, 'success');
@@ -411,7 +415,7 @@ export default function Orders() {
                       <a className="btn-green btn-sm flex items-center gap-1" href={orderWhatsAppUrl(o)} target="_blank" rel="noreferrer">
                         <MessageCircle size={14} /> WhatsApp
                       </a>
-                      {o.status !== 'Invoiced' && o.status !== 'Cancelled' && <IconBtn icon={FileText} label="Invoice" size="sm" variant="outline" onClick={() => convert(o)} />}
+                      {o.status !== 'Cancelled' && <IconBtn icon={FileText} label={o.invoiceId ? 'New Invoice' : 'Invoice'} size="sm" variant="outline" onClick={() => convert(o)} />}
                       {isAdmin && <IconBtn icon={Trash2} label="Del" size="sm" variant="red" onClick={() => del(o)} />}
                     </div>
                   </td>
