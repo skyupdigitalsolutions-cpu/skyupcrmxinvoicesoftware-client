@@ -66,7 +66,7 @@ export default function ResetPassword() {
         {/* Brand */}
         <div className="mb-6 text-center">
           <div className="text-2xl font-black leading-tight tracking-wide text-navy">
-            Sole &amp; Stride <span style={{ color: 'var(--primary)' }}>FOOTWEAR</span>
+           Sign in to your account
           </div>
         </div>
 
