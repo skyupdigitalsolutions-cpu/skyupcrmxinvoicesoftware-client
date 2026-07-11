@@ -98,6 +98,7 @@ function useLeadLookup({ editing, setForm }) {
             customer: res.lead.name    || prev.customer,
             city:     res.lead.city    || prev.city,
             country:  res.lead.country || prev.country,
+            delivery: res.lead.delivery || prev.delivery,
           }));
         } else {
           setLeadId(null);
@@ -536,6 +537,7 @@ export default function OrderForm() {
             mobile:  form.mobile.replace(/\D/g, ''),
             country: form.country,
             city:    form.city || '',
+            delivery: form.delivery || '',
             source:  'Walk-in',
             status:  'New',
             remark:  'Auto-created from Order Form',
