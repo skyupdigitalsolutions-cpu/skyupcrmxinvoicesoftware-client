@@ -46,7 +46,14 @@ export default function Invoices() {
   }, [invoices, search, employee, users, payStatus]);
 
   const sub = useMemo(() => items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0), [items]);
-  const vat = sub * 0.05;
+  // Preview mirrors the server: discount (percent) is netted out before tax,
+  // and the tax rate is the one captured on this invoice (not a hardcoded 5%).
+  const taxPct = Number.isFinite(edit?.taxPercent) ? edit.taxPercent : 5;
+  const discPct = Math.min(100, Math.max(0, Number(edit?.discount) || 0));
+  const discAmt = sub * discPct / 100;
+  const taxable = Math.max(0, sub - discAmt);
+  const vat = taxable * (taxPct / 100);
+  const total = taxable + vat;
 
   const changePayment = async (v, status) => {
     try {
@@ -62,11 +69,11 @@ export default function Invoices() {
     const empName = employee ? (users || []).find((u) => String(u._id) === String(employee))?.name : 'All';
     return {
       title: 'Invoices Report',
-      columns: ['Sl. No', 'Invoice #', 'Date', 'Order #', 'Customer', 'Country', 'Amount (AED)', 'VAT 5%', 'Total (AED)', 'Payment Status', 'Salesperson'],
+      columns: ['Sl. No', 'Invoice #', 'Date', 'Order #', 'Customer', 'Country', 'Amount (AED)', 'Disc. (AED)', 'VAT', 'Total (AED)', 'Payment Status', 'Salesperson'],
       rows: filtered.map((v, idx) => [
         idx + 1,
         `INV-${v.invoiceNo}`, formatDate(v.date), `#${v.orderNo}`, v.customer, v.country,
-        fmtAED(v.subTotal), fmtAED(v.vatAmt), fmtAED(v.total), v.paymentStatus || 'Unpaid', v.salespersonName || '—',
+        fmtAED(v.subTotal), fmtAED(v.discountAmt || 0), fmtAED(v.vatAmt), fmtAED(v.total), v.paymentStatus || 'Unpaid', v.salespersonName || '—',
       ]),
       meta: {
         Employee: empName || 'All',
@@ -175,12 +182,12 @@ export default function Invoices() {
           />
         ) : (
           <div className="flex-1 overflow-auto">
-            <table className="w-full min-w-[980px] border-collapse">
+            <table className="w-full min-w-[1040px] border-collapse">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-navy-800 text-white">
                   {[
                     'Sl. No', 'Invoice #', 'Date', 'Order #', 'Customer',
-                    'Country', 'Amount (AED)', 'VAT 5%', 'Total (AED)', 'Payment Status', 'PDF', 'Actions',
+                    'Country', 'Amount (AED)', 'Disc.', 'VAT', 'Total (AED)', 'Payment Status', 'PDF', 'Actions',
                   ].map((h) => (
                     <th
                       key={h}
@@ -201,6 +208,9 @@ export default function Invoices() {
                     <td className="px-2.5 py-2 text-xs">{v.customer}</td>
                     <td className="px-2.5 py-2 text-xs">{v.country}</td>
                     <td className="px-2.5 py-2 text-xs">{fmtAED(v.subTotal)}</td>
+                    <td className="px-2.5 py-2 text-xs text-danger">
+                      {v.discount > 0 ? `${v.discount}% (−${fmtAED(v.discountAmt || 0)})` : '—'}
+                    </td>
                     <td className="px-2.5 py-2 text-xs">{fmtAED(v.vatAmt)}</td>
                     <td className="px-2.5 py-2 text-xs font-bold text-navy-700">{fmtAED(v.total)}</td>
 
@@ -307,8 +317,9 @@ export default function Invoices() {
         <OrderItemsEditor items={items} onChange={setItems} currency="AED" compact />
         <div className="mt-1.5 flex justify-end gap-7 rounded-md bg-navy px-4 py-3">
           <T label="Sub Total" v={fmtAED(sub)} />
-          <T label="VAT 5%" v={fmtAED(vat)} />
-          <T label="Total" v={fmtAED(sub + vat)} big />
+          {discPct > 0 && <T label={`Disc ${discPct}%`} v={`−${fmtAED(discAmt)}`} />}
+          <T label={`VAT ${taxPct}%`} v={fmtAED(vat)} />
+          <T label="Total" v={fmtAED(total)} big />
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setEdit(null)}>Cancel</Button>
