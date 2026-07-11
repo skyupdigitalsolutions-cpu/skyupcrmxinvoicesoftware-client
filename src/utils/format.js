@@ -110,17 +110,20 @@ export const leadStatusClass = (s) => ({
 }[s] || 'bg-gray-100 text-gray-600');
 
 
-export const LEAD_STAGES = ['Enquiry', 'Opportunity', 'Buyer'];
+// Funnel order: Lead (initial) → Opportunity → Enquiry → Buyer
+export const LEAD_STAGES = ['Lead', 'Opportunity', 'Enquiry', 'Buyer'];
 
 export const leadStageOf = (l) => {
   if (l.converted || l.status === 'Won') return 'Buyer';
-  if (l.status === 'Interested' || l.status === 'Follow-up') return 'Opportunity';
-  return 'Enquiry';
+  if (l.status === 'Follow-up') return 'Enquiry';
+  if (l.status === 'Interested' || l.status === 'Contacted') return 'Opportunity';
+  return 'Lead'; // New / Lost / anything else
 };
 
 export const leadStageClass = (s) => ({
-  Enquiry:     'bg-info-light text-info',
+  Lead:        'bg-gray-100 text-gray-600',
   Opportunity: 'bg-warn-light text-warn',
+  Enquiry:     'bg-info-light text-info',
   Buyer:       'bg-ok-light text-ok',
 }[s] || 'bg-gray-100 text-gray-600');
 
