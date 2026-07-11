@@ -4,7 +4,7 @@ import { invoiceApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import { apiError } from '../api/client.js';
+import { apiError, api } from '../api/client.js';
 import PageTitle from '../components/layout/PageTitle.jsx';
 import { Card } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
@@ -29,6 +29,7 @@ export default function Invoices() {
   const [edit, setEdit] = useState(null);
   const [items, setItems] = useState([]);
   const [pdfBusy, setPdfBusy] = useState(null); // invoiceId being regenerated
+  const [dlBusy, setDlBusy] = useState(null);   // invoiceId being downloaded
 
   const filtered = useMemo(() => {
     if (!invoices) return [];
@@ -132,6 +133,27 @@ export default function Invoices() {
       show(apiError(e), 'error');
     } finally {
       setPdfBusy(null);
+    }
+  };
+
+  // Download the PDF through the API client so the Bearer token, base URL and
+  // 401→refresh handling all apply. A plain <a href="/api/…"> can't do this: it
+  // sends no auth header and, behind the SPA redirect, resolves to index.html.
+  const downloadPdf = async (v) => {
+    setDlBusy(v._id);
+    try {
+      const res = await api.get(`/invoices/${v._id}/pdf`, { responseType: 'blob' });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), { href: url, download: `INV-${v.invoiceNo}.pdf` });
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      // Fallback: open the stored Cloudinary copy directly if we have one.
+      if (v.pdfUrl) window.open(v.pdfUrl, '_blank', 'noopener');
+      else show(apiError(e) || 'Could not download the PDF. Try Regenerate first.', 'error');
+    } finally {
+      setDlBusy(null);
     }
   };
 
@@ -261,17 +283,16 @@ export default function Invoices() {
                           <MessageCircle size={13} />
                         </a>
 
-                        {/* Download PDF directly */}
-                        <a
-                          href={`/api/invoices/${v._id}/pdf`}
-                          target="_blank"
-                          rel="noreferrer"
+                        {/* Download PDF — fetched with auth; works across origins */}
+                        <Button
+                          size="sm"
+                          variant="outline"
                           title="Download PDF"
+                          disabled={dlBusy === v._id}
+                          onClick={() => downloadPdf(v)}
                         >
-                          <Button size="sm" variant="outline" as="span">
-                            <Download size={13} />
-                          </Button>
-                        </a>
+                          <Download size={13} className={dlBusy === v._id ? 'animate-pulse' : ''} />
+                        </Button>
 
                         {/* Regenerate & save to Cloudinary */}
                         <Button
