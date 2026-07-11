@@ -5,7 +5,7 @@ const ThemeContext = createContext();
 const DEFAULT_BRANDING = {
   // ── Edit these to rebrand the whole app (tab title, favicon, colours). ──
   companyName:    "SkyUp CRM",         // shown in the browser tab
-  logo:           "/skyup_logo.svg",
+  logo:           "",                  // empty → login header shows the companyName text ("SkyUp CRM"). Point to a real SkyUp logo in /public to show an image instead.
   favicon:        "/skyup_logo.svg",   // drop a small square icon in /public and point here
   primaryColor:   "#2563EB",
   secondaryColor: "#1E40AF",
