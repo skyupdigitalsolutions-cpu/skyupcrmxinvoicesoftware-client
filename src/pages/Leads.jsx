@@ -24,7 +24,7 @@ import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 import {
   formatDate, fmtAED, fmtDateTime, leadStatusClass,
   LEAD_STATUSES, LEAD_SOURCES, ALL_COUNTRY_NAMES, dialFor, cleanPhone,
-  LEAD_STAGES, leadStageOf, leadStageClass,
+  LEAD_STAGES, leadStageOf, leadStageClass, COUNTRY_CODES,
 } from '../utils/format.js';
 
 const emptyLead = () => ({
@@ -32,13 +32,15 @@ const emptyLead = () => ({
   source: 'Walk-in', campaign: '', interest: '', status: 'New', remark: '', delivery: '', owner: '',
 });
 
-const CREATE_STAGES = ['Enquiry', 'Opportunity','Buyer'];
-const STAGE_TO_STATUS = { Enquiry: 'New', Opportunity: 'Interested', Buyer: 'Won' };
+// Funnel order: Lead (initial) → Opportunity → Enquiry → Buyer
+const CREATE_STAGES = ['Lead', 'Opportunity', 'Enquiry', 'Buyer'];
+const STAGE_TO_STATUS = { Lead: 'New', Opportunity: 'Interested', Enquiry: 'Follow-up', Buyer: 'Won' };
 
 const STATUS_TO_STAGE = (status) => {
   if (status === 'Won') return 'Buyer';
-  if (status === 'Interested' || status === 'Follow-up') return 'Opportunity';
-  return 'Enquiry';
+  if (status === 'Follow-up') return 'Enquiry';
+  if (status === 'Interested' || status === 'Contacted') return 'Opportunity';
+  return 'Lead';
 };
 const leadSchema = Yup.object({
   name: Yup.string().trim().required('Name is required').max(80, 'Too long'),
@@ -79,8 +81,8 @@ function parseCSV(text) {
 }
 
 function downloadTemplate() {
-  const headers = ['Name', 'Mobile', 'Email', 'Country', 'City', 'Source', 'Campaign', 'Interest', 'Status', 'Remark'];
-  const sample = ['Rahul Sharma', '506731305', 'rahul@email.com', 'UAE', 'Al Quoz', 'WhatsApp', 'Eid Sale', 'Formal shoes size 42', 'New', 'Called once, interested'];
+  const headers = ['Name', 'Mobile', 'Country Code', 'Email', 'Country', 'City', 'Source', 'Campaign', 'Stage', 'Interest', 'Remark', 'Delivery'];
+  const sample = ['Rahul Sharma', '506731305', '971', 'rahul@email.com', 'UAE', 'Al Quoz', 'WhatsApp', 'Eid Sale', 'Lead', 'Formal shoes size 42', 'Called once, interested', 'HURIA TRANSPORT'];
   const csv = [headers.join(','), sample.map((v) => `"${v}"`).join(',')].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -92,18 +94,28 @@ function downloadTemplate() {
 const HEADER_MAP = {
   name: 'name', 'lead name': 'name', 'customer': 'name', 'customer name': 'name',
   mobile: 'mobile', phone: 'mobile', 'phone number': 'mobile', 'mobile number': 'mobile', contact: 'mobile',
+  'country code': 'code', countrycode: 'code', code: 'code', 'dial code': 'code', dial: 'code', isd: 'code', 'isd code': 'code',
   email: 'email', 'email address': 'email',
   country: 'country',
   city: 'city',
   source: 'source',
   campaign: 'campaign',
+  stage: 'stage',
   interest: 'interest',
   status: 'status',
+  delivery: 'delivery', 'delivery details': 'delivery', transport: 'delivery', 'delivery note': 'delivery',
   remark: 'remark', remarks: 'remark', note: 'remark', notes: 'remark',
 };
 const LEAD_STATUS_SET = new Set(LEAD_STATUSES);
 const LEAD_SOURCE_SET = new Set(LEAD_SOURCES);
 const COUNTRY_SET = new Set(ALL_COUNTRY_NAMES);
+const STAGE_SET = new Set(CREATE_STAGES);
+
+// Reverse map: dial code (digits only) → country name, for the "Country Code" column.
+const CODE_TO_COUNTRY = Object.entries(COUNTRY_CODES).reduce((acc, [country, code]) => {
+  if (code) acc[String(code)] = country;
+  return acc;
+}, {});
 
 function rowsToLeads(parsed, existingLeads = []) {
   if (!parsed.length) return { leads: [], dupExisting: [], dupInFile: [], errors: ['File is empty.'] };
@@ -127,9 +139,33 @@ function rowsToLeads(parsed, existingLeads = []) {
     const obj = emptyLead();
     header.forEach((key, c) => { if (key) obj[key] = (cells[c] || '').trim(); });
     if (!obj.name) { errors.push(`Row ${r + 1}: missing name — skipped.`); continue; }
+
+    // Country Code column: resolve a country name from the dial code when given.
+    // If the code is unknown, prepend it onto the mobile so it isn't lost.
+    if (obj.code) {
+      const codeDigits = String(obj.code).replace(/[^\d]/g, '');
+      if (codeDigits) {
+        const mapped = CODE_TO_COUNTRY[codeDigits];
+        if (mapped) {
+          obj.country = mapped;
+        } else if (!obj.mobile.replace(/\D/g, '').startsWith(codeDigits)) {
+          obj.mobile = codeDigits + obj.mobile.replace(/\D/g, '');
+        }
+      }
+    }
+    delete obj.code;
+
     if (!LEAD_SOURCE_SET.has(obj.source)) obj.source = 'Other';
-    if (!LEAD_STATUS_SET.has(obj.status) || obj.status === 'Won') obj.status = 'New';
     if (!COUNTRY_SET.has(obj.country)) obj.country = 'UAE';
+
+    // Stage takes priority over Status. Map the funnel stage to a lead status.
+    if (obj.stage && STAGE_SET.has(obj.stage)) {
+      obj.status = STAGE_TO_STATUS[obj.stage];
+    } else if (!LEAD_STATUS_SET.has(obj.status) || obj.status === 'Won') {
+      obj.status = 'New';
+    }
+    delete obj.stage;
+
     delete obj.owner;
 
     const key = cleanPhone(obj.mobile, obj.country);
@@ -489,8 +525,10 @@ export default function Leads() {
       <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import Leads from CSV" width="min-w-[560px]">
         <p className="text-[11px] text-ink-3">
           Upload a <strong>.csv</strong> file. The first row must be column headers. A <strong>Name</strong> column is
-          required; optional columns: Mobile, Email, Country, City, Source, Campaign, Interest, Status, Remark.
-          Duplicate phone numbers are skipped automatically.
+          required; optional columns: Mobile, Country Code, Email, Country, City, Source, Campaign, Stage, Interest,
+          Remark, Delivery. <strong>Country Code</strong> accepts a dial code (e.g. 971, +91) and sets the country
+          automatically. <strong>Stage</strong> accepts Lead, Opportunity, Enquiry or Buyer. Duplicate phone numbers
+          are skipped automatically.
         </p>
 
         <div className="mt-3 flex items-center justify-between gap-2">
@@ -529,7 +567,7 @@ export default function Leads() {
                 <table className="w-full border-collapse text-[11px]">
                   <thead>
                     <tr className="bg-gray-50 text-ink-2">
-                      {['Name', 'Mobile', 'Source', 'Status'].map((h) => (
+                      {['Name', 'Mobile', 'Source', 'Stage', 'Delivery'].map((h) => (
                         <th key={h} className="px-2 py-1 text-left font-bold uppercase">{h}</th>
                       ))}
                     </tr>
@@ -540,7 +578,8 @@ export default function Leads() {
                         <td className="px-2 py-1 font-bold">{l.name}</td>
                         <td className="px-2 py-1">{l.mobile || '—'}</td>
                         <td className="px-2 py-1">{l.source}</td>
-                        <td className="px-2 py-1">{l.status}</td>
+                        <td className="px-2 py-1">{leadStageOf(l)}</td>
+                        <td className="px-2 py-1">{l.delivery || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -701,7 +740,7 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
     source: lead?.source || 'Walk-in', campaign: lead?.campaign || '',
     interest: lead?.interest || '', remark: lead?.remark || '',
     delivery: lead?.delivery || '',
-    stage: isEdit ? STATUS_TO_STAGE(lead.status) : 'Enquiry',
+    stage: isEdit ? STATUS_TO_STAGE(lead.status) : 'Lead',
     owner: lead?.owner || '',
     followUpAt: toLocalInput(lead?.followUpAt),
   };
