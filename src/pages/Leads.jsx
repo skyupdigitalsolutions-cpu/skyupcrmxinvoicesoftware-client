@@ -458,7 +458,7 @@ export default function Leads() {
               </thead>
               <tbody>
                 {filtered.map((l, idx) => (
-                  <tr key={l._id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale">
+                  <tr key={l._id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale [&>td]:align-middle">
                     <td className="px-2.5 py-2 text-xs text-ink-3">{idx + 1}</td>
                     <td className="px-2.5 py-2 text-xs font-bold">
                       <div className="flex items-center gap-2">
@@ -496,8 +496,8 @@ export default function Leads() {
                     <td className="px-2.5 py-2 text-xs">
                       {l.orderNo ? <span className="font-bold text-ok">#{l.orderNo}</span> : '—'}
                     </td>
-                    <td className="px-2.5 py-2">
-                      <div className="flex flex-wrap gap-1">
+                    <td className="px-2.5 py-2 align-middle">
+                      <div className="flex flex-nowrap items-center justify-start gap-1 whitespace-nowrap">
                         <Button
                           size="sm"
                           variant="outline"
@@ -506,7 +506,7 @@ export default function Leads() {
                         >
                           <Eye size={13} />
                         </Button>
-                    
+
                         {!l.converted && (
                           <Button
                             size="sm"
