@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Eye, Pencil, Truck, FileText, Trash2, ClipboardList,
-  MessageCircle, Printer, X, Check, Download,
+  MessageCircle, Printer, X, Check, Download, Phone,
 } from 'lucide-react';
 import { orderApi, invoiceApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -248,7 +248,7 @@ export default function Orders() {
   const { data: orders, loading, refetch } = useFetch(() => orderApi.list(), []);
   const { data: users } = useFetch(() => (isAdmin ? userApi.list() : Promise.resolve([])), [isAdmin]);
 
-  const [f, setF] = useState({ search: '', status: params.get('status') || '', country: '', employee: '', from: '', to: '' });
+  const [f, setF] = useState({ search: '', phone: '', status: params.get('status') || '', country: '', employee: '', from: '', to: '' });
   const [statusModal, setStatusModal] = useState(null);
   const [statusForm, setStatusForm] = useState({ status: 'Confirmed', note: '' });
   const [viewOrder, setViewOrder] = useState(null);
@@ -264,6 +264,10 @@ export default function Orders() {
       if (f.status && o.status !== f.status) return false;
       if (f.country && o.country !== f.country) return false;
       if (f.employee && String(o.salesperson) !== String(f.employee)) return false;
+      if (f.phone) {
+        const digits = f.phone.replace(/\D/g, '');
+        if (digits && !String(o.mobile || '').replace(/\D/g, '').includes(digits)) return false;
+      }
       if (f.from && new Date(o.date) < new Date(f.from)) return false;
       if (f.to && new Date(o.date) > new Date(f.to + 'T23:59:59')) return false;
       if (f.search) {
@@ -373,6 +377,10 @@ export default function Orders() {
           <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3" />
           <Input className="!w-52 !pl-8" placeholder="Search order / customer…" value={f.search} onChange={(e) => setF({ ...f, search: e.target.value })} />
         </div>
+        <div className="relative">
+          <Phone size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3" />
+          <Input className="!w-44 !pl-8" placeholder="Phone number…" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
+        </div>
         <Select className="!w-auto" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
           <option value="">All Status</option>{ALL_STATUSES.map((s) => <option key={s}>{s}</option>)}
         </Select>
@@ -387,7 +395,7 @@ export default function Orders() {
         )}
         <Input className="!w-auto" type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} />
         <Input className="!w-auto" type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} />
-        <Button variant="outline" size="sm" className="ml-auto" onClick={() => setF({ search: '', status: '', country: '', employee: '', from: '', to: '' })}>Clear</Button>
+        <Button variant="outline" size="sm" className="ml-auto" onClick={() => setF({ search: '', phone: '', status: '', country: '', employee: '', from: '', to: '' })}>Clear</Button>
         {isAdmin && (
           <Button variant="outline" size="sm" disabled={!filtered.length} onClick={exportCsv}>
             <span className="flex items-center gap-1.5"><Download size={13} />Export CSV</span>

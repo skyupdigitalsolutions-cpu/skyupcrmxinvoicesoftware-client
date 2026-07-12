@@ -19,6 +19,7 @@ import Modal from '../components/ui/Modal.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Field, Input, Select, Textarea } from '../components/ui/Field.jsx';
+import CountrySelect from '../components/ui/CountrySelect.jsx';
 import OrderItemsEditor, { blankItem } from '../components/OrderItemsEditor.jsx';
 import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 import {
@@ -803,7 +804,7 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Lead' : 'Add Lead'} width="sm:max-w-[600px]">
       <Formik initialValues={initial} validationSchema={leadSchema} onSubmit={handleSubmit} enableReinitialize>
-        {({ values, errors, touched, handleChange, handleBlur, isSubmitting }) => (
+        {({ values, errors, touched, handleChange, handleBlur, isSubmitting, setFieldValue }) => (
           <Form>
             <DupeWatcher
               active={!isEdit}
@@ -817,9 +818,7 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
                 <Input name="name" value={values.name} placeholder="Customer name" onChange={handleChange} onBlur={handleBlur} />
               </FieldRow>
               <FieldRow label="Country" name="country" error={touched.country && errors.country}>
-                <Select name="country" value={values.country} onChange={handleChange}>
-                  {ALL_COUNTRY_NAMES.map((c) => <option key={c} value={c}>{c} (+{dialFor(c)})</option>)}
-                </Select>
+                <CountrySelect value={values.country} onChange={(v) => setFieldValue('country', v)} />
               </FieldRow>
 
               <FieldRow label="Mobile" name="mobile" error={touched.mobile && errors.mobile}>

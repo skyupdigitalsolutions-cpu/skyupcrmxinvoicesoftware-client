@@ -14,6 +14,7 @@ import { apiError } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { fmtAED, todayStr, COUNTRIES, COUNTRY_CODES, ORDER_STATUSES } from '../utils/format.js';
+import CountrySelect from '../components/ui/CountrySelect.jsx';
 
 import PageTitle from '../components/layout/PageTitle.jsx';
 import { Card, CardHead, CardBody } from '../components/ui/Card.jsx';
@@ -283,12 +284,7 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState 
           </Field>
 
           <Field label="Country *">
-            <Select
-              value={form.country}
-              onChange={(e) => set('country', e.target.value)}
-            >
-              {COUNTRIES.map((c) => <option key={c}>{c}</option>)}
-            </Select>
+            <CountrySelect value={form.country} onChange={(v) => set('country', v)} />
           </Field>
         </div>
 
