@@ -18,7 +18,7 @@ import Modal from '../components/ui/Modal.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Field, Select, Input, Textarea } from '../components/ui/Field.jsx';
-import { fmtAED, fmtN, formatDate, ALL_STATUSES, ORDER_STATUSES, DELIVERY_STATUSES } from '../utils/format.js';
+import { fmtAED, fmtN, formatDate, ALL_STATUSES, ORDER_STATUSES, DELIVERY_STATUSES, cleanPhone } from '../utils/format.js';
 import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 import { orderWhatsAppUrl } from '../utils/whatsapp.js';
 
@@ -265,8 +265,14 @@ export default function Orders() {
       if (f.country && o.country !== f.country) return false;
       if (f.employee && String(o.salesperson) !== String(f.employee)) return false;
       if (f.phone) {
-        const digits = f.phone.replace(/\D/g, '');
-        if (digits && !String(o.mobile || '').replace(/\D/g, '').includes(digits)) return false;
+        let q = f.phone.replace(/\D/g, '');
+        if (q.startsWith('00')) q = q.slice(2); // strip international 00 prefix
+        if (q) {
+          const full = cleanPhone(o.mobile, o.country);              // dial code + local, e.g. 971501234567
+          const bare = String(o.mobile || '').replace(/\D/g, '');    // as stored
+          const bareNoZero = bare.replace(/^0+/, '');                // local without leading 0
+          if (!full.includes(q) && !bare.includes(q) && !bareNoZero.includes(q)) return false;
+        }
       }
       if (f.from && new Date(o.date) < new Date(f.from)) return false;
       if (f.to && new Date(o.date) > new Date(f.to + 'T23:59:59')) return false;
