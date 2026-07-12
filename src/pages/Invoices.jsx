@@ -159,14 +159,6 @@ export default function Invoices() {
 
   if (loading) return <Spinner label="Loading invoices…" />;
 
-  if (error) return (
-    <div className="p-10 text-center">
-      <p className="mb-1 text-sm font-bold text-danger">Couldn't load invoices</p>
-      <p className="mb-4 text-xs text-ink-3">{error}</p>
-      <Button variant="outline" size="sm" onClick={refetch}>Retry</Button>
-    </div>
-  );
-
   return (
     <div className="flex h-[calc(100vh-56px)] flex-col overflow-hidden">
       <PageTitle icon={<FileText size={18} />} badge={filtered.length}>
@@ -204,11 +196,18 @@ export default function Invoices() {
         )}
       </div>
 
+      {error && (
+        <div className="mb-3.5 flex flex-shrink-0 items-center justify-between rounded-lg bg-danger-light px-4 py-3">
+          <p className="text-xs font-bold text-danger">{error}</p>
+          <button onClick={refetch} className="text-[11px] font-bold text-danger underline">Retry</button>
+        </div>
+      )}
+
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {filtered.length === 0 ? (
           <EmptyState
-            title="No invoices yet"
-            hint="Convert a confirmed order into an invoice from the Orders page."
+            title={error ? 'Could not load invoices' : 'No invoices yet'}
+            hint={error ? 'Fix the error above and retry.' : 'Convert a confirmed order into an invoice from the Orders page.'}
           />
         ) : (
           <div className="flex-1 overflow-auto">
