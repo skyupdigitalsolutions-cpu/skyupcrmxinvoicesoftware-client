@@ -10,7 +10,7 @@ import { Card } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
-import { Field, Input } from '../components/ui/Field.jsx';
+import { Field, Input, Select } from '../components/ui/Field.jsx';
 import { fmtDHS, formatDate, fmtTimeOnly } from '../utils/format.js';
 
 const WORK_TONE = {
@@ -113,11 +113,16 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
       lng: user?.clockInLocation?.lng ?? '',
       label: user?.clockInLocation?.label ?? '',
     },
+    track: {
+      enabled: user?.locationTracking?.enabled ?? false,
+      intervalMinutes: user?.locationTracking?.intervalMinutes ?? 30,
+    },
   });
   const [busy, setBusy] = useState(false);
   const [locating, setLocating] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setLoc = (k, v) => setForm((f) => ({ ...f, loc: { ...f.loc, [k]: v } }));
+  const setTrack = (k, v) => setForm((f) => ({ ...f, track: { ...f.track, [k]: v } }));
 
   const useCurrentLocation = () => {
     if (!navigator.geolocation) return show('Geolocation is not supported on this device.', 'error');
@@ -140,6 +145,11 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
     label: form.loc.label,
   });
 
+  const buildTrack = () => ({
+    enabled: !!form.track.enabled,
+    intervalMinutes: Number(form.track.intervalMinutes) || 30,
+  });
+
   const submit = async () => {
     if (!form.name.trim()) return show('Name is required.', 'error');
     if (!isEdit) {
@@ -155,7 +165,7 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
     setBusy(true);
     try {
       if (isEdit) {
-        const payload = { name: form.name.trim(), email: form.email.trim(), clockInLocation: buildLoc() };
+        const payload = { name: form.name.trim(), email: form.email.trim(), clockInLocation: buildLoc(), locationTracking: buildTrack() };
         if (form.password) payload.password = form.password;
         await userApi.update(user.id, payload);
         show('User updated.', 'success');
@@ -167,6 +177,7 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
           password: form.password,
           role: 'sales',
           clockInLocation: buildLoc(),
+          locationTracking: buildTrack(),
         });
         show('Salesperson added.', 'success');
       }
@@ -229,6 +240,35 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
                   {locating ? 'Getting location…' : 'Use my current location'}
                 </span>
               </Button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Live-location tracking rule ─────────────────────────────────── */}
+        <div className="mt-3 rounded-lg border p-3" style={{ borderColor: 'var(--border-card)' }}>
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+            <input type="checkbox" className="h-4 w-4 accent-purple-500"
+              checked={form.track.enabled} onChange={(e) => setTrack('enabled', e.target.checked)} />
+            <MapPin size={13} /> Live-location tracking for this employee
+          </label>
+          <p className="mt-1.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+            When on, this employee's app sends their location on the interval below while they are
+            clocked in, and each ping is flagged inside/outside their clock-in area. View the trail
+            from the Location column on the Attendance page.
+          </p>
+          {form.track.enabled && (
+            <div className="mt-2.5">
+              <Field label="Send location every">
+                <Select value={form.track.intervalMinutes} onChange={(e) => setTrack('intervalMinutes', Number(e.target.value))}>
+                  <option value={15}>15 minutes</option>
+                  <option value={30}>30 minutes</option>
+                  <option value={60}>60 minutes</option>
+                </Select>
+              </Field>
+              <p className="mt-1.5 text-[10px] italic" style={{ color: 'var(--text-secondary)' }}>
+                Note: the web app can only send pings while the employee has the CRM open. Continuous
+                background tracking (app closed / screen off) requires the mobile app.
+              </p>
             </div>
           )}
         </div>

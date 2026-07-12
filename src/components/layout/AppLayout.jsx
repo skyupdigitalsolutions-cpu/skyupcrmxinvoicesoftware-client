@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useTheme } from '../../context/ThemeContext.jsx';
 import AttendanceWidget from '../AttendanceWidget.jsx';
+import LiveLocationTracker from '../LiveLocationTracker.jsx';
 import {
   LayoutDashboard, Target, ClipboardList, FilePlus,
   Receipt, Truck, BarChart2, CalendarDays, Users, Clock,
@@ -298,6 +299,7 @@ export default function AppLayout({ children }) {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-base)' }}>
+      <LiveLocationTracker />
       {/* ── Top header ─────────────────────────────────────────────────── */}
       <header
         className="sticky top-0 z-[100] flex h-13 items-center justify-between gap-2 px-3 py-3 border-b shadow-sm sm:px-5"

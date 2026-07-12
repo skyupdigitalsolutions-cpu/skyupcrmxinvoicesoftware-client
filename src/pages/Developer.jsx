@@ -16,6 +16,42 @@ import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Field, Input, Textarea } from '../components/ui/Field.jsx';
 
+// Max dimension (px) a logo is downscaled to before upload. Keeps every
+// format (PNG/JPG/GIF/WEBP/BMP/SVG — anything the browser's <img> can
+// decode) consistent, keeps the upload small regardless of the original
+// photo size, and preserves aspect ratio (never stretches/crops).
+const LOGO_MAX_DIM = 512;
+
+function resizeImageFile(file, maxDim = LOGO_MAX_DIM) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read that file.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('That file could not be read as an image.'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = Math.min(maxDim / width, maxDim / height);
+          width = Math.max(1, Math.round(width * scale));
+          height = Math.max(1, Math.round(height * scale));
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        // Transparent background so non-square logos sit cleanly on any
+        // page background instead of getting a white/black box.
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 // ── Currency presets ──────────────────────────────────────────────────────────
 const CURRENCY_PRESETS = [
   { code: 'INR', symbol: '₹',  locale: 'en-IN',  label: 'INR — Indian Rupee (₹)' },
@@ -547,56 +583,25 @@ function BrandingModal({ company, onClose }) {
   const [uploading, setUploading] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Resizes/compresses any image (jpg, png, gif, webp, bmp, ...) client-side
-  // before upload. A sidebar logo only ever needs to be small, so we downscale
-  // to a max dimension and re-encode — this keeps the payload tiny regardless
-  // of how large or high-res the original photo is, and avoids ever hitting
-  // server/proxy body-size limits (which is what was causing the 502s).
-  const MAX_DIMENSION = 512;
-  const compressImage = (file) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Could not read the file.'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('That file could not be read as an image.'));
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-          if (width >= height) { height = Math.round(height * (MAX_DIMENSION / width)); width = MAX_DIMENSION; }
-          else { width = Math.round(width * (MAX_DIMENSION / height)); height = MAX_DIMENSION; }
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        // Keep PNG for images that likely need transparency; otherwise use
-        // JPEG, which compresses far better for photos.
-        const usePng = file.type === 'image/png' || file.type === 'image/gif';
-        const dataUrl = usePng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85);
-        resolve(dataUrl);
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-
   const onLogoFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file
     if (!file) return;
     if (!file.type.startsWith('image/')) return show('Please choose an image file.', 'error');
-    // Generous cap on the *original* file before we compress it — this just
-    // guards against pathologically huge uploads, not normal photos.
-    if (file.size > 20 * 1024 * 1024) return show('Image too large — please use one under 20 MB.', 'error');
+    // Raw upload cap is generous — the file gets downscaled below regardless
+    // of format or original size, so this is just a sanity limit on huge files.
+    if (file.size > 15 * 1024 * 1024) return show('Image too large — please use a file under 15 MB.', 'error');
 
     setUploading(true);
     try {
-      const dataUrl = await compressImage(file);
+      // Normalizes ANY browser-decodable format (PNG/JPG/GIF/WEBP/BMP/SVG…)
+      // to a correctly-proportioned PNG, so it always displays cleanly no
+      // matter what the original file looked like.
+      const dataUrl = await resizeImageFile(file);
       const res = await companyApi.uploadLogo(company.id, dataUrl);
       set('logoUrl', res.logoUrl);
       show('Logo uploaded.', 'success');
-    } catch (err) { show(apiError(err), 'error'); }
+    } catch (err) { show(err && err.message ? err.message : apiError(err), 'error'); }
     finally { setUploading(false); }
   };
 
@@ -637,9 +642,11 @@ function BrandingModal({ company, onClose }) {
           </Field>
           {form.logoUrl ? (
             <div className="flex items-center gap-2 rounded border p-2" style={{ borderColor: 'var(--border)' }}>
-              <img src={form.logoUrl} alt="Logo preview" className="h-10 w-10 rounded object-contain"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-              <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Logo preview</span>
+              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded" style={{ backgroundColor: 'var(--bg-muted, #f1f1f1)' }}>
+                <img src={form.logoUrl} alt="Logo preview" className="h-11 w-11 rounded object-contain"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              </div>
+              <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Logo preview — this is exactly how it'll appear in the sidebar</span>
             </div>
           ) : null}
           <Field label="Dashboard / Report Cards Heading (optional)">

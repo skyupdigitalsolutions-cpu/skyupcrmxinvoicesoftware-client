@@ -64,6 +64,10 @@ export const attendanceApi = {
     startBreak: (reason) => api.post('/attendance/break/start', { reason }).then((r) => r.data.record),
     endBreak: () => api.post('/attendance/break/end').then((r) => r.data.record),
     myToday: () => api.get('/attendance/my-today').then((r) => r.data.record),
+    // Live-location tracking
+    trackingConfig: () => api.get('/attendance/tracking').then((r) => r.data.tracking),
+    recordLocation: (coords) => api.post('/attendance/location', coords || {}).then((r) => r.data),
+    userLocations: (userId, date) => api.get(`/attendance/location/${userId}`, { params: { date } }).then((r) => r.data),
     // Admin / management table
     report: (params) => api.get('/attendance/report', { params }).then((r) => r.data.records),
     users: () => api.get('/attendance/users').then((r) => r.data.users),

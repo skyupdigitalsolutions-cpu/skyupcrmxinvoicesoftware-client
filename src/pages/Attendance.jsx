@@ -336,6 +336,24 @@ export default function Attendance() {
   const today = todayStr();
   const [filters, setFilters] = useState({ startDate: today, endDate: today, userId: '', status: '' });
   const [editRec, setEditRec] = useState(null);
+  const [trail, setTrail] = useState(null); // { user, date, pings } for the location-trail modal
+  const [trailLoading, setTrailLoading] = useState(false);
+
+  const openTrail = async (r) => {
+    const uid = r.user?._id || r.user?.id;
+    if (!uid) return;
+    setTrailLoading(true);
+    setTrail({ user: r.user, date: r.date, pings: null });
+    try {
+      const data = await attendanceApi.userLocations(uid, r.date);
+      setTrail({ user: data.user || r.user, date: r.date, pings: data.pings || [] });
+    } catch (e) {
+      show(apiError(e), 'error');
+      setTrail(null);
+    } finally {
+      setTrailLoading(false);
+    }
+  };
   const [rulesOpen, setRulesOpen] = useState(false);
   const { data: users } = useFetch(() => attendanceApi.users(), []);
   const { data: records, loading, refetch } = useFetch(() => attendanceApi.report(filters), [filters]);
@@ -473,6 +491,15 @@ export default function Attendance() {
                           </a>
                         )}
                         {!mapsUrl(r.loginLocation) && !mapsUrl(r.logoutLocation) && <span className="text-ink-3">—</span>}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => openTrail(r)}
+                            className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-gold-700 hover:underline"
+                          >
+                            <MapPin size={11} /> Trail
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className="px-2.5 py-2 text-xs"><span className={`status ${attendanceStatusClass(r.derivedStatus)}`}>{attendanceStatusLabel(r.derivedStatus)}</span></td>
@@ -492,6 +519,40 @@ export default function Attendance() {
       </Card>
 
       {editRec && <EditModal rec={editRec} onClose={() => setEditRec(null)} onSaved={refetch} />}
+
+      {trail && (
+        <Modal open onClose={() => setTrail(null)} title={<span className="flex items-center gap-1.5"><MapPin size={16} /> Location trail · {trail.user?.name}</span>} width="sm:max-w-[460px]">
+          <p className="mb-3 text-[12px] text-ink-2">{formatDate(trail.date)}</p>
+          {trailLoading || trail.pings === null ? (
+            <div className="py-6"><Spinner label="Loading trail…" /></div>
+          ) : trail.pings.length === 0 ? (
+            <EmptyState title="No location pings" hint="This employee sent no location samples on this day (tracking off, or the CRM wasn't open while clocked in)." />
+          ) : (
+            <div className="max-h-[60vh] space-y-1.5 overflow-y-auto">
+              {trail.pings.map((p, i) => (
+                <a
+                  key={i}
+                  href={mapsUrl(p)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-[12px] transition hover:bg-black/[0.03]"
+                  style={{ borderColor: 'var(--border-card)' }}
+                >
+                  <span className="flex items-center gap-2">
+                    <MapPin size={12} className="text-info" />
+                    {new Date(p.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    {p.distanceMeters != null && <span className="text-ink-3">{p.distanceMeters}m</span>}
+                    {p.insideFence === true && <span className="rounded-full bg-ok-light px-2 py-0.5 text-[10px] font-bold text-ok">Inside</span>}
+                    {p.insideFence === false && <span className="rounded-full bg-danger-light px-2 py-0.5 text-[10px] font-bold text-danger">Outside</span>}
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+        </Modal>
+      )}
       {rulesOpen && <RulesModal onClose={() => { setRulesOpen(false); refetch(); }} />}
     </>
   );
