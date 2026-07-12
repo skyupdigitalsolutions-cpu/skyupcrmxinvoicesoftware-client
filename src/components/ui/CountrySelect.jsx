@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { Input } from './Field.jsx';
 import { ALL_COUNTRY_NAMES, dialFor } from '../../utils/format.js';
@@ -6,7 +7,8 @@ import { ALL_COUNTRY_NAMES, dialFor } from '../../utils/format.js';
 // Searchable country picker. Type to filter by country NAME or DIAL CODE
 // (e.g. "971", "ind", "saudi"), click or press Enter to choose. Picking
 // "Other — type manually" reveals a free text box for a country not listed.
-// Controlled: pass `value` (country name / custom string) and `onChange(value)`.
+// The menu renders in a portal (fixed-positioned to the field) so it floats
+// above cards that clip their overflow. Controlled: `value` + `onChange(value)`.
 export default function CountrySelect({ value, onChange, showCode = true, className = '' }) {
   const NAMES = useMemo(() => ALL_COUNTRY_NAMES.filter((c) => c !== 'Other'), []);
   const isCustom = !!value && !ALL_COUNTRY_NAMES.includes(value);
@@ -15,20 +17,50 @@ export default function CountrySelect({ value, onChange, showCode = true, classN
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [hi, setHi] = useState(0);
-  const boxRef = useRef(null);
+  const [pos, setPos] = useState(null); // { left, width, top?, bottom? }
+
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
   const searchRef = useRef(null);
 
   useEffect(() => { if (isCustom) setManual(true); }, [isCustom]);
 
-  // Close on outside click.
+  const reposition = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const menuH = 340;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const flipUp = spaceBelow < menuH && r.top > spaceBelow;
+    setPos({
+      left: r.left,
+      width: r.width,
+      top: flipUp ? undefined : Math.round(r.bottom + 4),
+      bottom: flipUp ? Math.round(window.innerHeight - r.top + 4) : undefined,
+    });
+  }, []);
+
+  const openMenu = () => { reposition(); setOpen(true); };
+
+  // Reposition on scroll/resize; close on outside click.
   useEffect(() => {
     if (!open) return undefined;
-    const onDoc = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    const onScrollResize = () => reposition();
+    const onDoc = (e) => {
+      if (triggerRef.current && triggerRef.current.contains(e.target)) return;
+      if (menuRef.current && menuRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    window.addEventListener('scroll', onScrollResize, true);
+    window.addEventListener('resize', onScrollResize);
     document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
+    return () => {
+      window.removeEventListener('scroll', onScrollResize, true);
+      window.removeEventListener('resize', onScrollResize);
+      document.removeEventListener('mousedown', onDoc);
+    };
+  }, [open, reposition]);
 
-  // Focus the search field when the menu opens.
   useEffect(() => { if (open && searchRef.current) searchRef.current.focus(); }, [open]);
 
   const filtered = useMemo(() => {
@@ -38,7 +70,6 @@ export default function CountrySelect({ value, onChange, showCode = true, classN
     return NAMES.filter((c) => c.toLowerCase().includes(q) || (qDigits && dialFor(c).includes(qDigits)));
   }, [query, NAMES]);
 
-  // items = filtered countries + a trailing "Other" entry
   const itemCount = filtered.length + 1;
   useEffect(() => { setHi(0); }, [query]);
 
@@ -75,10 +106,11 @@ export default function CountrySelect({ value, onChange, showCode = true, classN
 
   // ── Searchable dropdown mode ─────────────────────────────────────────────
   return (
-    <div ref={boxRef} className={`relative ${className}`}>
+    <div className={className}>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => (open ? setOpen(false) : openMenu())}
         className="flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm outline-none focus:ring-2 focus:ring-gold/30"
         style={fieldStyle}
       >
@@ -88,10 +120,20 @@ export default function CountrySelect({ value, onChange, showCode = true, classN
         <ChevronDown size={15} className="flex-shrink-0 text-ink-3" />
       </button>
 
-      {open && (
+      {open && pos && createPortal(
         <div
-          className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border shadow-lg"
-          style={{ borderColor: 'var(--border-card)', backgroundColor: 'var(--bg-card)' }}
+          ref={menuRef}
+          className="overflow-hidden rounded-lg border shadow-xl"
+          style={{
+            position: 'fixed',
+            left: pos.left,
+            width: pos.width,
+            top: pos.top,
+            bottom: pos.bottom,
+            zIndex: 9999,
+            borderColor: 'var(--border-card)',
+            backgroundColor: 'var(--bg-card)',
+          }}
         >
           <div className="relative border-b p-2" style={{ borderColor: 'var(--border-card)' }}>
             <Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-3" />
@@ -111,7 +153,7 @@ export default function CountrySelect({ value, onChange, showCode = true, classN
             )}
           </div>
 
-          <ul className="max-h-60 overflow-y-auto py-1">
+          <ul className="max-h-56 overflow-y-auto py-1">
             {filtered.map((c, idx) => (
               <li key={c}>
                 <button
@@ -140,7 +182,8 @@ export default function CountrySelect({ value, onChange, showCode = true, classN
               </button>
             </li>
           </ul>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
