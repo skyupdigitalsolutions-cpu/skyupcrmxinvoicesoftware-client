@@ -4,7 +4,7 @@ import { Formik, Form } from 'formik';
 import * as Yup from 'yup';
 import {
   Plus, Upload, Download, Eye, ShoppingCart, Pencil, Trash2,
-  Target, Users, Percent, AlertTriangle, Phone,
+  Target, Users, Percent, AlertTriangle, Phone, MessageCircle,
   FileText, ArrowRight, Loader2, CheckCircle,
 } from 'lucide-react';
 import { leadApi, userApi } from '../api/endpoints.js';
@@ -175,6 +175,28 @@ function rowsToLeads(parsed, existingLeads = []) {
     leads.push(obj);
   }
   return { leads, dupExisting, dupInFile, errors };
+}
+
+// WhatsApp quick-chat button. Builds a wa.me link from the lead's number +
+// country dial code (cleanPhone prepends the code and strips symbols). Renders
+// nothing when there's no mobile. lucide-react has no WhatsApp brand glyph, so
+// this uses its MessageCircle icon on a WhatsApp-green button.
+function WhatsAppButton({ mobile, country }) {
+  const num = cleanPhone(mobile, country);
+  if (!num) return null;
+  return (
+    <a
+      href={`https://wa.me/${num}`}
+      target="_blank"
+      rel="noreferrer"
+      title="Chat on WhatsApp"
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-white shadow-sm transition hover:opacity-90"
+      style={{ backgroundColor: '#25D366' }}
+    >
+      <MessageCircle size={13} />
+    </a>
+  );
 }
 
 export default function Leads() {
@@ -438,14 +460,19 @@ export default function Leads() {
                   <tr key={l._id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale">
                     <td className="px-2.5 py-2 text-xs text-ink-3">{idx + 1}</td>
                     <td className="px-2.5 py-2 text-xs font-bold">
-                      <button
-                        className="text-left text-navy-700 hover:text-gold hover:underline"
-                        onClick={() => navigate(`/leads/${l._id}`)}
-                      >
-                        {l.name}
-                      </button>
-                      <div className="text-[10px] text-ink-3 font-normal">
-                        {l.city}{l.city && l.country ? ', ' : ''}{l.country}
+                      <div className="flex items-center gap-2">
+                        <WhatsAppButton mobile={l.mobile} country={l.country} />
+                        <div className="min-w-0">
+                          <button
+                            className="text-left text-navy-700 hover:text-gold hover:underline"
+                            onClick={() => navigate(`/leads/${l._id}`)}
+                          >
+                            {l.name}
+                          </button>
+                          <div className="text-[10px] text-ink-3 font-normal">
+                            {l.city}{l.city && l.country ? ', ' : ''}{l.country}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className="px-2.5 py-2 text-xs">

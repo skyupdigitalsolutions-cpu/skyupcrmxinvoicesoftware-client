@@ -547,21 +547,52 @@ function BrandingModal({ company, onClose }) {
   const [uploading, setUploading] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Resizes/compresses any image (jpg, png, gif, webp, bmp, ...) client-side
+  // before upload. A sidebar logo only ever needs to be small, so we downscale
+  // to a max dimension and re-encode — this keeps the payload tiny regardless
+  // of how large or high-res the original photo is, and avoids ever hitting
+  // server/proxy body-size limits (which is what was causing the 502s).
+  const MAX_DIMENSION = 512;
+  const compressImage = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read the file.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('That file could not be read as an image.'));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+          if (width >= height) { height = Math.round(height * (MAX_DIMENSION / width)); width = MAX_DIMENSION; }
+          else { width = Math.round(width * (MAX_DIMENSION / height)); height = MAX_DIMENSION; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        // Keep PNG for images that likely need transparency; otherwise use
+        // JPEG, which compresses far better for photos.
+        const usePng = file.type === 'image/png' || file.type === 'image/gif';
+        const dataUrl = usePng ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85);
+        resolve(dataUrl);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
   const onLogoFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file
     if (!file) return;
     if (!file.type.startsWith('image/')) return show('Please choose an image file.', 'error');
-    if (file.size > 1.5 * 1024 * 1024) return show('Image too large — please use one under 1.5 MB.', 'error');
+    // Generous cap on the *original* file before we compress it — this just
+    // guards against pathologically huge uploads, not normal photos.
+    if (file.size > 20 * 1024 * 1024) return show('Image too large — please use one under 20 MB.', 'error');
 
     setUploading(true);
     try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(r.result);
-        r.onerror = () => reject(new Error('Could not read the file.'));
-        r.readAsDataURL(file);
-      });
+      const dataUrl = await compressImage(file);
       const res = await companyApi.uploadLogo(company.id, dataUrl);
       set('logoUrl', res.logoUrl);
       show('Logo uploaded.', 'success');
@@ -601,7 +632,7 @@ function BrandingModal({ company, onClose }) {
                 {uploading ? 'Uploading…' : 'Upload image'}
                 <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={onLogoFile} />
               </label>
-              <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>or paste a URL above · PNG/JPG, &lt;1.5 MB</span>
+              <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>or paste a URL above · any image format, auto-resized</span>
             </div>
           </Field>
           {form.logoUrl ? (

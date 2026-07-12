@@ -10,12 +10,11 @@ import { apiError } from '../api/client.js';
 import PageTitle from '../components/layout/PageTitle.jsx';
 import { Card } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
-import StatusBadge from '../components/ui/StatusBadge.jsx';
 import Modal from '../components/ui/Modal.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Field, Input, Select, Textarea } from '../components/ui/Field.jsx';
-import { formatDate, ORDER_STATUSES, fmtAED } from '../utils/format.js';
+import { formatDate, ORDER_STATUSES, DELIVERY_STATUSES, fmtAED } from '../utils/format.js';
 
 // The delivery flow stages, with the label + icon shown in the timeline.
 // 'Pending' maps to the "Order Placed" milestone.
@@ -28,6 +27,19 @@ const STEPS = [
   { key: 'Out for Delivery', label: 'Out for Delivery', icon: Bike },
   { key: 'Delivered', label: 'Delivered', icon: PartyPopper },
 ];
+
+const STEP_KEYS = STEPS.map((s) => s.key);
+
+// The order's real current delivery stage — read from the status log itself
+// (latest entry whose status is a delivery stage), so it's never guessed or
+// auto-set to "Delivered" just because an invoice exists. Falls back to
+// 'Pending' if nothing else was ever recorded.
+const currentStageOf = (o) => {
+  const hits = (o.statusHistory || []).filter((h) => STEP_KEYS.includes(h.status));
+  if (!hits.length) return 'Pending';
+  const sorted = [...hits].sort((a, b) => new Date(b.at) - new Date(a.at));
+  return sorted[0].status;
+};
 
 // Find the date a given status was first reached, from statusHistory.
 const dateForStatus = (o, statusKey) => {
@@ -60,7 +72,15 @@ export default function Tracker() {
     });
   }, [orders, f]);
 
-  const openStatus = (o) => { setStatusForm({ status: o.status === 'Invoiced' ? 'Confirmed' : o.status, note: '' }); setStatusModal(o); };
+  const openStatus = (o) => {
+    const stage = currentStageOf(o);
+    // Invoiced orders can only move through delivery stages (backend-enforced) —
+    // if the real stage predates that (e.g. still 'Pending'), start the picker
+    // at the first eligible delivery stage instead of an invalid option.
+    const status = o.status === 'Invoiced' && !DELIVERY_STATUSES.includes(stage) ? DELIVERY_STATUSES[0] : stage;
+    setStatusForm({ status, note: '' });
+    setStatusModal(o);
+  };
   const saveStatus = async () => {
     try {
       await orderApi.setStatus(statusModal._id, statusForm);
@@ -94,10 +114,9 @@ export default function Tracker() {
           {active.map((o) => {
             const isInvoiced = o.status === 'Invoiced';
             const isCancelled = o.status === 'Cancelled';
-            // For invoiced orders we treat them as Delivered+ for the timeline.
-            const effectiveIdx = isInvoiced
-              ? STEPS.length - 1
-              : STEPS.findIndex((s) => s.key === o.status);
+            // Real current stage, read from the status log — never guessed.
+            const currentStage = isCancelled ? null : currentStageOf(o);
+            const effectiveIdx = currentStage ? STEPS.findIndex((s) => s.key === currentStage) : -1;
             const log = [...(o.statusHistory || [])].sort((a, b) => new Date(b.at) - new Date(a.at));
 
             return (
@@ -115,11 +134,13 @@ export default function Tracker() {
                     <div className="text-right">
                       <div className="text-base font-black text-navy">{fmtAED(o.grandTotal)}</div>
                       <div className="text-[11px] text-ink-3">Assigned: <span className="font-bold text-ink-2">{o.salespersonName || '—'}</span></div>
-                      <div className="mt-1.5">
-                        {isInvoiced ? <StatusBadge status="Invoiced" />
-                          : <Button size="sm" variant="gold" onClick={() => openStatus(o)}>
-                              <span className="flex items-center gap-1"><Truck size={13} /> Update Status</span>
-                            </Button>}
+                      <div className="mt-1.5 flex items-center justify-end gap-2">
+                        {isInvoiced && <span className="text-[10px] font-bold uppercase tracking-wide text-purple-700">Invoiced</span>}
+                        {!isCancelled && currentStage !== 'Delivered' && (
+                          <Button size="sm" variant="gold" onClick={() => openStatus(o)}>
+                            <span className="flex items-center gap-1"><Truck size={13} /> Update Status</span>
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -181,13 +202,16 @@ export default function Tracker() {
 
       {/* Update status modal */}
       <Modal open={!!statusModal} onClose={() => setStatusModal(null)}
-        title={<span className="flex items-center gap-1.5"><Truck size={16} /> Update Delivery Status</span>} width="min-w-[360px]">
+        title={<span className="flex items-center gap-1.5"><Truck size={16} /> Update Delivery Status</span>} width="max-w-[380px]">
         {statusModal && (
           <>
             <p className="mb-3 text-[13px] text-ink-2">Order <strong>#{statusModal.orderNo}</strong> · {statusModal.customer}</p>
+            {statusModal.status === 'Invoiced' && (
+              <p className="mb-3 text-[11px] text-ink-3">This order is already invoiced — you can still update its delivery stage.</p>
+            )}
             <Field label="New Status">
               <Select value={statusForm.status} onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value })}>
-                {ORDER_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                {(statusModal.status === 'Invoiced' ? DELIVERY_STATUSES : ORDER_STATUSES).map((s) => <option key={s}>{s}</option>)}
               </Select>
             </Field>
             <div className="mt-3"><Field label="Delivery Note (optional)">

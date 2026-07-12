@@ -91,6 +91,13 @@ export default function AttendancePanel({ onStatusChange }) {
     await act(() => attendanceApi.clockIn(coords), 'Clocked in');
   };
 
+  const doClockOut = async () => {
+    setBusy(true);
+    const coords = await getCoords();
+    setBusy(false);
+    await act(() => attendanceApi.clockOut(coords), 'Clocked out');
+  };
+
   if (loading) return <div className="h-20 animate-pulse rounded bg-gray-100" />;
 
   const notClockedIn = !record?.loginTime;
@@ -142,7 +149,7 @@ export default function AttendancePanel({ onStatusChange }) {
                 ▶ Resume
               </Button>
             )}
-            <Button variant="red" size="sm" className="flex-1" disabled={busy} onClick={() => act(attendanceApi.clockOut, 'Clocked out')}>
+            <Button variant="red" size="sm" className="flex-1" disabled={busy} onClick={doClockOut}>
               ■ Clock Out
             </Button>
           </>

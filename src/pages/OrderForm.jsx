@@ -329,7 +329,7 @@ function OrderItemsCard({ form, set, subTotal, grandTotal }) {
     <Card>
       <CardHead title="Order Items">
         <span className="text-[10px] font-normal text-ink-3">
-          Model code, quantity &amp; price are required for each item
+          Model code, category, quantity &amp; price for each item
         </span>
       </CardHead>
       <CardBody>
@@ -509,7 +509,7 @@ export default function OrderForm() {
 
     // Every filled item row must be complete: model code, qty > 0, price > 0.
     const items = form.items.filter(
-      (it) => it.modelCode.trim() || it.description?.trim() || it.brand?.trim() || it.qty || it.price
+      (it) => it.modelCode.trim() || (it.description || '').trim() || it.qty || it.price
     );
     if (items.length === 0) {
       return show('Add at least one item.', 'error');

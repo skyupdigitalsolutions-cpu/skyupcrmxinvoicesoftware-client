@@ -1,4 +1,4 @@
-import { Users as UsersIcon, Plus, X, MapPin, Loader2, LocateFixed } from 'lucide-react';
+import { Users as UsersIcon, Plus, X, MapPin, Loader2, LocateFixed, Eye, EyeOff, Copy } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -177,7 +177,7 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
   };
 
   return (
-    <Modal open onClose={onClose} title={isEdit ? `Edit ${user.name}` : 'Add Salesperson'}>
+    <Modal open onClose={onClose} title={isEdit ? `Edit ${user.name}` : 'Add Salesperson'} width="sm:max-w-[480px]">
       <div className="space-y-3.5">
         <Field label="Full Name">
           <Input value={form.name} placeholder="e.g. Rahul Sharma" onChange={(e) => set('name', e.target.value)} />
@@ -247,6 +247,17 @@ export default function Users() {
   const { data: users, loading, refetch } = useFetch(() => userApi.list(), []);
   const [modal, setModal] = useState(null);   // { mode: 'add' } | { mode: 'edit', user }
   const [drawerId, setDrawerId] = useState(null);
+  const [revealed, setRevealed] = useState(() => new Set()); // rows with password shown
+
+  const toggleReveal = (id) => setRevealed((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const copyPwd = async (pwd) => {
+    try { await navigator.clipboard.writeText(pwd); show('Password copied.', 'success'); }
+    catch { show('Could not copy — reveal it and copy manually.', 'error'); }
+  };
 
   const toggleActive = async (u) => {
     try { await userApi.update(u.id, { active: !u.active }); show(`${u.username} ${u.active ? 'deactivated' : 'activated'}.`, 'success'); refetch(); }
@@ -269,19 +280,36 @@ export default function Users() {
      <PageTitle icon={<UsersIcon size={18} />} actions={<Button onClick={() => setModal({ mode: 'add' })}><Plus size={14} className="mr-1.5" />Add Salesperson</Button>}>User Management</PageTitle>
 
       <Card className="overflow-x-auto">
-        <table className="w-full min-w-[740px] border-collapse">
+        <table className="w-full min-w-[860px] border-collapse">
           <thead><tr className="bg-navy-800 text-white">
-            {['Sl. No', 'Username', 'Name', 'Orders', 'Status', 'Actions'].map((h) =>
+            {['Sl. No', 'Username', 'Name', 'Password', 'Orders', 'Status', 'Actions'].map((h) =>
               <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">{h}</th>)}
           </tr></thead>
           <tbody>
             {employees.length === 0 ? (
-              <tr><td colSpan={6} className="px-2.5 py-6 text-center text-xs text-ink-3">No employees yet. Add a salesperson to get started.</td></tr>
+              <tr><td colSpan={7} className="px-2.5 py-6 text-center text-xs text-ink-3">No employees yet. Add a salesperson to get started.</td></tr>
             ) : employees.map((u, idx) => (
               <tr key={u.id} className="cursor-pointer border-b border-gray-100 last:border-0 hover:bg-gold-pale" onClick={() => setDrawerId(u.id)}>
                 <td className="px-2.5 py-2 text-xs text-ink-3">{idx + 1}</td>
                 <td className="px-2.5 py-2 text-xs font-bold text-info underline-offset-2 hover:underline">{u.username}</td>
                 <td className="px-2.5 py-2 text-xs">{u.name}</td>
+                <td className="px-2.5 py-2 text-xs" onClick={(e) => e.stopPropagation()}>
+                  {u.password ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono">{revealed.has(u.id) ? u.password : '••••••••'}</span>
+                      <button type="button" className="text-ink-3 hover:text-navy" title={revealed.has(u.id) ? 'Hide' : 'Show'} onClick={() => toggleReveal(u.id)}>
+                        {revealed.has(u.id) ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                      {revealed.has(u.id) && (
+                        <button type="button" className="text-ink-3 hover:text-navy" title="Copy" onClick={() => copyPwd(u.password)}>
+                          <Copy size={13} />
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="italic text-ink-3">— set to view</span>
+                  )}
+                </td>
                 <td className="px-2.5 py-2 text-xs">{u.orders}</td>
                 <td className="px-2.5 py-2 text-xs">{u.active ? <span className="text-ok font-bold">Active</span> : <span className="text-ink-3">Inactive</span>}</td>
                 <td className="px-2.5 py-2" onClick={(e) => e.stopPropagation()}>

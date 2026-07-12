@@ -18,7 +18,7 @@ import Modal from '../components/ui/Modal.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Field, Select, Input, Textarea } from '../components/ui/Field.jsx';
-import { fmtAED, fmtN, formatDate, ALL_STATUSES, ORDER_STATUSES } from '../utils/format.js';
+import { fmtAED, fmtN, formatDate, ALL_STATUSES, ORDER_STATUSES, DELIVERY_STATUSES } from '../utils/format.js';
 import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 import { orderWhatsAppUrl } from '../utils/whatsapp.js';
 
@@ -168,7 +168,7 @@ function PrintOrderForm({ order }) {
           </tr>
         </thead>
         <tbody>
-          {order.items.filter((it) => it.modelCode?.trim()).map((it, i) => (
+          {order.items.filter((it) => (it.modelCode || '').trim()).map((it, i) => (
             <tr key={i}>
               <td>{i + 1}</td>
               <td className="bold">{it.modelCode}</td>
@@ -274,7 +274,22 @@ export default function Orders() {
     });
   }, [orders, f]);
 
-  const openStatus = (o) => { setStatusForm({ status: o.status === 'Invoiced' ? 'Confirmed' : o.status, note: '' }); setStatusModal(o); };
+  // Same delivery stages tracked in the Delivery Tracker page — read the
+  // real current stage from the status log rather than guessing it.
+  const STEP_KEYS = ['Pending', 'Confirmed', 'Market Delay', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered'];
+  const currentStageOf = (o) => {
+    const hits = (o.statusHistory || []).filter((h) => STEP_KEYS.includes(h.status));
+    if (!hits.length) return 'Pending';
+    const sorted = [...hits].sort((a, b) => new Date(b.at) - new Date(a.at));
+    return sorted[0].status;
+  };
+
+  const openStatus = (o) => {
+    const stage = currentStageOf(o);
+    const status = o.status === 'Invoiced' && !DELIVERY_STATUSES.includes(stage) ? DELIVERY_STATUSES[0] : stage;
+    setStatusForm({ status, note: '' });
+    setStatusModal(o);
+  };
 
   const saveStatus = async () => {
     try {
@@ -311,7 +326,8 @@ export default function Orders() {
 
   const [exporting, setExporting] = useState(false);
   const buildExport = () => {
-    const empName = f.employee ? (users || []).find((u) => String(u.id || u._id) === String(f.employee))?.name : 'All';
+    const empMatch = f.employee ? (users || []).find((u) => String(u.id || u._id) === String(f.employee)) : null;
+    const empName = f.employee ? (empMatch ? empMatch.name : undefined) : 'All';
     return {
       title: 'Orders Report',
       columns: ['Sl. No', 'Order #', 'Date', 'Customer', 'City', 'Country', 'Salesperson', 'Items', 'Amount (AED)', 'Status'],
@@ -494,13 +510,16 @@ export default function Orders() {
 
       {/* ── Status update modal ──────────────────────────────────────────────── */}
       <Modal open={!!statusModal} onClose={() => setStatusModal(null)}
-        title={<span className="flex items-center gap-1.5"><Truck size={16} /> Update Delivery Status</span>} width="min-w-[360px]">
+        title={<span className="flex items-center gap-1.5"><Truck size={16} /> Update Delivery Status</span>} width="max-w-[380px]">
         {statusModal && (
           <>
             <p className="mb-3 text-[13px]" style={{ color: 'var(--text-muted)' }}>Order <strong>#{statusModal.orderNo}</strong> · {statusModal.customer}</p>
+            {statusModal.status === 'Invoiced' && (
+              <p className="mb-3 text-[11px]" style={{ color: 'var(--text-hint)' }}>This order is already invoiced — you can still update its delivery stage.</p>
+            )}
             <Field label="New Status">
               <Select value={statusForm.status} onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value })}>
-                {ORDER_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                {(statusModal.status === 'Invoiced' ? DELIVERY_STATUSES : ORDER_STATUSES).map((s) => <option key={s}>{s}</option>)}
               </Select>
             </Field>
             <div className="mt-3"><Field label="Delivery Note (optional)">

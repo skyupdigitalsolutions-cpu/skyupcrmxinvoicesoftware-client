@@ -37,6 +37,10 @@ const minsToTime = (m) => `${String(Math.floor((m || 0) / 60)).padStart(2, '0')}
 const timeToMins = (t) => { const [h, m] = (t || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
 const DOW = [['0', 'Sun'], ['1', 'Mon'], ['2', 'Tue'], ['3', 'Wed'], ['4', 'Thu'], ['5', 'Fri'], ['6', 'Sat']];
 
+// Google Maps link for a captured clock-in/out coordinate (null when none).
+const mapsUrl = (loc) =>
+  (loc && loc.lat != null && loc.lng != null) ? `https://www.google.com/maps?q=${loc.lat},${loc.lng}` : null;
+
 // Country-wise timezone presets for the attendance config. The value is an IANA
 // zone; day-boundaries and late calculations on the server use this zone.
 const TZ_PRESETS = [
@@ -444,7 +448,7 @@ export default function Attendance() {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
               <thead><tr className="bg-navy-800 text-white">
-                {['Sl. No', 'Employee', 'Date', 'Clock In', 'Clock Out', 'Working Hours', 'Status', 'Remarks', isAdmin && 'Actions'].filter(Boolean).map((h) =>
+                {['Sl. No', 'Employee', 'Date', 'Clock In', 'Clock Out', 'Working Hours', 'Location', 'Status', 'Remarks', isAdmin && 'Actions'].filter(Boolean).map((h) =>
                   <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">{h}</th>)}
               </tr></thead>
               <tbody>
@@ -456,6 +460,21 @@ export default function Attendance() {
                     <td className="px-2.5 py-2 text-xs">{fmtTimeOnly(r.loginTime)}</td>
                     <td className="px-2.5 py-2 text-xs">{fmtTimeOnly(r.logoutTime)}</td>
                     <td className="px-2.5 py-2 text-xs font-bold">{r.workingHours}</td>
+                    <td className="px-2.5 py-2 text-xs">
+                      <div className="flex flex-col gap-0.5">
+                        {mapsUrl(r.loginLocation) && (
+                          <a className="flex items-center gap-1 text-info hover:underline" href={mapsUrl(r.loginLocation)} target="_blank" rel="noreferrer">
+                            <MapPin size={11} /> In
+                          </a>
+                        )}
+                        {mapsUrl(r.logoutLocation) && (
+                          <a className="flex items-center gap-1 text-info hover:underline" href={mapsUrl(r.logoutLocation)} target="_blank" rel="noreferrer">
+                            <MapPin size={11} /> Out
+                          </a>
+                        )}
+                        {!mapsUrl(r.loginLocation) && !mapsUrl(r.logoutLocation) && <span className="text-ink-3">—</span>}
+                      </div>
+                    </td>
                     <td className="px-2.5 py-2 text-xs"><span className={`status ${attendanceStatusClass(r.derivedStatus)}`}>{attendanceStatusLabel(r.derivedStatus)}</span></td>
                     <td className="px-2.5 py-2 text-xs italic text-ink-3">{r.remarks || '—'}</td>
                     {isAdmin && (
