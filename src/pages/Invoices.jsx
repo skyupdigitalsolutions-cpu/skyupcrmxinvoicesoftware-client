@@ -20,7 +20,7 @@ import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 export default function Invoices() {
   const { isAdmin } = useAuth();
   const { show } = useToast();
-  const { data: invoices, loading, refetch } = useFetch(() => invoiceApi.list(), []);
+  const { data: invoices, loading, error, refetch } = useFetch(() => invoiceApi.list(), []);
   const { data: users } = useFetch(() => (isAdmin ? userApi.list() : Promise.resolve([])), [isAdmin]);
   const [search, setSearch] = useState('');
   const [employee, setEmployee] = useState('');
@@ -158,6 +158,14 @@ export default function Invoices() {
   };
 
   if (loading) return <Spinner label="Loading invoices…" />;
+
+  if (error) return (
+    <div className="p-10 text-center">
+      <p className="mb-1 text-sm font-bold text-danger">Couldn't load invoices</p>
+      <p className="mb-4 text-xs text-ink-3">{error}</p>
+      <Button variant="outline" size="sm" onClick={refetch}>Retry</Button>
+    </div>
+  );
 
   return (
     <div className="flex h-[calc(100vh-56px)] flex-col overflow-hidden">
