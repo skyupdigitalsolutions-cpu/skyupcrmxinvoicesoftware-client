@@ -6,7 +6,7 @@ import AttendanceWidget from '../AttendanceWidget.jsx';
 import {
   LayoutDashboard, Target, ClipboardList, FilePlus,
   Receipt, Truck, BarChart2, CalendarDays, Users, Clock,
-  LogOut, Sun, Moon, Menu, X, Building2, Bell, Check, CheckCheck,
+  LogOut, Sun, Moon, Menu, X, Building2, Bell, Check, CheckCheck, MessageSquare,
 } from 'lucide-react';
 import { notificationApi } from '../../api/endpoints.js';
 
@@ -21,6 +21,7 @@ const NAV = [
   { to: '/daily-report',label: 'Daily Report',      icon: CalendarDays },
   { to: '/users',       label: 'Users',             icon: Users,       admin: true },
   { to: '/attendance',  label: 'Attendance',        icon: Clock },
+  { to: '/chat',        label: 'Chat',              icon: MessageSquare },
 ];
 
 // Developers only manage tenants — they get their own minimal nav.

@@ -100,6 +100,16 @@ export const notificationApi = {
     remove: (id) => api.delete(`/notifications/${id}`).then((r) => r.data),
 };
 
+// ── Chat (per-company, 1:1 messaging + admin oversight) ─────────────────────
+export const chatApi = {
+    contacts: () => api.get('/chat/contacts').then((r) => r.data.contacts),
+    unreadCount: () => api.get('/chat/unread-count').then((r) => r.data.unread),
+    conversation: (userId) => api.get(`/chat/conversation/${userId}`).then((r) => r.data),
+    send: (userId, body) => api.post(`/chat/conversation/${userId}`, { body }).then((r) => r.data.message),
+    adminThreads: () => api.get('/chat/admin/threads').then((r) => r.data.threads),
+    adminThread: (a, b) => api.get(`/chat/admin/thread/${a}/${b}`).then((r) => r.data),
+};
+
 // ── Platform settings (developer only) ──────────────────────────────────────
 export const platformApi = {
     getSettings: () => api.get('/platform/settings').then((r) => r.data.settings),

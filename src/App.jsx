@@ -13,6 +13,7 @@ import Reports from './pages/Reports.jsx';
 import DailyReport from './pages/DailyReport.jsx';
 import Users from './pages/Users.jsx';
 import Leads from './pages/Leads.jsx';
+import Chat from './pages/Chat.jsx';
 import LeadDetail from './pages/LeadDetail.jsx';
 import Attendance from './pages/Attendance.jsx';
 import DeveloperDashboard from './pages/DeveloperDashboard.jsx';
@@ -54,6 +55,7 @@ export default function App() {
       <Route path="/daily-report"     element={<Shell><DailyReport /></Shell>} />
       <Route path="/users"            element={<Shell admin><Users /></Shell>} />
       <Route path="/attendance"       element={<Shell><Attendance /></Shell>} />
+      <Route path="/chat"             element={<Shell><Chat /></Shell>} />
       <Route path="*"                 element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
