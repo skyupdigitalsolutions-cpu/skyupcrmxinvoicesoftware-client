@@ -56,7 +56,7 @@ const leadSchema = Yup.object({
   stage: Yup.string().oneOf(CREATE_STAGES).required('Stage is required'),
   campaign: Yup.string().trim().max(80, 'Too long'),
   interest: Yup.string().trim().required('Interest is required').max(200, 'Too long'),
-  remark: Yup.string().trim().required('Remark is required').max(300, 'Too long'),
+  remark: Yup.string().trim().max(300, 'Too long'),
 });
 
 // ── Minimal CSV parser ────────────────────────────────────────────────────────
@@ -254,8 +254,27 @@ export default function Leads() {
     return [...new Set(leads.map((l) => l.country).filter(Boolean))].sort();
   }, [leads]);
 
+  // Employee filter options. Start from active sales users, then fold in EVERY
+  // owner that actually appears on a lead — including the admin/owner and any
+  // deactivated staff — so contacts entered by the owner are filterable too.
+  const employeeOptions = useMemo(() => {
+    const byId = new Map();
+    (sales || []).forEach((u) => {
+      const id = String(u.id || u._id);
+      if (id) byId.set(id, u.name);
+    });
+    (leads || []).forEach((l) => {
+      if (!l.owner) return;
+      const id = String(l.owner);
+      if (!byId.has(id)) byId.set(id, l.ownerName || 'Owner');
+    });
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [sales, leads]);
+
   const buildExport = () => {
-    const empName = f.employee ? sales.find((u) => String(u.id || u._id) === String(f.employee))?.name : 'All';
+    const empName = f.employee ? employeeOptions.find((u) => String(u.id) === String(f.employee))?.name : 'All';
     return {
       title: 'Leads Report',
       columns: ['Sl. No', 'Name', 'Mobile', 'Source', 'Interest', 'Owner', 'Country', 'Stage', 'Status', 'Order #'],
@@ -284,8 +303,8 @@ export default function Leads() {
     return {
       total: list.length,
       enquiry: list.filter((l) => leadStageOf(l) === 'Enquiry').length,
-      converted: list.filter((l) => l.converted).length,
-      rate: list.length ? Math.round((list.filter((l) => l.converted).length / list.length) * 100) : 0,
+      converted: list.filter((l) => l.status === 'Won' || l.converted).length,
+      rate: list.length ? Math.round((list.filter((l) => l.status === 'Won' || l.converted).length / list.length) * 100) : 0,
     };
   }, [leads]);
 
@@ -367,7 +386,7 @@ export default function Leads() {
       {/* ── Stats strip ─────────────────────────────────────────────────────── */}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 flex-shrink-0">
         {[
-          ['Total Leads',  stats.total,       'border-gold',  <Target size={16} />],
+          ['Total Contacts',  stats.total,       'border-gold',  <Target size={16} />],
           ['Enquiry',      stats.enquiry,      'border-info',  <Target size={16} />],
           ['Buyers',       stats.converted,    'border-ok',  <Users size={16} />],
           ['Conversion %', `${stats.rate}%`,   'border-warn',  <Percent size={16} />],
@@ -410,7 +429,7 @@ export default function Leads() {
         {isAdmin && (
           <Select className="!w-auto" value={f.employee} onChange={(e) => setF({ ...f, employee: e.target.value })}>
             <option value="">All Employees</option>
-            {sales.map((u) => <option key={u.id || u._id} value={u.id || u._id}>{u.name}</option>)}
+            {employeeOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </Select>
         )}
         <Button
@@ -878,7 +897,7 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
               </FieldRow>
             </div>
             <div className="mt-3">
-              <FieldRow label="Remark" name="remark" error={touched.remark && errors.remark}>
+              <FieldRow label="Remark (optional)" name="remark" error={touched.remark && errors.remark}>
                 <Textarea rows={2} name="remark" value={values.remark} onChange={handleChange} onBlur={handleBlur} />
               </FieldRow>
             </div>

@@ -14,6 +14,7 @@ export const orderApi = {
     create: (body) => api.post('/orders', body).then((r) => r.data.order),
     update: (id, body) => api.put(`/orders/${id}`, body).then((r) => r.data.order),
     setStatus: (id, body) => api.patch(`/orders/${id}/status`, body).then((r) => r.data.order),
+    customerLookup: (params) => api.get('/orders/customer-lookup', { params }).then((r) => r.data),
     remove: (id) => api.delete(`/orders/${id}`).then((r) => r.data),
 };
 
@@ -55,6 +56,7 @@ export const leadApi = {
     convert: (id, body) => api.post(`/leads/${id}/convert`, body).then((r) => r.data),
     remove: (id) => api.delete(`/leads/${id}`).then((r) => r.data),
     lookup: (mobile, country) => api.get('/leads/lookup', { params: { mobile, country } }).then((r) => r.data),
+    deletedContacts: (params) => api.get('/leads/deleted/report', { params }).then((r) => r.data.contacts),
 };
 
 export const attendanceApi = {

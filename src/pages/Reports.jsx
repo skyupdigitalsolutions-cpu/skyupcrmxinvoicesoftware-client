@@ -17,7 +17,7 @@ import { Input, Select } from '../components/ui/Field.jsx';
 import { LeadFormModal } from './Leads.jsx';
 import { exportSectionsPdf, exportSectionsCsv } from '../utils/exportPdf.js';
 import {
-  fmtDHS, fmtAED, formatDate,
+  fmtDHS, fmtAED, formatDate, fmtNum, curCode,
   LEAD_STATUSES, LEAD_SOURCES, leadStatusClass,
   LEAD_STAGES, leadStageOf, leadStageClass,
 } from '../utils/format.js';
@@ -177,15 +177,15 @@ export default function Reports() {
     },
     {
       title: 'By Salesperson (Orders)',
-      columns: ['Salesperson', 'Orders', 'Revenue (AED)'],
+      columns: ['Salesperson', 'Orders', `Revenue (${curCode()})`],
       rows: Object.entries(sales?.bySalesperson || {}).map(([name, v]) => [
-        name, v.orders, fmtDHS(v.revenue).replace('AED ', ''),
+        name, v.orders, fmtNum(v.revenue),
       ]),
     },
     {
       title: 'By Country (Revenue)',
-      columns: ['Country', 'Revenue (AED)'],
-      rows: Object.entries(sales?.byCountry || {}).map(([c, v]) => [c, fmtDHS(v).replace('AED ', '')]),
+      columns: ['Country', `Revenue (${curCode()})`],
+      rows: Object.entries(sales?.byCountry || {}).map(([c, v]) => [c, fmtNum(v)]),
     },
     {
       title: 'Orders by Status',
@@ -280,7 +280,7 @@ export default function Reports() {
         <>
           {/* ── combined headline stats ── */}
           <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            <Stat label="Total Leads"  value={sharedFiltered.length} icon={<Users size={16} />}      tone="border-info" />
+            <Stat label="Total Contacts"  value={sharedFiltered.length} icon={<Users size={16} />}      tone="border-info" />
             <Stat label="Buyers"       value={won}  sub={`${convRate}% rate`} icon={<UserCheck size={16} />} tone="border-ok" />
             <Stat label="In Progress"  value={sharedFiltered.filter((l) => ['Contacted', 'Interested', 'Follow-up'].includes(l.status)).length} icon={<TrendingUp size={16} />} tone="border-warn" />
             <Stat label="Orders"       value={sales?.summary?.totalOrders ?? 0} />

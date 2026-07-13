@@ -517,7 +517,7 @@ export default function DailyReport() {
             <StatCard label="Buyers" value={conversions.length} sub={formatDate(viewDate)} tone="border-ok" />
             <StatCard label="Conv. Rate" value={`${summary.convRate || 0}%`} sub="This day" tone="border-purple-400" />
             <StatCard label="Calls Made" value={summary.callsMadeToday || 0} sub="Total calls" tone="border-info" />
-            <StatCard label="Total Leads" value={summary.total || 0} sub="This date" tone="border-gold" />
+            <StatCard label="Total Contacts" value={summary.total || 0} sub="This date" tone="border-gold" />
           </div>
           <Card><CardHead title="Buyers" /><CardBody className="!p-0">
             {conversions.length === 0 ? <EmptyState title="No conversions" hint="No deals closed on this day." /> : (

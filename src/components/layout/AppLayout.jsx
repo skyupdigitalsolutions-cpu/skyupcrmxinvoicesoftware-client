@@ -8,12 +8,14 @@ import {
   LayoutDashboard, Target, ClipboardList, FilePlus,
   Receipt, Truck, BarChart2, CalendarDays, Users, Clock,
   LogOut, Sun, Moon, Menu, X, Building2, Bell, Check, CheckCheck, MessageSquare,
+  Trash2, AlertCircle, ArrowRight,
 } from 'lucide-react';
-import { notificationApi } from '../../api/endpoints.js';
+import { notificationApi, chatApi } from '../../api/endpoints.js';
 
 const NAV = [
   { to: '/dashboard',   label: 'Dashboard',        icon: LayoutDashboard },
   { to: '/leads',       label: 'Leads',             icon: Target },
+  { to: '/deleted-contacts', label: 'Deleted Contacts', icon: Trash2, admin: true },
   { to: '/orders',      label: 'Orders',            icon: ClipboardList },
   { to: '/orders/new',  label: 'Order Form',        icon: FilePlus },
   { to: '/invoices',    label: 'Invoices',          icon: Receipt },
@@ -219,6 +221,97 @@ function NotificationBell() {
   );
 }
 
+// Automatic reminder pop-up (#8). On a fixed interval it checks for unread
+// follow-up reminders (created server-side when a scheduled follow-up falls
+// due) and, if any are still unattended, surfaces a pop-up card so pending
+// follow-ups aren't missed. Dismissing hides the current batch; newly-due
+// reminders re-trigger it on the next check.
+const REMINDER_INTERVAL_MS = 60000; // predefined check period
+
+function FollowUpReminderPopup() {
+  const navigate = useNavigate();
+  const [items, setItems] = useState([]);
+  const [visible, setVisible] = useState(false);
+  const dismissedRef = useRef(new Set());
+
+  const check = async () => {
+    try {
+      const { notifications } = await notificationApi.list({ unread: 1, limit: 50 });
+      const reminders = (notifications || []).filter(
+        (n) => typeof n.type === 'string' && n.type.indexOf('lead-followup') === 0
+      );
+      const fresh = reminders.filter((n) => !dismissedRef.current.has(n._id));
+      setItems(reminders);
+      if (fresh.length > 0) setVisible(true);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
+    check();
+    const t = setInterval(check, REMINDER_INTERVAL_MS);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const dismiss = () => {
+    items.forEach((n) => dismissedRef.current.add(n._id));
+    setVisible(false);
+  };
+
+  const openItem = async (n) => {
+    try { if (!n.read) await notificationApi.markRead(n._id); } catch { /* ignore */ }
+    dismissedRef.current.add(n._id);
+    setVisible(false);
+    if (n.link) navigate(n.link);
+  };
+
+  if (!visible || !items.length) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-[400] w-[320px] max-w-[90vw] overflow-hidden rounded-lg border shadow-2xl"
+      style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-card)' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b"
+        style={{ borderColor: 'var(--border-card)', background: 'var(--danger, #DC2626)' }}>
+        <span className="flex items-center gap-1.5 text-xs font-bold text-white">
+          <AlertCircle size={14} /> Follow-up reminder{items.length > 1 ? `s (${items.length})` : ''}
+        </span>
+        <button onClick={dismiss} className="flex h-6 w-6 items-center justify-center rounded-full text-white/90 transition hover:bg-white/20" aria-label="Dismiss">
+          <X size={14} />
+        </button>
+      </div>
+
+      <div className="max-h-[280px] overflow-y-auto">
+        {items.slice(0, 5).map((n) => (
+          <button
+            key={n._id}
+            onClick={() => openItem(n)}
+            className="flex w-full items-start gap-2 border-b px-3 py-2.5 text-left transition hover:bg-black/[0.03]"
+            style={{ borderColor: 'var(--border-card)' }}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{n.title}</span>
+              {n.body ? <span className="mt-0.5 block text-[11px] leading-snug" style={{ color: 'var(--text-secondary)' }}>{n.body}</span> : null}
+            </span>
+            <ArrowRight size={13} className="mt-0.5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+          </button>
+        ))}
+        {items.length > 5 && (
+          <div className="px-3 py-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+            …and {items.length - 5} more pending.
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end gap-2 px-3 py-2 border-t" style={{ borderColor: 'var(--border-card)' }}>
+        <button onClick={dismiss} className="text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>Dismiss</button>
+        <button onClick={() => { setVisible(false); navigate('/daily-report'); }} className="text-[11px] font-bold" style={{ color: 'var(--primary)' }}>
+          View all
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ThemeToggle() {
   const { dark, toggle } = useTheme();
   return (
@@ -238,13 +331,14 @@ function ThemeToggle() {
   );
 }
 
-function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout }) {
+function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout, chatUnread = 0 }) {
   const items = isDeveloper ? DEV_NAV : NAV.filter((n) => !n.admin || isAdmin);
   return (
     <>
       <div className="px-5 pb-1 pt-3.5 text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Menu</div>
       {items.map((n) => {
         const Icon = n.icon;
+        const showChatBadge = n.to === '/chat' && chatUnread > 0;
         return (
           <NavLink
             key={n.to}
@@ -262,7 +356,15 @@ function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout }) {
             })}
           >
             <Icon size={15} className="shrink-0" />
-            {n.label}
+            <span className="flex-1">{n.label}</span>
+            {showChatBadge && (
+              <span
+                className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
+                style={{ background: 'var(--danger, #DC2626)' }}
+              >
+                {chatUnread > 99 ? '99+' : chatUnread}
+              </span>
+            )}
           </NavLink>
         );
       })}
@@ -285,6 +387,21 @@ export default function AppLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
+
+  // Poll chat unread total for the sidebar badge (skipped for developers, who
+  // have no company-scoped chat). Refreshes on every route change too.
+  useEffect(() => {
+    if (isDeveloper) return undefined;
+    let alive = true;
+    const load = async () => {
+      try { const u = await chatApi.unreadCount(); if (alive) setChatUnread(u || 0); }
+      catch { /* ignore */ }
+    };
+    load();
+    const t = setInterval(load, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, [isDeveloper, location.pathname]);
 
   // Close the mobile drawer whenever the route changes
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
@@ -300,6 +417,7 @@ export default function AppLayout({ children }) {
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-base)' }}>
       <LiveLocationTracker />
+      {!isDeveloper && <FollowUpReminderPopup />}
       {/* ── Top header ─────────────────────────────────────────────────── */}
       <header
         className="sticky top-0 z-[100] flex h-13 items-center justify-between gap-2 px-3 py-3 border-b shadow-sm sm:px-5"
@@ -338,7 +456,7 @@ export default function AppLayout({ children }) {
         >
           <div className="sticky top-[52px] flex h-[calc(100vh-52px)] flex-col py-4">
             <div className="flex-1 overflow-y-auto">
-              <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} />
+              <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} chatUnread={chatUnread} />
             </div>
             <DevCredit />
           </div>
@@ -372,7 +490,7 @@ export default function AppLayout({ children }) {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto py-2">
-                <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} onNavigate={() => setMobileOpen(false)} />
+                <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} onNavigate={() => setMobileOpen(false)} chatUnread={chatUnread} />
               </div>
               <DevCredit />
             </aside>

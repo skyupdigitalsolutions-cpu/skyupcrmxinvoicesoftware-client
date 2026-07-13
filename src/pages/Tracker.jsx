@@ -96,7 +96,7 @@ export default function Tracker() {
     <>
       <PageTitle icon={<Truck size={18} />} badge={active.length}>Delivery Tracker</PageTitle>
 
-      <div className="mb-3.5 flex flex-wrap gap-2">
+      <div className="mb-3.5 flex flex-wrap items-center gap-2">
         <Input className="!w-56" placeholder="Search order / customer…" value={f.search} onChange={(e) => setF({ ...f, search: e.target.value })} />
         <Select className="!w-auto" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
           <option value="">All Status</option>{ORDER_STATUSES.map((s) => <option key={s}>{s}</option>)}
@@ -106,6 +106,11 @@ export default function Tracker() {
             <option value="">All Employees</option>
             {(users || []).map((u) => <option key={u._id} value={u._id}>{u.name}</option>)}
           </Select>
+        )}
+        {(f.search || f.status || f.employee) && (
+          <Button variant="outline" size="sm" onClick={() => setF({ search: '', status: '', employee: '' })}>
+            <span className="flex items-center gap-1.5"><X size={13} />Clear Filter</span>
+          </Button>
         )}
       </div>
 

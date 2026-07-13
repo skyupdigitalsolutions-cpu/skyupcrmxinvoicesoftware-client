@@ -27,11 +27,11 @@ import OrderItemsEditor, { blankItem } from '../components/OrderItemsEditor.jsx'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const PAY_TERMS = [
-  'CASH TRANSFER',
+  'Cash on Delivery',
+  'Credit',
   'Cheque on Delivery',
-  'Net 30 Days',
-  'Advance Payment',
-  'Pending Payment',
+  'Cash Paid',
+  'Cash',
 ];
 
 const INITIAL_FORM = {
@@ -41,7 +41,7 @@ const INITIAL_FORM = {
   country: 'UAE',
   mobile: '',
   delivery: '',
-  payTerms: 'CASH TRANSFER',
+  payTerms: 'Cash on Delivery',
   salesperson: '',
   items: [blankItem()],
   discount: 0,
@@ -120,6 +120,64 @@ function useLeadLookup({ editing, setForm }) {
   };
 
   return { leadId, leadState, onMobileChange, onCountryChange };
+}
+
+
+// ─── Custom hook: customer lookup (existing orders) ───────────────────────────
+
+/**
+ * Debounced lookup that fetches a customer's saved delivery details from their
+ * most recent EXISTING order and pre-fills any blank fields on the form. This
+ * complements the mobile-based lead lookup: it lets a user start from the
+ * customer name and still recover the delivery address / city on record.
+ *
+ * Only fills fields that are still empty — never overwrites what the user typed.
+ * custState: 'idle' | 'checking' | 'found' | 'none'
+ */
+const MIN_CUSTOMER_CHARS = 2;
+
+function useCustomerLookup({ editing, setForm }) {
+  const [custState, setCustState] = useState('idle');
+  const timerRef = useRef(null);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const onCustomerChange = (name, mobile, country) => {
+    if (editing) return;
+    const clean = (name || '').trim();
+    clearTimeout(timerRef.current);
+
+    if (clean.length < MIN_CUSTOMER_CHARS) {
+      setCustState('idle');
+      return;
+    }
+
+    setCustState('checking');
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await orderApi.customerLookup({ name: clean, mobile: mobile || '', country: country || 'UAE' });
+        if (res && res.found && res.customer) {
+          const c = res.customer;
+          // Fill only blank fields, so user-entered values are preserved.
+          setForm((prev) => ({
+            ...prev,
+            delivery: prev.delivery || c.delivery || '',
+            city:     prev.city     || c.city     || '',
+            country:  prev.country  || c.country  || prev.country,
+            mobile:   prev.mobile   || c.mobile   || '',
+            payTerms: prev.payTerms || c.payTerms || prev.payTerms,
+          }));
+          setCustState('found');
+        } else {
+          setCustState('none');
+        }
+      } catch {
+        setCustState('idle');
+      }
+    }, LOOKUP_DEBOUNCE_MS);
+  };
+
+  return { custState, onCustomerChange };
 }
 
 
@@ -211,7 +269,7 @@ function OrderTotalsBar({ subTotal, discount, grandTotal }) {
 
 // ─── Section: Order Details card ──────────────────────────────────────────────
 
-function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState }) {
+function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState, custState }) {
   return (
     <Card>
       <CardHead title="Order Details" />
@@ -260,6 +318,11 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState 
               value={form.payTerms}
               onChange={(e) => set('payTerms', e.target.value)}
             >
+              {/* Keep a legacy/stored value selectable so editing an older order
+                  doesn't silently overwrite its payment status. */}
+              {form.payTerms && !PAY_TERMS.includes(form.payTerms) && (
+                <option key={form.payTerms}>{form.payTerms}</option>
+              )}
               {PAY_TERMS.map((p) => <option key={p}>{p}</option>)}
             </Select>
           </Field>
@@ -273,6 +336,18 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState 
               placeholder="Customer name"
               onChange={(e) => set('customer', e.target.value)}
             />
+            {!editing && custState === 'checking' && (
+              <span className="mt-1 flex items-center gap-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                <Loader2 size={12} className="animate-spin" />
+                Looking up saved details…
+              </span>
+            )}
+            {!editing && custState === 'found' && (
+              <span className="mt-1 flex items-center gap-1 text-[11px] font-bold text-ok">
+                <UserCheck size={12} />
+                Delivery details auto-filled from a previous order.
+              </span>
+            )}
           </Field>
 
           <Field label="City / Area *">
@@ -420,6 +495,9 @@ export default function OrderForm() {
     setForm,
   });
 
+  // ── Customer lookup (existing orders) ──────────────────────────────────────
+  const { custState, onCustomerChange } = useCustomerLookup({ editing, setForm });
+
   // ── Derived totals ─────────────────────────────────────────────────────────
   const subTotal = useMemo(
     () => form.items.reduce((sum, it) => sum + (it.qty || 0) * (it.price || 0), 0),
@@ -482,6 +560,11 @@ export default function OrderForm() {
   const handleCountryChange = (value) => {
     set('country', value);
     onCountryChange(value, form.mobile);
+  };
+
+  const handleCustomerChange = (value) => {
+    set('customer', value);
+    onCustomerChange(value, form.mobile, form.country);
   };
 
   // ── Save ───────────────────────────────────────────────────────────────────
@@ -576,8 +659,9 @@ export default function OrderForm() {
       <OrderDetailsCard
         form={form}
         set={(k, v) => {
-          if (k === 'mobile')  { handleMobileChange(v);  return; }
-          if (k === 'country') { handleCountryChange(v); return; }
+          if (k === 'mobile')   { handleMobileChange(v);   return; }
+          if (k === 'country')  { handleCountryChange(v);  return; }
+          if (k === 'customer') { handleCustomerChange(v); return; }
           set(k, v);
         }}
         sales={sales}
@@ -585,6 +669,7 @@ export default function OrderForm() {
         isAdmin={isAdmin}
         user={user}
         leadState={leadState}
+        custState={custState}
       />
 
       <OrderItemsCard
