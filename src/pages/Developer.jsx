@@ -3,6 +3,7 @@ import {
   Building2, Plus, Pencil, Trash2, Users, Shield, Loader2, Target,
   Cloud, Mail, DollarSign, ChevronDown, ChevronRight, Send, Eye, EyeOff,
   Palette, Image as ImageIcon, Server, CheckCircle2, XCircle, ShieldCheck,
+  Languages,
 } from 'lucide-react';
 import { companyApi, platformApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -50,6 +51,21 @@ function resizeImageFile(file, maxDim = LOGO_MAX_DIM) {
     };
     reader.readAsDataURL(file);
   });
+}
+
+// Free, keyless translation helper (MyMemory API) used to auto-fill the
+// Arabic legal name from the English legal/trading name. This is machine
+// translation — always review the result before saving, especially for
+// brand names, which are often transliterated rather than translated.
+async function translateToArabic(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return '';
+  const res = await fetch(
+    `https://api.mymemory.translated.net/get?q=${encodeURIComponent(trimmed)}&langpair=en|ar`
+  );
+  if (!res.ok) throw new Error('Translation request failed.');
+  const data = await res.json();
+  return data?.responseData?.translatedText || '';
 }
 
 // ── Currency presets ──────────────────────────────────────────────────────────
@@ -567,8 +583,10 @@ function BrandingModal({ company, onClose }) {
     cardsHeading:   b.cardsHeading   || '',
     receiptHeading: b.receiptHeading || 'Tax Invoice',
     legalName:      b.legalName      || '',
+    legalNameAr:    b.legalNameAr    || '',
     addressLine1:   b.addressLine1   || '',
     addressLine2:   b.addressLine2   || '',
+    addressAr:      b.addressAr      || '',
     city:           b.city           || '',
     phone:          b.phone          || '',
     email:          b.email          || '',
@@ -581,6 +599,8 @@ function BrandingModal({ company, onClose }) {
   });
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [translatingName, setTranslatingName] = useState(false);
+  const [translatingAddr, setTranslatingAddr] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const onLogoFile = async (e) => {
@@ -603,6 +623,58 @@ function BrandingModal({ company, onClose }) {
       show('Logo uploaded.', 'success');
     } catch (err) { show(err && err.message ? err.message : apiError(err), 'error'); }
     finally { setUploading(false); }
+  };
+
+  // Auto-translate the English legal/trading name into Arabic using a free
+  // machine-translation API. Always review the result — brand/proper names
+  // are frequently transliterated rather than semantically translated.
+  // `silent` = true suppresses toasts and only fills if the Arabic field is
+  // still empty (used for the automatic on-blur trigger below).
+  const autoTranslateLegalName = async (silent = false) => {
+    if (!form.legalName.trim()) {
+      if (!silent) show('Enter the Legal / Trading Name first.', 'error');
+      return;
+    }
+    if (silent && form.legalNameAr.trim()) return; // don't clobber an existing value
+    setTranslatingName(true);
+    try {
+      const ar = await translateToArabic(form.legalName);
+      if (ar) {
+        set('legalNameAr', ar);
+        if (!silent) show('Arabic name filled — please review before saving.', 'success');
+      } else if (!silent) {
+        show('Could not get a translation — please enter manually.', 'error');
+      }
+    } catch (err) {
+      if (!silent) show('Translation service unavailable — please enter manually.', 'error');
+    } finally {
+      setTranslatingName(false);
+    }
+  };
+
+  // Same idea for the address block — combines Address Line 1 + 2 (+ City)
+  // as the source text since the Arabic address field is a single line.
+  const autoTranslateAddress = async (silent = false) => {
+    const source = [form.addressLine1, form.addressLine2, form.city].filter(Boolean).join(', ');
+    if (!source.trim()) {
+      if (!silent) show('Enter Address Line 1 / 2 first.', 'error');
+      return;
+    }
+    if (silent && form.addressAr.trim()) return;
+    setTranslatingAddr(true);
+    try {
+      const ar = await translateToArabic(source);
+      if (ar) {
+        set('addressAr', ar);
+        if (!silent) show('Arabic address filled — please review before saving.', 'success');
+      } else if (!silent) {
+        show('Could not get a translation — please enter manually.', 'error');
+      }
+    } catch (err) {
+      if (!silent) show('Translation service unavailable — please enter manually.', 'error');
+    } finally {
+      setTranslatingAddr(false);
+    }
   };
 
   const save = async () => {
@@ -660,19 +732,80 @@ function BrandingModal({ company, onClose }) {
             <Input value={form.receiptHeading} placeholder="Tax Invoice" onChange={(e) => set('receiptHeading', e.target.value)} />
           </Field>
           <Field label="Legal / Trading Name (printed on receipt)">
-            <Input value={form.legalName} placeholder={company.name} onChange={(e) => set('legalName', e.target.value)} />
+            <Input
+              value={form.legalName}
+              placeholder={company.name}
+              onChange={(e) => set('legalName', e.target.value)}
+              onBlur={() => autoTranslateLegalName(true)}
+            />
+          </Field>
+          <Field label="Legal Name — Arabic (اسم الشركة بالعربية)">
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  value={form.legalNameAr}
+                  dir="rtl"
+                  placeholder="شركة نيو سبوتك للتجارة ذ.م.م"
+                  onChange={(e) => set('legalNameAr', e.target.value)}
+                />
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={translatingName || !form.legalName.trim()}
+                onClick={() => autoTranslateLegalName(false)}
+                title="Re-translate from Legal / Trading Name (overwrites current text)"
+              >
+                {translatingName ? <Loader2 size={13} className="animate-spin" /> : <Languages size={13} />}
+              </Button>
+            </div>
+            <p className="mt-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              Auto-fills when you leave the English field above (only if empty). Auto-translation
+              is machine-generated — please review/edit before saving.
+            </p>
+          </Field>
+          <Field label="Address — Arabic (optional)">
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input value={form.addressAr} dir="rtl" onChange={(e) => set('addressAr', e.target.value)} />
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={translatingAddr || (!form.addressLine1.trim() && !form.addressLine2.trim())}
+                onClick={() => autoTranslateAddress(false)}
+                title="Re-translate from Address Line 1 / 2 / City (overwrites current text)"
+              >
+                {translatingAddr ? <Loader2 size={13} className="animate-spin" /> : <Languages size={13} />}
+              </Button>
+            </div>
+            <p className="mt-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              Auto-fills from Address Line 1 / 2 / City once you leave those fields (only if empty).
+            </p>
           </Field>
           <div className="grid grid-cols-2 gap-2">
             <Field label="Address Line 1">
-              <Input value={form.addressLine1} onChange={(e) => set('addressLine1', e.target.value)} />
+              <Input
+                value={form.addressLine1}
+                onChange={(e) => set('addressLine1', e.target.value)}
+                onBlur={() => autoTranslateAddress(true)}
+              />
             </Field>
             <Field label="Address Line 2">
-              <Input value={form.addressLine2} onChange={(e) => set('addressLine2', e.target.value)} />
+              <Input
+                value={form.addressLine2}
+                onChange={(e) => set('addressLine2', e.target.value)}
+                onBlur={() => autoTranslateAddress(true)}
+              />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <Field label="City / Emirate">
-              <Input value={form.city} onChange={(e) => set('city', e.target.value)} />
+              <Input
+                value={form.city}
+                onChange={(e) => set('city', e.target.value)}
+                onBlur={() => autoTranslateAddress(true)}
+              />
             </Field>
             <Field label="Phone">
               <Input value={form.phone} onChange={(e) => set('phone', e.target.value)} />

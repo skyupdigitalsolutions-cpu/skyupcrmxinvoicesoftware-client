@@ -1,8 +1,6 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { fmtN } from '../utils/format.js';
 
-const UNITS = ['PAIR', 'BOX', 'CARTON', 'PCS', 'DOZEN'];
-
 // Product categories replace the old free-text description + brand fields.
 const CATEGORIES = [
   'Men Shoes',
@@ -15,7 +13,10 @@ const CATEGORIES = [
 
 // `description` keeps its field name so orders/invoices/PDF stay compatible —
 // it now holds the selected category instead of free text. `brand` is dropped.
-const blankItem = () => ({ modelCode: '', description: '', unit: 'PAIR', qty: 1, price: 0 });
+const blankItem = () => ({ modelCode: '', description: '', size: '', unit: 'PAIR', qty: 1, pieces: 0, price: 0 });
+
+// Common pieces-per-box values for footwear cartons (used as datalist hints).
+const PCS_PER_BOX = [12, 24, 36, 60, 72];
 
 // Reusable line-item editor used by both the order form and invoice editing.
 // Controlled: parent owns `items`; this calls onChange with the next array.
@@ -25,9 +26,9 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
   const remove = (i) => onChange(items.filter((_, idx) => idx !== i));
 
   const cols = compact
-    ? 'grid-cols-[26px_1.4fr_1.3fr_78px_64px_92px_96px_34px]'
-    : 'grid-cols-[34px_1.7fr_1.4fr_96px_84px_112px_124px_40px]';
-  const minW = compact ? 'min-w-[640px]' : 'min-w-[720px]';
+    ? 'grid-cols-[26px_1.2fr_1.1fr_78px_70px_72px_84px_92px_34px]'
+    : 'grid-cols-[34px_1.3fr_1.2fr_90px_70px_84px_96px_110px_40px]';
+  const minW = compact ? 'min-w-[760px]' : 'min-w-[840px]';
 
   const Head = ({ children, align = 'text-left' }) => (
     <span className={`${align} text-[10px] font-black uppercase tracking-wide text-white`}>{children}</span>
@@ -40,10 +41,11 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
           {/* Header */}
           <div className={`grid ${cols} items-center gap-2 rounded-t-lg bg-gradient-to-r from-gold to-gold-light px-3 py-2.5`}>
             <Head align="text-center">#</Head>
-            <Head>Model Code</Head>
-            <Head>Category</Head>
-            <Head align="text-center">Unit</Head>
+            <Head>Article No.</Head>
+            <Head>Description</Head>
+            <Head>Size</Head>
             <Head align="text-center">Qty</Head>
+            <Head align="text-center">Pieces</Head>
             <Head align="text-right">Rate</Head>
             <Head align="text-right">Amount</Head>
             <span />
@@ -81,9 +83,12 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
                     {legacy && <option value={it.description}>{it.description}</option>}
                   </select>
 
-                  <select className="li" value={it.unit} onChange={(e) => update(i, { unit: e.target.value })}>
-                    {UNITS.map((u) => <option key={u}>{u}</option>)}
-                  </select>
+                  <input
+                    className="li"
+                    value={it.size || ''}
+                    placeholder="e.g. 40-45"
+                    onChange={(e) => update(i, { size: e.target.value })}
+                  />
 
                   <input
                     className="li text-center"
@@ -91,6 +96,16 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
                     min="0"
                     value={it.qty}
                     onChange={(e) => update(i, { qty: Number(e.target.value) })}
+                  />
+
+                  <input
+                    className="li text-center"
+                    type="number"
+                    min="0"
+                    list="pcs-per-box"
+                    placeholder="pcs/box"
+                    value={it.pieces || 0}
+                    onChange={(e) => update(i, { pieces: Number(e.target.value) })}
                   />
 
                   <input
@@ -134,6 +149,10 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
       </button>
 
       <style>{`.li{border:1px solid var(--input-border,#ddd);border-radius:6px;padding:6px 8px;font-size:12px;width:100%;outline:none;background:var(--bg-card,#fff);color:var(--text-primary,#111);transition:border-color .15s,box-shadow .15s}.li:focus{border-color:#C9A227;box-shadow:0 0 0 3px rgba(201,162,39,.15)}`}</style>
+
+      <datalist id="pcs-per-box">
+        {PCS_PER_BOX.map((n) => <option key={n} value={n} />)}
+      </datalist>
     </div>
   );
 }

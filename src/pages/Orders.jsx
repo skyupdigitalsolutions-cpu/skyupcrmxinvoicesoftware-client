@@ -55,10 +55,15 @@ const IconBtn = ({ icon: Icon, label, ...props }) => (
   </Button>
 );
 
-// ── Print-only Order Form (A4, matches physical document) ─────────────────────
-function PrintOrderForm({ order }) {
+// ── Print-only Order Form (A4, black & white, matches physical document) ──────
+// Company header (logo + EN/Arabic name + contact block) is driven by the
+// tenant's branding so it stays correct per company. Strictly black & white.
+function PrintOrderForm({ order, branding }) {
+  const b = branding || {};
+  const companyEn = b.legalName || b.headerName || 'Company Name';
+  const addr = [b.addressLine1, b.addressLine2, b.city].filter(Boolean).join(', ');
   const subTotal = order.items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0);
-  const grandTotal = order.grandTotal ?? subTotal;
+  const grandTotal = order.grandTotal === undefined || order.grandTotal === null ? subTotal : order.grandTotal;
 
   return createPortal(
     <div id="print-order-form" style={{ display: 'none' }}>
@@ -72,66 +77,77 @@ function PrintOrderForm({ order }) {
             width: 210mm; min-height: 297mm;
             margin: 0; padding: 12mm 14mm;
             font-family: Arial, sans-serif;
-            font-size: 11px;
-            color: #000;
-            background: #fff;
-            box-sizing: border-box;
+            font-size: 11px; color: #000; background: #fff; box-sizing: border-box;
           }
-          .pof-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10mm; }
-          .pof-company { font-size: 22px; font-weight: 900; letter-spacing: 1px; color: #1a1a2e; }
-          .pof-company span { color: #C9A227; }
-          .pof-title { font-size: 28px; font-weight: 900; letter-spacing: 2px; color: #1a1a2e; text-transform: uppercase; }
+          .pof-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 6mm; border-bottom: 1.5px solid #000; padding-bottom: 4mm; margin-bottom: 4mm; }
+          .pof-brand { display: flex; align-items: center; gap: 4mm; }
+          .pof-logo { height: 18mm; width: auto; max-width: 45mm; object-fit: contain; filter: grayscale(100%); }
+          .pof-company-en { font-size: 20px; font-weight: 900; letter-spacing: 0.5px; color: #000; text-transform: uppercase; line-height: 1.1; }
+          .pof-company-ar { font-size: 15px; font-weight: 700; color: #000; margin-top: 1mm; }
+          .pof-contact { text-align: right; font-size: 9.5px; color: #000; line-height: 1.5; }
+          .pof-title { text-align: center; font-size: 22px; font-weight: 900; letter-spacing: 3px; color: #000; text-transform: uppercase; margin-bottom: 6mm; }
 
-          .pof-info { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-bottom: 7mm; border: 1px solid #ccc; }
-          .pof-info-col { padding: 5mm; border-right: 1px solid #ccc; }
+          .pof-info { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-bottom: 6mm; border: 1px solid #000; }
+          .pof-info-col { padding: 4mm; border-right: 1px solid #000; }
           .pof-info-col:last-child { border-right: none; }
-          .pof-info-col-label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #888; border-bottom: 1px solid #ddd; margin-bottom: 3mm; padding-bottom: 1mm; letter-spacing: 0.5px; }
-          .pof-billed-name { font-size: 14px; font-weight: 900; color: #1a1a2e; }
-          .pof-billed-city { font-size: 11px; color: #555; margin-top: 1mm; }
-          .pof-info-row { display: flex; justify-content: space-between; margin-bottom: 1.5mm; background-color: #f9f9f9; }
-          .pof-info-key { color: #555; }
-          .pof-info-val { font-weight: 700; color: #1a1a2e; }
-          .pof-info-val.accent { color: #C9A227; }
-          .pof-info-val.blue { color: #1565c0; }
+          .pof-info-col-label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #000; border-bottom: 1px solid #000; margin-bottom: 3mm; padding-bottom: 1mm; letter-spacing: 0.5px; }
+          .pof-billed-name { font-size: 14px; font-weight: 900; color: #000; }
+          .pof-billed-city { font-size: 11px; color: #000; margin-top: 1mm; }
+          .pof-info-row { display: flex; justify-content: space-between; margin-bottom: 1.5mm; }
+          .pof-info-key { color: #333; }
+          .pof-info-val { font-weight: 700; color: #000; }
+          .pof-info-val.accent, .pof-info-val.blue { color: #000; }
 
           .pof-table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
-          .pof-table thead tr { background: #C9A227; color: #fff; }
-          .pof-table thead th { padding: 3mm 3mm; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid #b8911f; }
+          .pof-table thead tr { background: #000; color: #fff; }
+          .pof-table thead th { padding: 2.5mm 2.5mm; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; border: 1px solid #000; }
           .pof-table thead th:last-child, .pof-table thead th:nth-last-child(2) { text-align: right; }
-          .pof-table tbody tr { border-bottom: 1px solid #e0e0e0; }
-          .pof-table tbody tr:nth-child(even) { background: #fafafa; }
-          .pof-table tbody td { padding: 2.5mm 3mm; font-size: 10.5px; border-left: 1px solid #e8e8e8; border-right: 1px solid #e8e8e8; }
+          .pof-table tbody td { padding: 2.5mm 2.5mm; font-size: 10.5px; border: 1px solid #000; }
           .pof-table tbody td:last-child, .pof-table tbody td:nth-last-child(2) { text-align: right; }
           .pof-table tbody td.bold { font-weight: 700; }
 
           .pof-totals { display: flex; justify-content: flex-end; margin-bottom: 5mm; }
-          .pof-totals-box { width: 65mm; border: 1px solid #ddd; }
-          .pof-totals-row { display: flex; justify-content: space-between; padding: 2mm 4mm; border-bottom: 1px solid #eee; font-size: 11px; }
-          .pof-totals-row:last-child { border-bottom: none; background: #1a1a2e; color: #fff; font-size: 13px; font-weight: 900; }
-          .pof-totals-row.grand .pof-tr-val { color: #C9A227; }
+          .pof-totals-box { width: 70mm; border: 1px solid #000; }
+          .pof-totals-row { display: flex; justify-content: space-between; padding: 2mm 4mm; border-bottom: 1px solid #000; font-size: 11px; }
+          .pof-totals-row:last-child { border-bottom: none; background: #000; color: #fff; font-size: 13px; font-weight: 900; }
+          .pof-totals-row.grand .pof-tr-val { color: #fff; }
 
-          .pof-words-box { border: 1px solid #ddd; padding: 3mm 4mm; margin-bottom: 5mm; background: #fffbf0; }
-          .pof-words-label { font-size: 9px; color: #888; text-transform: uppercase; font-weight: 700; margin-bottom: 1mm; }
-          .pof-words-val { font-size: 12px; font-weight: 700; color: #1565c0; text-transform: uppercase; }
+          .pof-words-box { border: 1px solid #000; padding: 3mm 4mm; margin-bottom: 5mm; background: #fff; }
+          .pof-words-label { font-size: 9px; color: #333; text-transform: uppercase; font-weight: 700; margin-bottom: 1mm; }
+          .pof-words-val { font-size: 12px; font-weight: 700; color: #000; text-transform: uppercase; }
 
-          .pof-sign-row { display: flex; justify-content: space-between; margin-bottom: 8mm; }
-          .pof-sign-box { width: 48%; border-top: 1px solid #999; padding-top: 2mm; font-size: 9px; color: #888; text-align: center; }
+          .pof-sign-row { display: flex; justify-content: space-between; margin-top: 10mm; margin-bottom: 6mm; }
+          .pof-sign-box { width: 45%; border-top: 1px solid #000; padding-top: 2mm; font-size: 10px; color: #000; text-align: center; }
 
-          .pof-terms { border: 1px solid #ddd; padding: 4mm; margin-bottom: 4mm; }
-          .pof-terms-title { font-size: 10px; font-weight: 700; margin-bottom: 2mm; color: #1a1a2e; }
+          .pof-terms { border: 1px solid #000; padding: 4mm; margin-bottom: 4mm; }
+          .pof-terms-title { font-size: 10px; font-weight: 700; margin-bottom: 2mm; color: #000; }
           .pof-terms ol { margin: 0; padding-left: 5mm; }
-          .pof-terms li { font-size: 9.5px; color: #444; margin-bottom: 1mm; }
+          .pof-terms li { font-size: 9.5px; color: #000; margin-bottom: 1mm; }
 
-          .pof-delivery { font-size: 10px; color: #333; }
-          .pof-delivery b { color: #1a1a2e; }
+          .pof-delivery { font-size: 10px; color: #000; }
+          .pof-delivery b { color: #000; }
         }
       `}</style>
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* ── Company header (branding-driven, EN + Arabic) ───────────────────── */}
       <div className="pof-header">
-        <div className="pof-company">Sole &amp; Stride <span>FOOTWEAR</span></div>
-        <div className="pof-title">Order Form</div>
+        <div className="pof-brand">
+          {b.logoUrl ? <img className="pof-logo" src={b.logoUrl} alt="" /> : null}
+          <div>
+            <div className="pof-company-en">{companyEn}</div>
+            {b.legalNameAr ? <div className="pof-company-ar" dir="rtl">{b.legalNameAr}</div> : null}
+          </div>
+        </div>
+        <div className="pof-contact">
+          {addr ? <div>{addr}</div> : null}
+          {b.addressAr ? <div dir="rtl">{b.addressAr}</div> : null}
+          {b.phone ? <div>Tel: {b.phone}</div> : null}
+          {b.email ? <div>Email: {b.email}</div> : null}
+          {b.website ? <div>{b.website}</div> : null}
+          {b.trn ? <div>TRN: {b.trn}</div> : null}
+        </div>
       </div>
+      <div className="pof-title">Order Form</div>
 
       {/* ── Three-column info block ─────────────────────────────────────────── */}
       <div className="pof-info">
@@ -142,9 +158,9 @@ function PrintOrderForm({ order }) {
           {order.city && <div className="pof-billed-city">{order.city}{order.country ? `, ${order.country}` : ''}</div>}
           {order.mobile && <div className="pof-billed-city" style={{ marginTop: '2mm' }}>{order.mobile}</div>}
         </div>
-        {/* Col 2 — Invoice Details */}
+        {/* Col 2 — Order Details */}
         <div className="pof-info-col">
-          <div className="pof-info-col-label">Invoice Details</div>
+          <div className="pof-info-col-label">Order Details</div>
           <div className="pof-info-row"><span className="pof-info-key">Sales Order #:</span><span className="pof-info-val">{order.orderNo}</span></div>
           <div className="pof-info-row"><span className="pof-info-key">Order Date:</span><span className="pof-info-val">{formatDate(order.date)}</span></div>
           <div className="pof-info-row"><span className="pof-info-key">Salesperson:</span><span className="pof-info-val">{order.salespersonName || '—'}</span></div>
@@ -158,11 +174,11 @@ function PrintOrderForm({ order }) {
         </div>
       </div>
 
-      {/* ── Items table ────────────────────────────────────────────────────── */}
+      {/* ── Items table (S.No | Art No | Description | Size | Pcs | Qty | Price | Amount) ── */}
       <table className="pof-table">
         <thead>
           <tr>
-            {['S.L', 'Model Code', 'Description', 'Unit', 'Brand', 'Qty', 'Price (AED)', 'Amount (AED)'].map((h) => (
+            {['S.No.', 'Art No.', 'Description', 'Size', 'Pcs', 'Qty', 'Price', 'Amount'].map((h) => (
               <th key={h}>{h}</th>
             ))}
           </tr>
@@ -173,8 +189,8 @@ function PrintOrderForm({ order }) {
               <td>{i + 1}</td>
               <td className="bold">{it.modelCode}</td>
               <td>{it.description || '—'}</td>
-              <td>{it.unit || '—'}</td>
-              <td>{it.brand || '—'}</td>
+              <td>{it.size || '—'}</td>
+              <td>{it.pieces || 0}</td>
               <td>{it.qty}</td>
               <td>{fmtN(it.price)}</td>
               <td className="bold">{fmtN((it.qty || 0) * (it.price || 0))}</td>
@@ -209,12 +225,6 @@ function PrintOrderForm({ order }) {
         <div className="pof-words-val">{amountToWords(grandTotal)}</div>
       </div>
 
-      {/* ── Signature row ──────────────────────────────────────────────────── */}
-      <div className="pof-sign-row">
-        <div className="pof-sign-box">Authorised Signature</div>
-        <div className="pof-sign-box">Customer Signature</div>
-      </div>
-
       {/* ── Terms ──────────────────────────────────────────────────────────── */}
       <div className="pof-terms">
         <div className="pof-terms-title">TERMS :</div>
@@ -231,8 +241,14 @@ function PrintOrderForm({ order }) {
       {/* ── Delivery details ───────────────────────────────────────────────── */}
       <div className="pof-delivery">
         {order.delivery && <div><b>Delivery Details:</b> {order.delivery}</div>}
-        {order.mobile && <div style={{ marginTop: '1mm' }}><b>Contact:</b> {order.mobile}</div>}
+        {order.mobile && <div style={{ marginTop: '1mm' }}><b>Delivery Contact No.:</b> {order.mobile}</div>}
         {order.notes && <div style={{ marginTop: '1mm' }}><b>Notes:</b> {order.notes}</div>}
+      </div>
+
+      {/* ── Signature row ──────────────────────────────────────────────────── */}
+      <div className="pof-sign-row">
+        <div className="pof-sign-box">Buyer's Signature</div>
+        <div className="pof-sign-box">For {companyEn}</div>
       </div>
     </div>,
     document.body
@@ -242,7 +258,7 @@ function PrintOrderForm({ order }) {
 // ── Main Orders page ──────────────────────────────────────────────────────────
 export default function Orders() {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, branding } = useAuth();
   const { show } = useToast();
   const [params] = useSearchParams();
   const { data: orders, loading, refetch } = useFetch(() => orderApi.list(), []);
@@ -370,7 +386,7 @@ export default function Orders() {
   return (
     <>
       {/* Hidden print form — rendered but invisible until window.print() */}
-      {printOrder && <PrintOrderForm order={printOrder} />}
+      {printOrder && <PrintOrderForm order={printOrder} branding={branding} />}
 
       <PageTitle icon={<ClipboardList size={18} />} badge={filtered.length}
         actions={<IconBtn icon={Plus} label="New Order" onClick={() => navigate('/orders/new')} />}>All Orders</PageTitle>
@@ -473,7 +489,7 @@ export default function Orders() {
             <div className="mt-4 overflow-x-auto rounded-lg border border-gray-100">
               <table className="w-full border-collapse text-[12px]">
                 <thead><tr className="bg-navy-800 text-white">
-                  {['#', 'Model Code', 'Desc', 'Unit', 'Brand', 'Qty', 'Price', 'Amount'].map((h) => (
+                  {['#', 'Art No', 'Desc', 'Size', 'Pcs', 'Qty', 'Price', 'Amount'].map((h) => (
                     <th key={h} className="px-2.5 py-1.5 text-left font-bold uppercase tracking-wide">{h}</th>
                   ))}
                 </tr></thead>
@@ -483,8 +499,8 @@ export default function Orders() {
                       <td className="px-2.5 py-1.5">{i + 1}</td>
                       <td className="px-2.5 py-1.5 font-bold">{it.modelCode}</td>
                       <td className="px-2.5 py-1.5">{it.description || '—'}</td>
-                      <td className="px-2.5 py-1.5">{it.unit}</td>
-                      <td className="px-2.5 py-1.5">{it.brand || '—'}</td>
+                      <td className="px-2.5 py-1.5">{it.size || '—'}</td>
+                      <td className="px-2.5 py-1.5">{it.pieces || 0}</td>
                       <td className="px-2.5 py-1.5">{it.qty}</td>
                       <td className="px-2.5 py-1.5">{fmtN(it.price)}</td>
                       <td className="px-2.5 py-1.5 text-right font-bold">{fmtN(it.qty * it.price)}</td>
