@@ -28,6 +28,7 @@ import OrderItemsEditor, { blankItem } from '../components/OrderItemsEditor.jsx'
 
 const PAY_TERMS = [
   'Cash on Delivery',
+  'Cash or Bank Transfer',
   'Credit',
   'Cheque on Delivery',
   'Cash Paid',

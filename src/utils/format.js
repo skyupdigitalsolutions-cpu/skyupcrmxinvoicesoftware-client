@@ -75,6 +75,8 @@ export const COUNTRY_CODES = {
     Iran: '98',
     Iraq: '964',
     Syria: '963',
+    Yemen: '967',
+    Lebanon: '961',
     // South Asia
     India: '91',
     'Sri Lanka': '94',
