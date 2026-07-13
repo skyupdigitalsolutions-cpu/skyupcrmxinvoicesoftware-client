@@ -94,7 +94,7 @@ export const companyApi = {
     setBranding: (id, body) => api.patch(`/companies/${id}/branding`, body).then((r) => r.data),
     uploadLogo: (id, image) => api.post(`/companies/${id}/logo`, { image }).then((r) => r.data), // { logoUrl }
     setEmailReport: (id, body) => api.patch(`/companies/${id}/email-report`, body).then((r) => r.data),
-    verifyBrevoKey: (id, brevoApiKey) => api.post(`/companies/${id}/email-report/verify`, { brevoApiKey }).then((r) => r.data),
+    verifyEmailSmtp: (id, body) => api.post(`/companies/${id}/email-report/verify`, body).then((r) => r.data),
     testEmailReport: (id) => api.post(`/companies/${id}/email-report/test`).then((r) => r.data),
 };
 // ── Notifications (per-user, company-scoped) ────────────────────────────────

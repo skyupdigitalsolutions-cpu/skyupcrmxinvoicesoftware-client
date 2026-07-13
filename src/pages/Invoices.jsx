@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FileText, Pencil, Trash2, MessageCircle, Download, RefreshCw, ExternalLink, Save } from 'lucide-react';
+import { FileText, Pencil, Trash2, MessageCircle, Download, RefreshCw, Save } from 'lucide-react';
 import { invoiceApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -216,7 +216,7 @@ export default function Invoices() {
                 <tr className="bg-navy-800 text-white">
                   {[
                     'Sl. No', 'Invoice #', 'Date', 'Order #', 'Customer',
-                    'Country', 'Amount (AED)', 'Disc.', 'VAT', 'Total (AED)', 'Payment Status', 'PDF', 'Actions',
+                    'Country', 'Amount (AED)', 'Disc.', 'VAT', 'Total (AED)', 'Payment Status', 'Actions',
                   ].map((h) => (
                     <th
                       key={h}
@@ -257,23 +257,6 @@ export default function Invoices() {
                         </select>
                       ) : (
                         <span className={`status ${PAY_CLASS[v.paymentStatus || 'Unpaid']}`}>{v.paymentStatus || 'Unpaid'}</span>
-                      )}
-                    </td>
-
-                    {/* PDF column */}
-                    <td className="px-2.5 py-2">
-                      {v.pdfUrl ? (
-                        <a
-                          href={v.pdfUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="View / Download PDF"
-                          className="inline-flex items-center gap-1 text-[11px] font-bold text-info hover:underline"
-                        >
-                          <ExternalLink size={12} /> PDF
-                        </a>
-                      ) : (
-                        <span className="text-[11px] text-ink-3">—</span>
                       )}
                     </td>
 

@@ -408,44 +408,49 @@ function CloudinaryModal({ company, onClose }) {
 }
 
 // ── Email Report Settings Modal ────────────────────────────────────────────────
+// Daily report is sent via the company's own SMTP account (Gmail / Zoho /
+// Outlook / any SMTP). Provider-agnostic — no third-party API key needed.
 function EmailReportModal({ company, onClose }) {
   const { show } = useToast();
+  const er = company.emailReport || {};
   const [form, setForm] = useState({
-    enabled:      company.emailReport?.enabled      ?? false,
-    adminEmail:   company.emailReport?.adminEmail   || '',
-    senderEmail:  company.emailReport?.senderEmail  || '',
-    senderName:   company.emailReport?.senderName   || '',
-    brevoApiKey:  '', // always blank on open — server never returns the key
-    sendAt:       company.emailReport?.sendAt       || '08:00',
+    enabled:      er.enabled      ?? false,
+    adminEmail:   er.adminEmail   || '',
+    senderEmail:  er.senderEmail  || '',
+    senderName:   er.senderName   || '',
+    smtpHost:     er.smtpHost     || 'smtp.gmail.com',
+    smtpPort:     er.smtpPort     || 587,
+    smtpSecure:   er.smtpSecure   ?? false,
+    smtpUser:     er.smtpUser     || '',
+    smtpPass:     '', // always blank on open — server never returns the password
+    sendAt:       er.sendAt       || '08:00',
   });
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [verifying, setVerifying] = useState(false);
   // null = not verified yet, true = valid, false = invalid
-  const [keyStatus, setKeyStatus] = useState(null);
-  const [keyStatusMsg, setKeyStatusMsg] = useState('');
+  const [smtpStatus, setSmtpStatus] = useState(null);
+  const [smtpStatusMsg, setSmtpStatusMsg] = useState('');
 
-  // Reset key status whenever the key field changes
-  const handleKeyChange = (e) => {
-    setForm({ ...form, brevoApiKey: e.target.value });
-    setKeyStatus(null);
-    setKeyStatusMsg('');
-  };
+  const resetStatus = () => { setSmtpStatus(null); setSmtpStatusMsg(''); };
 
-  const verifyKey = async () => {
-    if (!form.brevoApiKey.trim()) {
-      show('Enter a Brevo API key to verify.', 'error');
+  const verifySmtp = async () => {
+    if (!form.smtpHost.trim() || !form.smtpUser.trim()) {
+      show('Enter SMTP host and username first.', 'error');
       return;
     }
     setVerifying(true);
-    setKeyStatus(null);
+    setSmtpStatus(null);
     try {
-      const r = await companyApi.verifyBrevoKey(company.id, form.brevoApiKey);
-      setKeyStatus(true);
-      setKeyStatusMsg(r.email ? `Valid — account: ${r.email}${r.plan ? ` (${r.plan})` : ''}` : 'Key is valid.');
+      await companyApi.verifyEmailSmtp(company.id, {
+        smtpHost: form.smtpHost, smtpPort: form.smtpPort, smtpSecure: form.smtpSecure,
+        smtpUser: form.smtpUser, smtpPass: form.smtpPass,
+      });
+      setSmtpStatus(true);
+      setSmtpStatusMsg('SMTP connection verified.');
     } catch (e) {
-      setKeyStatus(false);
-      setKeyStatusMsg(apiError(e) || 'Invalid key.');
+      setSmtpStatus(false);
+      setSmtpStatusMsg(apiError(e) || 'SMTP connection failed.');
     } finally { setVerifying(false); }
   };
 
@@ -462,7 +467,7 @@ function EmailReportModal({ company, onClose }) {
   const sendTest = async () => {
     setTesting(true);
     try {
-      // Save first so the latest key/email values are persisted, then test.
+      // Save first so the latest SMTP values are persisted, then test.
       await companyApi.setEmailReport(company.id, form);
       const r = await companyApi.testEmailReport(company.id);
       show(r.message || 'Test email sent!', 'success');
@@ -501,43 +506,79 @@ function EmailReportModal({ company, onClose }) {
         </Field>
 
         <div className="pt-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-          Brevo Settings
+          SMTP Settings
         </div>
 
-        <Field label="Brevo API Key">
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="SMTP Host">
+            <Input
+              value={form.smtpHost}
+              placeholder="smtp.gmail.com"
+              onChange={(e) => { setForm({ ...form, smtpHost: e.target.value }); resetStatus(); }}
+            />
+          </Field>
+          <Field label="Port">
+            <Input
+              type="number"
+              value={form.smtpPort}
+              placeholder="587"
+              onChange={(e) => { setForm({ ...form, smtpPort: Number(e.target.value) }); resetStatus(); }}
+            />
+          </Field>
+        </div>
+
+        <label className="flex cursor-pointer items-center gap-2 text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+          <input
+            type="checkbox"
+            className="h-3.5 w-3.5 accent-purple-500"
+            checked={form.smtpSecure}
+            onChange={(e) => { setForm({ ...form, smtpSecure: e.target.checked }); resetStatus(); }}
+          />
+          Use SSL (port 465). Leave off for STARTTLS (port 587 — Gmail default).
+        </label>
+
+        <Field label="SMTP Username">
+          <Input
+            value={form.smtpUser}
+            placeholder="your.address@gmail.com"
+            onChange={(e) => { setForm({ ...form, smtpUser: e.target.value }); resetStatus(); }}
+          />
+        </Field>
+
+        <Field label="SMTP Password / App Password">
           <div className="flex gap-2">
             <div className="flex-1">
               <SecretInput
-                value={form.brevoApiKey}
-                placeholder="Leave blank to keep existing (xkeysib-…)"
-                onChange={handleKeyChange}
+                value={form.smtpPass}
+                placeholder="Leave blank to keep existing"
+                onChange={(e) => { setForm({ ...form, smtpPass: e.target.value }); resetStatus(); }}
               />
             </div>
             <Button
               size="sm"
               variant="outline"
-              disabled={verifying || !form.brevoApiKey.trim()}
-              onClick={verifyKey}
-              title="Verify this API key with Brevo (no email sent)"
+              disabled={verifying || !form.smtpHost.trim() || !form.smtpUser.trim()}
+              onClick={verifySmtp}
+              title="Connect to the SMTP server to verify the settings (no email sent)"
             >
               {verifying
                 ? <Loader2 size={13} className="animate-spin" />
                 : <ShieldCheck size={13} />}
             </Button>
           </div>
-          {keyStatus !== null && (
-            <p className={`mt-1 flex items-center gap-1 text-[11px] font-medium ${keyStatus ? 'text-green-600' : 'text-red-600'}`}>
-              {keyStatus ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-              {keyStatusMsg}
+          {smtpStatus !== null && (
+            <p className={`mt-1 flex items-center gap-1 text-[11px] font-medium ${smtpStatus ? 'text-green-600' : 'text-red-600'}`}>
+              {smtpStatus ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+              {smtpStatusMsg}
             </p>
           )}
         </Field>
 
-        <Field label="Sender Email (must be verified in Brevo)">
+        <Field label="Sender Email (From address)">
           <Input
             type="email"
             value={form.senderEmail}
-            placeholder="reports@yourcompany.com"
+            placeholder="your.address@gmail.com"
             onChange={(e) => setForm({ ...form, senderEmail: e.target.value })}
           />
         </Field>
@@ -551,12 +592,12 @@ function EmailReportModal({ company, onClose }) {
         </Field>
 
         <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-          Get your API key from{' '}
-          <a href="https://app.brevo.com/settings/keys/api" target="_blank" rel="noreferrer"
+          For Gmail: host <code>smtp.gmail.com</code>, port <code>587</code>, and a{' '}
+          <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer"
             className="underline text-purple-600">
-            Brevo → Settings → API Keys
-          </a>.
-          The sender email must be a verified sender in your Brevo account.
+            Google App Password
+          </a>{' '}
+          (not your normal password — requires 2-Step Verification). The sender email is usually the same as the SMTP username.
         </p>
       </div>
 
