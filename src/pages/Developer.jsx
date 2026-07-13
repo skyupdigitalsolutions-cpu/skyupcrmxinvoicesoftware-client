@@ -23,6 +23,12 @@ import { Field, Input, Textarea } from '../components/ui/Field.jsx';
 // photo size, and preserves aspect ratio (never stretches/crops).
 const LOGO_MAX_DIM = 512;
 
+// Backend schema caps branding.addressLine1 / addressLine2 at 160 chars each.
+// Enforce the same limit client-side (hard cap via maxLength + a live counter)
+// so users get immediate feedback instead of a failed save after filling out
+// the whole form.
+const ADDRESS_LINE_MAX_LEN = 160;
+
 function resizeImageFile(file, maxDim = LOGO_MAX_DIM) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -678,6 +684,12 @@ function BrandingModal({ company, onClose }) {
   };
 
   const save = async () => {
+    if (form.addressLine1.length > ADDRESS_LINE_MAX_LEN) {
+      return show(`Address Line 1 is too long (${form.addressLine1.length}/${ADDRESS_LINE_MAX_LEN} chars). Please shorten it.`, 'error');
+    }
+    if (form.addressLine2.length > ADDRESS_LINE_MAX_LEN) {
+      return show(`Address Line 2 is too long (${form.addressLine2.length}/${ADDRESS_LINE_MAX_LEN} chars). Please shorten it.`, 'error');
+    }
     setBusy(true);
     try {
       await companyApi.setBranding(company.id, {
@@ -787,16 +799,24 @@ function BrandingModal({ company, onClose }) {
             <Field label="Address Line 1">
               <Input
                 value={form.addressLine1}
+                maxLength={ADDRESS_LINE_MAX_LEN}
                 onChange={(e) => set('addressLine1', e.target.value)}
                 onBlur={() => autoTranslateAddress(true)}
               />
+              <p className="mt-0.5 text-[10px]" style={{ color: form.addressLine1.length >= ADDRESS_LINE_MAX_LEN ? '#DC2626' : 'var(--text-muted)' }}>
+                {form.addressLine1.length}/{ADDRESS_LINE_MAX_LEN}
+              </p>
             </Field>
             <Field label="Address Line 2">
               <Input
                 value={form.addressLine2}
+                maxLength={ADDRESS_LINE_MAX_LEN}
                 onChange={(e) => set('addressLine2', e.target.value)}
                 onBlur={() => autoTranslateAddress(true)}
               />
+              <p className="mt-0.5 text-[10px]" style={{ color: form.addressLine2.length >= ADDRESS_LINE_MAX_LEN ? '#DC2626' : 'var(--text-muted)' }}>
+                {form.addressLine2.length}/{ADDRESS_LINE_MAX_LEN}
+              </p>
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-2">
