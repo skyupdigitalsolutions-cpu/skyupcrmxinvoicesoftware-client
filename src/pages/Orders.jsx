@@ -60,6 +60,9 @@ const IconBtn = ({ icon: Icon, label, ...props }) => (
 // tenant's branding so it stays correct per company. Strictly black & white.
 function PrintOrderForm({ order, branding }) {
   const b = branding || {};
+  // The order form uses the receipt logo when set, otherwise the sidebar logo —
+  // so the "official document" logo stays consistent with the invoice PDF.
+  const logoSrc = b.receiptLogoUrl || b.logoUrl || '';
   const companyEn = b.legalName || b.headerName || 'Company Name';
   const addr = [b.addressLine1, b.addressLine2, b.city].filter(Boolean).join(', ');
   const subTotal = order.items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0);
@@ -139,8 +142,8 @@ function PrintOrderForm({ order, branding }) {
       {/* ── Company header (branding-driven, EN + Arabic) ───────────────────── */}
       <div className="pof-header">
         <div className="pof-brand">
-          {b.logoUrl
-            ? <img className="pof-logo" src={b.logoUrl} alt="" />
+          {logoSrc
+            ? <img className="pof-logo" src={logoSrc} alt="" />
             : <div className="pof-logo-slot">Logo</div>}
           <div>
             <div className="pof-company-en">{companyEn}</div>

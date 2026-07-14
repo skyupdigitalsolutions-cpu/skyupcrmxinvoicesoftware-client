@@ -627,6 +627,7 @@ function BrandingModal({ company, onClose }) {
     headerName:     b.headerName     || '',
     headerTagline:  b.headerTagline  || '',
     logoUrl:        b.logoUrl        || '',
+    receiptLogoUrl: b.receiptLogoUrl || '',
     cardsHeading:   b.cardsHeading   || '',
     receiptHeading: b.receiptHeading || 'Tax Invoice',
     legalName:      b.legalName      || '',
@@ -646,6 +647,7 @@ function BrandingModal({ company, onClose }) {
   });
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [translatingName, setTranslatingName] = useState(false);
   const [translatingAddr, setTranslatingAddr] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -670,6 +672,25 @@ function BrandingModal({ company, onClose }) {
       show('Logo uploaded.', 'success');
     } catch (err) { show(err && err.message ? err.message : apiError(err), 'error'); }
     finally { setUploading(false); }
+  };
+
+  // Separate logo just for the invoice/receipt PDF. Uploaded with target
+  // 'receipt' so it's stored in branding.receiptLogoUrl and never overwrites
+  // the sidebar logo.
+  const onReceiptLogoFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return show('Please choose an image file.', 'error');
+    if (file.size > 15 * 1024 * 1024) return show('Image too large — please use a file under 15 MB.', 'error');
+    setUploadingReceipt(true);
+    try {
+      const dataUrl = await resizeImageFile(file);
+      const res = await companyApi.uploadLogo(company.id, dataUrl, 'receipt');
+      set('receiptLogoUrl', res.url || res.receiptLogoUrl || '');
+      show('Receipt logo uploaded.', 'success');
+    } catch (err) { show(err && err.message ? err.message : apiError(err), 'error'); }
+    finally { setUploadingReceipt(false); }
   };
 
   // Auto-translate the English legal/trading name into Arabic using a free
@@ -772,6 +793,26 @@ function BrandingModal({ company, onClose }) {
                   onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               </div>
               <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Logo preview — this is exactly how it'll appear in the sidebar</span>
+            </div>
+          ) : null}
+          <Field label="Receipt Logo — printed on the invoice / tax-invoice PDF (separate from the sidebar logo)">
+            <Input value={form.receiptLogoUrl} placeholder="https://res.cloudinary.com/.../receipt-logo.png" onChange={(e) => set('receiptLogoUrl', e.target.value)} />
+            <div className="mt-1.5 flex items-center gap-2">
+              <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-bold ${uploadingReceipt ? 'opacity-60' : ''}`} style={{ borderColor: 'var(--border-card)', color: 'var(--text-primary)' }}>
+                {uploadingReceipt ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />}
+                {uploadingReceipt ? 'Uploading…' : 'Upload receipt logo'}
+                <input type="file" accept="image/*" className="hidden" disabled={uploadingReceipt} onChange={onReceiptLogoFile} />
+              </label>
+              <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>use a version sized / cropped for the invoice header</span>
+            </div>
+          </Field>
+          {form.receiptLogoUrl ? (
+            <div className="flex items-center gap-2 rounded border p-2" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex h-12 w-20 flex-shrink-0 items-center justify-center rounded" style={{ backgroundColor: 'var(--bg-muted, #f1f1f1)' }}>
+                <img src={form.receiptLogoUrl} alt="Receipt logo preview" className="max-h-11 max-w-[76px] object-contain"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              </div>
+              <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Receipt logo preview — appears on the invoice PDF header</span>
             </div>
           ) : null}
           <Field label="Dashboard / Report Cards Heading (optional)">
