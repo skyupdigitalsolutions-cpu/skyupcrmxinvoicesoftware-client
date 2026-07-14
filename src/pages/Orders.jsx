@@ -68,6 +68,10 @@ function PrintOrderForm({ order, branding }) {
   return createPortal(
     <div id="print-order-form" style={{ display: 'none' }}>
       <style>{`
+        /* margin:0 tells the browser to drop its own header/footer
+           (date, page title "SkyUp CRM", URL, page number). Our own padding
+           on #print-order-form provides the page margins instead. */
+        @page { size: A4; margin: 0; }
         @media print {
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           body > *:not(#print-order-form) { display: none !important; }
@@ -75,64 +79,69 @@ function PrintOrderForm({ order, branding }) {
             display: block !important;
             position: fixed; inset: 0;
             width: 210mm; min-height: 297mm;
-            margin: 0; padding: 12mm 14mm;
+            margin: 0; padding: 12mm 13mm;
             font-family: Arial, sans-serif;
-            font-size: 11px; color: #000; background: #fff; box-sizing: border-box;
+            font-size: 12px; color: #000; background: #fff; box-sizing: border-box;
           }
-          .pof-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 6mm; border-bottom: 1.5px solid #000; padding-bottom: 4mm; margin-bottom: 4mm; }
-          .pof-brand { display: flex; align-items: center; gap: 4mm; }
-          .pof-logo { height: 18mm; width: auto; max-width: 45mm; object-fit: contain; filter: grayscale(100%); }
-          .pof-company-en { font-size: 20px; font-weight: 900; letter-spacing: 0.5px; color: #000; text-transform: uppercase; line-height: 1.1; }
-          .pof-company-ar { font-size: 15px; font-weight: 700; color: #000; margin-top: 1mm; }
-          .pof-contact { text-align: right; font-size: 9.5px; color: #000; line-height: 1.5; }
-          .pof-title { text-align: center; font-size: 22px; font-weight: 900; letter-spacing: 3px; color: #000; text-transform: uppercase; margin-bottom: 6mm; }
+          .pof-header { display: flex; align-items: center; justify-content: space-between; gap: 6mm; border-bottom: 1.5px solid #000; padding-bottom: 3mm; margin-bottom: 3mm; }
+          .pof-brand { display: flex; align-items: center; gap: 5mm; }
+          .pof-logo { height: 22mm; width: auto; max-width: 52mm; object-fit: contain; }
+          .pof-logo-slot { height: 22mm; width: 40mm; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
+          .pof-company-en { font-size: 25px; font-weight: 900; letter-spacing: 0.5px; color: #000; text-transform: uppercase; line-height: 1.05; }
+          .pof-company-ar { font-size: 17px; font-weight: 700; color: #000; margin-top: 1mm; }
+          .pof-contact { text-align: right; font-size: 10.5px; color: #000; line-height: 1.5; }
+          .pof-title { text-align: center; font-size: 30px; font-weight: 900; letter-spacing: 4px; color: #000; text-transform: uppercase; margin: 2mm 0 4mm; }
 
-          .pof-info { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-bottom: 6mm; border: 1px solid #000; }
-          .pof-info-col { padding: 4mm; border-right: 1px solid #000; }
+          .pof-info { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-bottom: 4mm; border: 1px solid #000; }
+          .pof-info-col { padding: 3.5mm 4mm; border-right: 1px solid #000; }
           .pof-info-col:last-child { border-right: none; }
-          .pof-info-col-label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #000; border-bottom: 1px solid #000; margin-bottom: 3mm; padding-bottom: 1mm; letter-spacing: 0.5px; }
-          .pof-billed-name { font-size: 14px; font-weight: 900; color: #000; }
-          .pof-billed-city { font-size: 11px; color: #000; margin-top: 1mm; }
-          .pof-info-row { display: flex; justify-content: space-between; margin-bottom: 1.5mm; }
+          .pof-info-col-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #000; border-bottom: 1px solid #000; margin-bottom: 2.5mm; padding-bottom: 1mm; letter-spacing: 0.5px; }
+          .pof-billed-name { font-size: 16px; font-weight: 900; color: #000; }
+          .pof-billed-city { font-size: 12px; color: #000; margin-top: 1mm; }
+          .pof-info-row { display: flex; justify-content: space-between; margin-bottom: 1.5mm; font-size: 11.5px; }
           .pof-info-key { color: #333; }
           .pof-info-val { font-weight: 700; color: #000; }
           .pof-info-val.accent, .pof-info-val.blue { color: #000; }
 
-          .pof-table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+          .pof-table { width: 100%; border-collapse: collapse; margin-bottom: 4mm; }
           .pof-table thead tr { background: #000; color: #fff; }
-          .pof-table thead th { padding: 2.5mm 2.5mm; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; border: 1px solid #000; }
+          .pof-table thead th { padding: 2.5mm; text-align: left; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; border: 1px solid #000; }
           .pof-table thead th:last-child, .pof-table thead th:nth-last-child(2) { text-align: right; }
-          .pof-table tbody td { padding: 2.5mm 2.5mm; font-size: 10.5px; border: 1px solid #000; }
+          .pof-table tbody td { padding: 2.5mm; font-size: 12px; border: 1px solid #000; }
           .pof-table tbody td:last-child, .pof-table tbody td:nth-last-child(2) { text-align: right; }
           .pof-table tbody td.bold { font-weight: 700; }
 
-          .pof-totals { display: flex; justify-content: flex-end; margin-bottom: 5mm; }
-          .pof-totals-box { width: 70mm; border: 1px solid #000; }
-          .pof-totals-row { display: flex; justify-content: space-between; padding: 2mm 4mm; border-bottom: 1px solid #000; font-size: 11px; }
-          .pof-totals-row:last-child { border-bottom: none; background: #000; color: #fff; font-size: 13px; font-weight: 900; }
+          /* Words (left) + totals (right) sit in ONE row so there's no big empty
+             gap to the left of the totals box. */
+          .pof-summary { display: flex; align-items: stretch; gap: 6mm; margin-bottom: 4mm; }
+          .pof-words-box { flex: 1; border: 1px solid #000; padding: 3mm 4mm; background: #fff; }
+          .pof-words-label { font-size: 10px; color: #333; text-transform: uppercase; font-weight: 700; margin-bottom: 1.5mm; }
+          .pof-words-val { font-size: 14px; font-weight: 700; color: #000; text-transform: uppercase; }
+          .pof-totals { flex-shrink: 0; }
+          .pof-totals-box { width: 72mm; border: 1px solid #000; }
+          .pof-totals-row { display: flex; justify-content: space-between; padding: 2.5mm 4mm; border-bottom: 1px solid #000; font-size: 13px; }
+          .pof-totals-row:last-child { border-bottom: none; background: #000; color: #fff; font-size: 16px; font-weight: 900; }
           .pof-totals-row.grand .pof-tr-val { color: #fff; }
 
-          .pof-words-box { border: 1px solid #000; padding: 3mm 4mm; margin-bottom: 5mm; background: #fff; }
-          .pof-words-label { font-size: 9px; color: #333; text-transform: uppercase; font-weight: 700; margin-bottom: 1mm; }
-          .pof-words-val { font-size: 12px; font-weight: 700; color: #000; text-transform: uppercase; }
-
-          .pof-sign-row { display: flex; justify-content: space-between; margin-top: 10mm; margin-bottom: 6mm; }
-          .pof-sign-box { width: 45%; border-top: 1px solid #000; padding-top: 2mm; font-size: 10px; color: #000; text-align: center; }
-
-          .pof-terms { border: 1px solid #000; padding: 4mm; margin-bottom: 4mm; }
-          .pof-terms-title { font-size: 10px; font-weight: 700; margin-bottom: 2mm; color: #000; }
+          .pof-terms { border: 1px solid #000; padding: 3.5mm 4mm; margin-bottom: 4mm; }
+          .pof-terms-title { font-size: 12px; font-weight: 700; margin-bottom: 2mm; color: #000; }
           .pof-terms ol { margin: 0; padding-left: 5mm; }
-          .pof-terms li { font-size: 9.5px; color: #000; margin-bottom: 1mm; }
+          .pof-terms li { font-size: 11px; color: #000; margin-bottom: 1mm; }
 
-          .pof-delivery { font-size: 10px; color: #000; }
+          .pof-delivery { font-size: 12px; color: #000; margin-bottom: 3mm; }
           .pof-delivery b { color: #000; }
+
+          .pof-sign-row { display: flex; justify-content: space-between; margin-top: 16mm; }
+          .pof-sign-box { width: 45%; border-top: 1px solid #000; padding-top: 2mm; font-size: 12px; font-weight: 700; color: #000; text-align: center; }
         }
       `}</style>
 
       {/* ── Company header (branding-driven, EN + Arabic) ───────────────────── */}
       <div className="pof-header">
         <div className="pof-brand">
-          {b.logoUrl ? <img className="pof-logo" src={b.logoUrl} alt="" /> : null}
+          {b.logoUrl
+            ? <img className="pof-logo" src={b.logoUrl} alt="" />
+            : <div className="pof-logo-slot">Logo</div>}
           <div>
             <div className="pof-company-en">{companyEn}</div>
             {b.legalNameAr ? <div className="pof-company-ar" dir="rtl">{b.legalNameAr}</div> : null}
@@ -199,30 +208,30 @@ function PrintOrderForm({ order, branding }) {
         </tbody>
       </table>
 
-      {/* ── Totals ─────────────────────────────────────────────────────────── */}
-      <div className="pof-totals">
-        <div className="pof-totals-box">
-          <div className="pof-totals-row">
-            <span className="pof-tr-key">Sub Total</span>
-            <span className="pof-tr-val">{fmtAED(subTotal)}</span>
-          </div>
-          {order.discount > 0 && (
+      {/* ── Amount in words (left) + totals (right) in ONE row ─────────────── */}
+      <div className="pof-summary">
+        <div className="pof-words-box">
+          <div className="pof-words-label">Order Total in Words</div>
+          <div className="pof-words-val">{amountToWords(grandTotal)}</div>
+        </div>
+        <div className="pof-totals">
+          <div className="pof-totals-box">
             <div className="pof-totals-row">
-              <span className="pof-tr-key">Discount ({order.discount}%)</span>
-              <span className="pof-tr-val">−{fmtAED(subTotal * order.discount / 100)}</span>
+              <span className="pof-tr-key">Sub Total</span>
+              <span className="pof-tr-val">{fmtAED(subTotal)}</span>
             </div>
-          )}
-          <div className="pof-totals-row grand">
-            <span className="pof-tr-key">Grand Total</span>
-            <span className="pof-tr-val">{fmtAED(grandTotal)}</span>
+            {order.discount > 0 && (
+              <div className="pof-totals-row">
+                <span className="pof-tr-key">Discount ({order.discount}%)</span>
+                <span className="pof-tr-val">−{fmtAED(subTotal * order.discount / 100)}</span>
+              </div>
+            )}
+            <div className="pof-totals-row grand">
+              <span className="pof-tr-key">Grand Total</span>
+              <span className="pof-tr-val">{fmtAED(grandTotal)}</span>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* ── Amount in words ────────────────────────────────────────────────── */}
-      <div className="pof-words-box">
-        <div className="pof-words-label">Order total in words amount</div>
-        <div className="pof-words-val">{amountToWords(grandTotal)}</div>
       </div>
 
       {/* ── Terms ──────────────────────────────────────────────────────────── */}
@@ -247,7 +256,7 @@ function PrintOrderForm({ order, branding }) {
 
       {/* ── Signature row ──────────────────────────────────────────────────── */}
       <div className="pof-sign-row">
-        <div className="pof-sign-box">Buyer's Signature</div>
+        <div className="pof-sign-box">Customer Signature</div>
         <div className="pof-sign-box">For {companyEn}</div>
       </div>
     </div>,
