@@ -105,29 +105,57 @@ function NotificationBell() {
   const prevUnread = useRef(null);
   const audioCtxRef = useRef(null);
 
+  const getAudioCtx = () => {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+    return audioCtxRef.current;
+  };
+
+  // Browsers block audio until the user interacts with the page once.
+  // "Unlock" the AudioContext on the first click / key press / touch so the
+  // chime is ready the moment a notification arrives.
+  useEffect(() => {
+    const unlock = () => {
+      const ctx = getAudioCtx();
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    window.addEventListener('touchstart', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+  }, []);
+
   // Two-tone "ding-dong" bell chime via Web Audio (no asset file needed).
-  // Browsers may block audio until the user's first interaction with the
-  // page; failures are silently ignored.
   const playChime = () => {
     try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
-      const ctx = audioCtxRef.current;
+      const ctx = getAudioCtx();
+      if (!ctx) return;
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
       const t0 = ctx.currentTime;
-      [[880, 0], [1174.66, 0.18]].forEach(([freq, dt]) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.0001, t0 + dt);
-        gain.gain.exponentialRampToValueAtTime(0.2, t0 + dt + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.5);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(t0 + dt);
-        osc.stop(t0 + dt + 0.55);
+      // Each note: a sine fundamental + a quiet octave harmonic for a fuller,
+      // more bell-like tone. E5 → A5 "ding-dong".
+      [[659.25, 0], [880, 0.22]].forEach(([freq, dt]) => {
+        [[freq, 0.25], [freq * 2, 0.07]].forEach(([f, vol]) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = f;
+          gain.gain.setValueAtTime(0.0001, t0 + dt);
+          gain.gain.exponentialRampToValueAtTime(vol, t0 + dt + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.6);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t0 + dt);
+          osc.stop(t0 + dt + 0.65);
+        });
       });
     } catch { /* audio unavailable/blocked — ignore */ }
   };
@@ -152,10 +180,10 @@ function NotificationBell() {
     finally { setLoading(false); }
   };
 
-  // Poll unread count every 30s.
+  // Poll unread count every 15s (also drives the bell sound on new items).
   useEffect(() => {
     loadCount();
-    const t = setInterval(loadCount, 30000);
+    const t = setInterval(loadCount, 15000);
     return () => clearInterval(t);
   }, []);
 
