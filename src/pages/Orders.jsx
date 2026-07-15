@@ -107,12 +107,13 @@ function PrintOrderForm({ order, branding }) {
             filter: grayscale(1);
             pointer-events: none;
           }
-          .pof-header { display: flex; align-items: center; justify-content: space-between; gap: 6mm; border-bottom: 1.5px solid #000; padding-bottom: 3mm; margin-bottom: 3mm; }
-          .pof-brand { display: flex; align-items: center; gap: 5mm; }
-          .pof-logo { height: 22mm; width: auto; max-width: 52mm; object-fit: contain; }
+          .pof-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 6mm; border-bottom: 1.5px solid #000; padding-bottom: 3mm; margin-bottom: 3mm; }
+          .pof-brand { display: flex; align-items: center; gap: 5mm; flex: 0 1 auto; min-width: 62mm; flex-shrink: 0; }
+          .pof-logo { height: 22mm; width: auto; max-width: 52mm; object-fit: contain; flex-shrink: 0; }
           .pof-logo-slot { height: 22mm; width: 40mm; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
-          .pof-company-en { font-size: 25px; font-weight: 900; letter-spacing: 0.5px; color: #000; text-transform: uppercase; line-height: 1.05; }
-          .pof-company-ar { font-size: 17px; font-weight: 700; color: #000; margin-top: 1mm; }
+          .pof-company-en { font-size: 25px; font-weight: 900; letter-spacing: 0.5px; color: #000; text-transform: uppercase; line-height: 1.05; white-space: nowrap; }
+          .pof-side-ar { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; }
+          .pof-company-ar { font-size: 18px; font-weight: 700; color: #000; margin-bottom: 1.5mm; text-align: right; }
           .pof-contact { text-align: right; font-size: 10.5px; color: #000; line-height: 1.5; }
           .pof-title { text-align: center; font-size: 30px; font-weight: 900; letter-spacing: 4px; color: #000; text-transform: uppercase; margin: 2mm 0 4mm; }
 
@@ -172,18 +173,18 @@ function PrintOrderForm({ order, branding }) {
           {logoSrc
             ? <img className="pof-logo" src={logoSrc} alt="" />
             : <div className="pof-logo-slot">Logo</div>}
-          <div>
-            <div className="pof-company-en">{companyEn}</div>
-            {b.legalNameAr ? <div className="pof-company-ar" dir="rtl">{b.legalNameAr}</div> : null}
-          </div>
+          <div className="pof-company-en">{companyEn}</div>
         </div>
-        <div className="pof-contact">
-          {addr ? <div>{addr}</div> : null}
-          {b.addressAr ? <div dir="rtl">{b.addressAr}</div> : null}
-          {b.phone ? <div>Tel: {b.phone}</div> : null}
-          {b.email ? <div>Email: {b.email}</div> : null}
-          {b.website ? <div>{b.website}</div> : null}
-          {b.trn ? <div>TRN: {b.trn}</div> : null}
+        <div className="pof-side-ar">
+          {b.legalNameAr ? <div className="pof-company-ar" dir="rtl">{b.legalNameAr}</div> : null}
+          <div className="pof-contact">
+            {addr ? <div>{addr}</div> : null}
+            {b.addressAr ? <div dir="rtl">{b.addressAr}</div> : null}
+            {b.phone ? <div>Tel: {b.phone}</div> : null}
+            {b.email ? <div>Email: {b.email}</div> : null}
+            {b.website ? <div>{b.website}</div> : null}
+            {b.trn ? <div>TRN: {b.trn}</div> : null}
+          </div>
         </div>
       </div>
       <div className="pof-title">Order Form</div>
