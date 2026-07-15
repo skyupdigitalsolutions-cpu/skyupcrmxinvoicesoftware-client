@@ -85,15 +85,21 @@ function PrintOrderForm({ order, branding }) {
           body > *:not(#print-order-form) { display: none !important; }
           #print-order-form {
             display: block !important;
-            position: fixed; inset: 0;
+            /* IMPORTANT: must stay in normal document flow (position:relative,
+               NOT fixed/absolute) so the browser's print engine can paginate
+               content taller than one page across page 2, 3, etc. A
+               viewport-fixed element gets clipped to a single page instead —
+               this was why orders with many items stopped after however many
+               rows fit on page 1, with the rest simply never appearing. */
+            position: relative;
             width: 210mm; min-height: 297mm;
             margin: 0; padding: 12mm 13mm;
             font-family: Arial, sans-serif;
             font-size: 12px; color: #000; background: #fff; box-sizing: border-box;
           }
-          /* Faint, repeated logo watermark behind all content. Sized larger than
-             the page and rotated so tiles still cover the corners; grayscale +
-             low opacity keeps it from competing with the (black & white) text. */
+          /* Faint, single logo watermark behind all content — centered once,
+             not repeated. Grayscale + low opacity keeps it from competing
+             with the (black & white) text. */
           .pof-watermark {
             position: absolute;
             top: 50%; left: 50%;
@@ -107,14 +113,16 @@ function PrintOrderForm({ order, branding }) {
             filter: grayscale(1);
             pointer-events: none;
           }
-          .pof-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 6mm; border-bottom: 1.5px solid #000; padding-bottom: 3mm; margin-bottom: 3mm; }
-          .pof-brand { display: flex; align-items: center; gap: 5mm; flex: 0 1 auto; min-width: 62mm; flex-shrink: 0; }
+          .pof-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; border-bottom: 1.5px solid #000; padding-bottom: 3mm; margin-bottom: 3mm; }
+          .pof-brand { display: flex; flex-direction: column; gap: 2mm; flex: 1 1 55%; min-width: 0; }
+          .pof-brand-top { display: flex; align-items: center; gap: 5mm; }
           .pof-logo { height: 22mm; width: auto; max-width: 52mm; object-fit: contain; flex-shrink: 0; }
           .pof-logo-slot { height: 22mm; width: 40mm; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
           .pof-company-en { font-size: 25px; font-weight: 900; letter-spacing: 0.5px; color: #000; text-transform: uppercase; line-height: 1.05; white-space: nowrap; }
-          .pof-side-ar { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; }
+          .pof-contact-en { font-size: 10.5px; color: #000; line-height: 1.5; }
+          .pof-side-ar { flex: 1 1 40%; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
           .pof-company-ar { font-size: 18px; font-weight: 700; color: #000; margin-bottom: 1.5mm; text-align: right; }
-          .pof-contact { text-align: right; font-size: 10.5px; color: #000; line-height: 1.5; }
+          .pof-address-ar { font-size: 10.5px; color: #000; line-height: 1.5; text-align: right; }
           .pof-title { text-align: center; font-size: 30px; font-weight: 900; letter-spacing: 4px; color: #000; text-transform: uppercase; margin: 2mm 0 4mm; }
 
           .pof-info { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-bottom: 4mm; border: 1px solid #000; }
@@ -170,21 +178,26 @@ function PrintOrderForm({ order, branding }) {
       {/* ── Company header (branding-driven, EN + Arabic) ───────────────────── */}
       <div className="pof-header">
         <div className="pof-brand">
-          {logoSrc
-            ? <img className="pof-logo" src={logoSrc} alt="" />
-            : <div className="pof-logo-slot">Logo</div>}
-          <div className="pof-company-en">{companyEn}</div>
-        </div>
-        <div className="pof-side-ar">
-          {b.legalNameAr ? <div className="pof-company-ar" dir="rtl">{b.legalNameAr}</div> : null}
-          <div className="pof-contact">
+          <div className="pof-brand-top">
+            {logoSrc
+              ? <img className="pof-logo" src={logoSrc} alt="" />
+              : <div className="pof-logo-slot">Logo</div>}
+            <div className="pof-company-en">{companyEn}</div>
+          </div>
+          {/* All English contact details get their own full-width column —
+              previously these shared a single narrow right-hand column with
+              the Arabic text, which is what caused everything to wrap/squeeze. */}
+          <div className="pof-contact-en">
             {addr ? <div>{addr}</div> : null}
-            {b.addressAr ? <div dir="rtl">{b.addressAr}</div> : null}
             {b.phone ? <div>Tel: {b.phone}</div> : null}
             {b.email ? <div>Email: {b.email}</div> : null}
             {b.website ? <div>{b.website}</div> : null}
             {b.trn ? <div>TRN: {b.trn}</div> : null}
           </div>
+        </div>
+        <div className="pof-side-ar">
+          {b.legalNameAr ? <div className="pof-company-ar" dir="rtl">{b.legalNameAr}</div> : null}
+          {b.addressAr ? <div className="pof-address-ar" dir="rtl">{b.addressAr}</div> : null}
         </div>
       </div>
       <div className="pof-title">Order Form</div>
