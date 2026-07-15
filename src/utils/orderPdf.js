@@ -173,6 +173,35 @@ async function ensureArabicFont(doc) {
   }
 }
 
+// Draws right-aligned Arabic text that may wrap to multiple lines. This is
+// the part the previous version got wrong: reshaping (letter-joining +
+// RTL reversal) MUST happen per line, after wrapping — not on the whole
+// string before wrapping. Reversing a multi-line blob as one unit scrambles
+// word order across the line break, and not measuring how many lines it
+// actually produced causes the next block drawn below to overlap it.
+// Returns the Y position immediately below the last line drawn.
+function drawArabicBlock(doc, text, { x, y, fontSize, maxWidth, hasArabicFont, lineHeight }) {
+  const raw = String(text ?? ''); // NOT clean() — that strips all non-ASCII, which would delete the Arabic entirely
+  if (!raw.trim()) return y;
+
+  doc.setFont(hasArabicFont ? 'Amiri' : undefined, 'normal');
+  doc.setFontSize(fontSize);
+  doc.setTextColor(0, 0, 0);
+
+  // Wrap in LOGICAL (reading) order first, using the Arabic font's own
+  // metrics — splitTextToSize respects whatever font is currently set.
+  const lines = doc.splitTextToSize(raw, maxWidth);
+
+  lines.forEach((line, i) => {
+    const shaped = hasArabicFont ? reshapeArabicForPdf(line) : '';
+    if (!shaped) return; // no Arabic font available — skip rather than show garbled/empty boxes
+    doc.text(shaped, x, y + i * lineHeight, { align: 'right' });
+  });
+
+  doc.setFont(undefined, 'normal'); // back to the default Latin font
+  return y + lines.length * lineHeight;
+}
+
 export async function buildOrderPdfBlob(order, branding = {}) {
   const JsPDF = await ensureJsPDF();
   const doc = new JsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
@@ -238,32 +267,36 @@ export async function buildOrderPdfBlob(order, branding = {}) {
     .filter(Boolean);
 
   // ── Arabic company name + address (real shaping, not just Latin fallback) ──
+  // Constrained to a right-side column that never crosses into the logo/
+  // company-name area on the left, so long Arabic text wraps instead of
+  // colliding with the English side.
   const hasArabicFont = (containsArabic(b.legalNameAr) || containsArabic(b.addressAr))
     ? await ensureArabicFont(doc)
     : false;
+  const arabicColW = Math.min(230, pageW - nameX - M - 10);
   let contactStartY = 26;
   if (b.legalNameAr) {
-    doc.setFont(hasArabicFont ? 'Amiri' : undefined, 'normal');
-    doc.setFontSize(13);
-    doc.setTextColor(0, 0, 0);
-    const text = hasArabicFont ? reshapeArabicForPdf(b.legalNameAr) : clean(b.legalNameAr);
-    doc.text(text, pageW - M, contactStartY, { align: 'right' });
-    contactStartY += 16;
-    doc.setFont(undefined, 'normal'); // back to the default Latin font
+    contactStartY = drawArabicBlock(doc, b.legalNameAr, {
+      x: pageW - M, y: contactStartY, fontSize: 13, maxWidth: arabicColW, hasArabicFont, lineHeight: 15,
+    }) + 4;
   }
   if (b.addressAr) {
-    doc.setFont(hasArabicFont ? 'Amiri' : undefined, 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(0, 0, 0);
-    const text = hasArabicFont ? reshapeArabicForPdf(b.addressAr) : clean(b.addressAr);
-    doc.text(text, pageW - M, contactStartY, { align: 'right', maxWidth: pageW - nameX - M });
-    contactStartY += 12;
-    doc.setFont(undefined, 'normal');
+    contactStartY = drawArabicBlock(doc, b.addressAr, {
+      x: pageW - M, y: contactStartY, fontSize: 8.5, maxWidth: arabicColW, hasArabicFont, lineHeight: 11,
+    }) + 4;
   }
+  doc.setFont(undefined, 'normal');
   doc.setFontSize(8.5);
+  doc.setTextColor(0, 0, 0);
   contact.forEach((line, i) => doc.text(line, pageW - M, contactStartY + i * 12, { align: 'right' }));
+  const rightColBottom = contactStartY + contact.length * 12;
 
-  y += 26;
+  // The header's overall height now depends on whichever side is taller —
+  // the left (logo + company name + tagline) or the right (Arabic name/
+  // address + Tel/Email/TRN, which can grow tall when Arabic wraps). Using
+  // a fixed offset here (as before) let a tall right column overlap the
+  // "ORDER FORM" title/divider whenever Arabic text was present.
+  y = Math.max(y + 26, rightColBottom + 18);
   doc.setFont(undefined, 'bold');
   doc.setFontSize(17);
   doc.setTextColor(0, 0, 0);
