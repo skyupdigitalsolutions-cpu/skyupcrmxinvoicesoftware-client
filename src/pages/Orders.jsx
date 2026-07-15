@@ -96,11 +96,13 @@ function PrintOrderForm({ order, branding }) {
              low opacity keeps it from competing with the (black & white) text. */
           .pof-watermark {
             position: absolute;
-            top: -35%; left: -35%; width: 170%; height: 170%;
+            top: 50%; left: 50%;
+            width: 65%; aspect-ratio: 1 / 1;
+            transform: translate(-50%, -50%) rotate(-28deg);
             background-image: var(--pof-wm-url);
-            background-repeat: repeat;
-            background-size: 46mm 46mm;
-            transform: rotate(-28deg);
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain;
             opacity: 0.07;
             filter: grayscale(1);
             pointer-events: none;

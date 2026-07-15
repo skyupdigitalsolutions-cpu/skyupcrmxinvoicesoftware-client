@@ -118,15 +118,10 @@ async function loadLogoTile(logoUrl) {
 // small tiles. A 2-column x 3-row scatter covers the page without looking busy.
 function paintWatermark(doc, tileDataUrl, pageW, pageH) {
   if (!tileDataUrl) return;
-  const size = pageW * 0.6; // large — each mark spans well over half the page width
-  const positions = [
-    { x: pageW * 0.05, y: pageH * 0.04 },
-    { x: pageW * 0.55, y: pageH * 0.42 },
-    { x: pageW * -0.05, y: pageH * 0.78 },
-  ];
-  positions.forEach(({ x, y }) => {
-    doc.addImage(tileDataUrl, 'PNG', x, y, size, size, undefined, 'FAST', -28);
-  });
+  const size = pageW * 0.65; // large, single centered mark
+  const x = (pageW - size) / 2;
+  const y = (pageH - size) / 2;
+  doc.addImage(tileDataUrl, 'PNG', x, y, size, size, undefined, 'FAST', -28);
 }
 
 // ── Arabic font (Amiri) ──────────────────────────────────────────────────────
