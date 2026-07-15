@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Building2, Plus, Pencil, Trash2, Users, Shield, Loader2, Target,
   Cloud, Mail, DollarSign, ChevronDown, ChevronRight, Send, Eye, EyeOff,
-  Palette, Image as ImageIcon, Server, CheckCircle2, XCircle, ShieldCheck,
+  Palette, Image as ImageIcon, Server,
   Languages,
 } from 'lucide-react';
 import { companyApi, platformApi } from '../api/endpoints.js';
@@ -408,51 +408,21 @@ function CloudinaryModal({ company, onClose }) {
 }
 
 // ── Email Report Settings Modal ────────────────────────────────────────────────
-// Daily report is sent via the company's own SMTP account (Gmail / Zoho /
-// Outlook / any SMTP). Provider-agnostic — no third-party API key needed.
+// Daily report is sent through the developer's own Brevo account (the same
+// connection configured in "Platform Email (Expiry Notifications)" below) —
+// there's no per-company SMTP/Brevo setup anymore, just who receives it and
+// when.
 function EmailReportModal({ company, onClose }) {
   const { show } = useToast();
   const er = company.emailReport || {};
   const [form, setForm] = useState({
     enabled:      er.enabled      ?? false,
     adminEmail:   er.adminEmail   || '',
-    senderEmail:  er.senderEmail  || '',
     senderName:   er.senderName   || '',
-    smtpHost:     er.smtpHost     || 'smtp.gmail.com',
-    smtpPort:     er.smtpPort     || 587,
-    smtpSecure:   er.smtpSecure   ?? false,
-    smtpUser:     er.smtpUser     || '',
-    smtpPass:     '', // always blank on open — server never returns the password
     sendAt:       er.sendAt       || '08:00',
   });
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  // null = not verified yet, true = valid, false = invalid
-  const [smtpStatus, setSmtpStatus] = useState(null);
-  const [smtpStatusMsg, setSmtpStatusMsg] = useState('');
-
-  const resetStatus = () => { setSmtpStatus(null); setSmtpStatusMsg(''); };
-
-  const verifySmtp = async () => {
-    if (!form.smtpHost.trim() || !form.smtpUser.trim()) {
-      show('Enter SMTP host and username first.', 'error');
-      return;
-    }
-    setVerifying(true);
-    setSmtpStatus(null);
-    try {
-      await companyApi.verifyEmailSmtp(company.id, {
-        smtpHost: form.smtpHost, smtpPort: form.smtpPort, smtpSecure: form.smtpSecure,
-        smtpUser: form.smtpUser, smtpPass: form.smtpPass,
-      });
-      setSmtpStatus(true);
-      setSmtpStatusMsg('SMTP connection verified.');
-    } catch (e) {
-      setSmtpStatus(false);
-      setSmtpStatusMsg(apiError(e) || 'SMTP connection failed.');
-    } finally { setVerifying(false); }
-  };
 
   const save = async () => {
     setBusy(true);
@@ -467,7 +437,7 @@ function EmailReportModal({ company, onClose }) {
   const sendTest = async () => {
     setTesting(true);
     try {
-      // Save first so the latest SMTP values are persisted, then test.
+      // Save first so the latest values are persisted, then test.
       await companyApi.setEmailReport(company.id, form);
       const r = await companyApi.testEmailReport(company.id);
       show(r.message || 'Test email sent!', 'success');
@@ -505,84 +475,6 @@ function EmailReportModal({ company, onClose }) {
           />
         </Field>
 
-        <div className="pt-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-          SMTP Settings
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <Field label="SMTP Host">
-            <Input
-              value={form.smtpHost}
-              placeholder="smtp.gmail.com"
-              onChange={(e) => { setForm({ ...form, smtpHost: e.target.value }); resetStatus(); }}
-            />
-          </Field>
-          <Field label="Port">
-            <Input
-              type="number"
-              value={form.smtpPort}
-              placeholder="587"
-              onChange={(e) => { setForm({ ...form, smtpPort: Number(e.target.value) }); resetStatus(); }}
-            />
-          </Field>
-        </div>
-
-        <label className="flex cursor-pointer items-center gap-2 text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
-          <input
-            type="checkbox"
-            className="h-3.5 w-3.5 accent-purple-500"
-            checked={form.smtpSecure}
-            onChange={(e) => { setForm({ ...form, smtpSecure: e.target.checked }); resetStatus(); }}
-          />
-          Use SSL (port 465). Leave off for STARTTLS (port 587 — Gmail default).
-        </label>
-
-        <Field label="SMTP Username">
-          <Input
-            value={form.smtpUser}
-            placeholder="your.address@gmail.com"
-            onChange={(e) => { setForm({ ...form, smtpUser: e.target.value }); resetStatus(); }}
-          />
-        </Field>
-
-        <Field label="SMTP Password / App Password">
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <SecretInput
-                value={form.smtpPass}
-                placeholder="Leave blank to keep existing"
-                onChange={(e) => { setForm({ ...form, smtpPass: e.target.value }); resetStatus(); }}
-              />
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={verifying || !form.smtpHost.trim() || !form.smtpUser.trim()}
-              onClick={verifySmtp}
-              title="Connect to the SMTP server to verify the settings (no email sent)"
-            >
-              {verifying
-                ? <Loader2 size={13} className="animate-spin" />
-                : <ShieldCheck size={13} />}
-            </Button>
-          </div>
-          {smtpStatus !== null && (
-            <p className={`mt-1 flex items-center gap-1 text-[11px] font-medium ${smtpStatus ? 'text-green-600' : 'text-red-600'}`}>
-              {smtpStatus ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-              {smtpStatusMsg}
-            </p>
-          )}
-        </Field>
-
-        <Field label="Sender Email (From address)">
-          <Input
-            type="email"
-            value={form.senderEmail}
-            placeholder="your.address@gmail.com"
-            onChange={(e) => setForm({ ...form, senderEmail: e.target.value })}
-          />
-        </Field>
-
         <Field label="Sender Name (optional)">
           <Input
             value={form.senderName}
@@ -592,12 +484,9 @@ function EmailReportModal({ company, onClose }) {
         </Field>
 
         <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-          For Gmail: host <code>smtp.gmail.com</code>, port <code>587</code>, and a{' '}
-          <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer"
-            className="underline text-purple-600">
-            Google App Password
-          </a>{' '}
-          (not your normal password — requires 2-Step Verification). The sender email is usually the same as the SMTP username.
+          Reports are sent through the developer's own Brevo account (configured once, platform-wide,
+          in "Platform Email" below) — no per-company email setup needed. Sender Name only changes how
+          the "From" name looks to this company's recipient; the actual sending account stays the platform's.
         </p>
       </div>
 
@@ -966,11 +855,9 @@ function PlatformEmailCard() {
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [showKey, setShowKey] = useState(false);
   const [testTo, setTestTo] = useState('');
   const [form, setForm] = useState({
-    enabled: false, brevoApiKey: '', senderEmail: '', senderName: '',
-    remindDays: 5, ccOwnerEmail: '', hasApiKey: false,
+    enabled: false, remindDays: 5, ccOwnerEmail: '',
   });
 
   useEffect(() => {
@@ -980,12 +867,8 @@ function PlatformEmailCard() {
         const e = s.expiryEmail || {};
         setForm({
           enabled: !!e.enabled,
-          brevoApiKey: '', // never returned; blank = keep existing
-          senderEmail: e.senderEmail || '',
-          senderName: e.senderName || '',
           remindDays: e.remindDays ?? 5,
           ccOwnerEmail: e.ccOwnerEmail || '',
-          hasApiKey: !!e.hasApiKey,
         });
         setLoaded(true);
       })
@@ -995,15 +878,11 @@ function PlatformEmailCard() {
   const save = async () => {
     setBusy(true);
     try {
-      const s = await platformApi.setExpiryEmail({
+      await platformApi.setExpiryEmail({
         enabled: form.enabled,
-        brevoApiKey: form.brevoApiKey, // blank keeps existing
-        senderEmail: form.senderEmail,
-        senderName: form.senderName,
         remindDays: Number(form.remindDays) || 5,
         ccOwnerEmail: form.ccOwnerEmail,
       });
-      setForm((f) => ({ ...f, brevoApiKey: '', hasApiKey: !!s.expiryEmail?.hasApiKey }));
       show('Platform expiry-email settings saved.', 'success');
     } catch (e) { show(apiError(e), 'error'); }
     finally { setBusy(false); }
@@ -1013,10 +892,9 @@ function PlatformEmailCard() {
     if (!testTo.trim()) return show('Enter an email to send the test to.', 'error');
     setTesting(true);
     try {
-      // Save first so the latest key/sender are persisted, then test.
+      // Save first so the latest settings are persisted, then test.
       await platformApi.setExpiryEmail({
-        enabled: form.enabled, brevoApiKey: form.brevoApiKey, senderEmail: form.senderEmail,
-        senderName: form.senderName, remindDays: Number(form.remindDays) || 5, ccOwnerEmail: form.ccOwnerEmail,
+        enabled: form.enabled, remindDays: Number(form.remindDays) || 5, ccOwnerEmail: form.ccOwnerEmail,
       });
       const r = await platformApi.testExpiryEmail(testTo.trim());
       show(r.message || 'Test sent.', 'success');
@@ -1042,8 +920,11 @@ function PlatformEmailCard() {
           {!loaded ? <Spinner label="Loading…" /> : (
             <>
               <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                One Brevo connection used to email expiry warnings to <strong>every company's admin</strong>.
-                This is separate from each company's daily-report email.
+                Emails expiry warnings to <strong>every company's admin</strong>, and powers every
+                company's daily report — both sent through the platform's one Brevo account,
+                configured as environment variables on the server (<code>BREVO_API_KEY</code>,{' '}
+                <code>BREVO_SENDER_EMAIL</code>, <code>BREVO_SENDER_NAME</code>). Nothing to enter here
+                for the connection itself — just the behavior settings below.
               </p>
 
               <label className="flex cursor-pointer items-center gap-2 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
@@ -1051,33 +932,6 @@ function PlatformEmailCard() {
                   checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
                 Enable expiry email notifications
               </label>
-
-              <Field label={`Brevo API Key ${form.hasApiKey ? '(saved — leave blank to keep)' : ''}`}>
-                <div className="relative">
-                  <Input
-                    type={showKey ? 'text' : 'password'}
-                    value={form.brevoApiKey}
-                    placeholder={form.hasApiKey ? '•••••••• (key saved)' : 'xkeysib-…'}
-                    onChange={(e) => setForm({ ...form, brevoApiKey: e.target.value })}
-                    style={{ paddingRight: '2.2rem' }}
-                  />
-                  <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-3"
-                    onClick={() => setShowKey((v) => !v)} tabIndex={-1}>
-                    {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-              </Field>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Sender Email (verified in Brevo)">
-                  <Input type="email" value={form.senderEmail} placeholder="billing@yourplatform.com"
-                    onChange={(e) => setForm({ ...form, senderEmail: e.target.value })} />
-                </Field>
-                <Field label="Sender Name">
-                  <Input value={form.senderName} placeholder="Subscriptions"
-                    onChange={(e) => setForm({ ...form, senderName: e.target.value })} />
-                </Field>
-              </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Remind how many days before expiry">
@@ -1104,13 +958,6 @@ function PlatformEmailCard() {
                   {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save'}
                 </Button>
               </div>
-
-              <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                Get your key from{' '}
-                <a href="https://app.brevo.com/settings/keys/api" target="_blank" rel="noreferrer"
-                  className="underline text-purple-600">Brevo → Settings → API Keys</a>.
-                The sender must be a verified sender in that Brevo account.
-              </p>
             </>
           )}
         </div>

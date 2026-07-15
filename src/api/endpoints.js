@@ -94,7 +94,6 @@ export const companyApi = {
     setBranding: (id, body) => api.patch(`/companies/${id}/branding`, body).then((r) => r.data),
     uploadLogo: (id, image, target) => api.post(`/companies/${id}/logo`, { image, target }).then((r) => r.data), // { url, logoUrl, receiptLogoUrl }
     setEmailReport: (id, body) => api.patch(`/companies/${id}/email-report`, body).then((r) => r.data),
-    verifyEmailSmtp: (id, body) => api.post(`/companies/${id}/email-report/verify`, body).then((r) => r.data),
     testEmailReport: (id) => api.post(`/companies/${id}/email-report/test`).then((r) => r.data),
 };
 // ── Notifications (per-user, company-scoped) ────────────────────────────────
