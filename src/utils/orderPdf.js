@@ -271,12 +271,21 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   // reference layout. Falls back to text-only if no logo is set.
   let y = 40;
   let nameX = M;
+
+  // Figure out the English text block's total height FIRST, so the logo can
+  // be vertically centered against the whole block (name + tagline +
+  // contact lines) — not just against the name's single line.
+  const contact = [addr, b.phone ? `Tel: ${clean(b.phone)}` : '', b.email ? `Email: ${clean(b.email)}` : '', b.trn ? `TRN: ${clean(b.trn)}` : '']
+    .filter(Boolean);
+  const textBlockH = 16 + (b.headerTagline ? 11 : 0) + contact.length * 12;
+
   const logoAsset = await loadLogoForPdf(logoUrl);
   if (logoAsset) {
-    const logoH = 46;
+    const logoH = Math.max(40, Math.min(56, textBlockH + 12)); // scales with content, within sane bounds
     const logoW = (logoAsset.width / logoAsset.height) * logoH;
-    doc.addImage(logoAsset.dataUrl, logoAsset.fmt, M, y - 14, logoW, logoH);
-    nameX = M + logoW + 12;
+    const logoY = y - 8 + (textBlockH - logoH) / 2; // centered against the text block
+    doc.addImage(logoAsset.dataUrl, logoAsset.fmt, M, logoY, logoW, logoH);
+    nameX = M + logoW + 14;
   }
   y += 8;
   // The Arabic column always reserves a fixed share of the page (independent
@@ -311,8 +320,6 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   doc.setFont(undefined, 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(0, 0, 0);
-  const contact = [addr, b.phone ? `Tel: ${clean(b.phone)}` : '', b.email ? `Email: ${clean(b.email)}` : '', b.trn ? `TRN: ${clean(b.trn)}` : '']
-    .filter(Boolean);
   contact.forEach((line, i) => doc.text(line, nameX, leftY + i * 12));
   const leftColBottom = leftY + contact.length * 12;
 

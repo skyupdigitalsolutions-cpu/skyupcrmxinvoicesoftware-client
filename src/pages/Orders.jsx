@@ -113,18 +113,19 @@ function PrintOrderForm({ order, branding }) {
             filter: grayscale(1);
             pointer-events: none;
           }
-          .pof-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; border-bottom: 1.5px solid #000; padding-bottom: 3mm; margin-bottom: 3mm; }
+          .pof-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10mm; border-bottom: 1.5px solid #000; padding: 0 0 4mm; margin-bottom: 4mm; }
           /* flex-shrink:0 is the important part here — without it, this
              column could be squeezed narrower than its own content (the
              company name has white-space:nowrap so it can't wrap to
              compensate), and the text would overflow straight into the
              Arabic column next to it, causing the two to visually collide. */
-          .pof-brand { display: flex; flex-direction: column; gap: 2mm; flex: 0 0 auto; max-width: 66%; }
-          .pof-brand-top { display: flex; align-items: center; gap: 5mm; }
-          .pof-logo { height: 26mm; width: auto; max-width: 58mm; object-fit: contain; flex-shrink: 0; }
-          .pof-logo-slot { height: 26mm; width: 44mm; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
-          .pof-company-en { font-size: 22px; font-weight: 900; letter-spacing: 0.4px; color: #000; text-transform: uppercase; line-height: 1.1; white-space: nowrap; }
-          .pof-contact-en { font-size: 10px; color: #000; line-height: 1.5; }
+          .pof-brand { display: flex; flex-direction: row; align-items: center; gap: 6mm; flex: 0 0 auto; max-width: 64%; }
+          .pof-logo { height: 24mm; width: auto; max-width: 50mm; object-fit: contain; flex-shrink: 0; }
+          .pof-logo-slot { height: 24mm; width: 42mm; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 1px; flex-shrink: 0; }
+          .pof-brand-text { display: flex; flex-direction: column; gap: 1.5mm; min-width: 0; }
+          .pof-company-en { font-size: 21px; font-weight: 900; letter-spacing: 0.4px; color: #000; text-transform: uppercase; line-height: 1.15; white-space: nowrap; }
+          .pof-tagline-en { font-size: 8.5px; font-weight: 700; letter-spacing: 0.3px; color: #333; text-transform: uppercase; }
+          .pof-contact-en { font-size: 10px; color: #000; line-height: 1.6; }
           /* The Arabic side takes whatever's left (min-width:0 lets it
              shrink below its content's natural width when needed) — Arabic
              text wraps safely onto extra lines, so it's the side that
@@ -187,21 +188,22 @@ function PrintOrderForm({ order, branding }) {
       {/* ── Company header (branding-driven, EN + Arabic) ───────────────────── */}
       <div className="pof-header">
         <div className="pof-brand">
-          <div className="pof-brand-top">
-            {logoSrc
-              ? <img className="pof-logo" src={logoSrc} alt="" />
-              : <div className="pof-logo-slot">Logo</div>}
+          {logoSrc
+            ? <img className="pof-logo" src={logoSrc} alt="" />
+            : <div className="pof-logo-slot">Logo</div>}
+          <div className="pof-brand-text">
             <div className="pof-company-en">{companyEn}</div>
-          </div>
-          {/* All English contact details get their own full-width column —
-              previously these shared a single narrow right-hand column with
-              the Arabic text, which is what caused everything to wrap/squeeze. */}
-          <div className="pof-contact-en">
-            {addr ? <div>{addr}</div> : null}
-            {b.phone ? <div>Tel: {b.phone}</div> : null}
-            {b.email ? <div>Email: {b.email}</div> : null}
-            {b.website ? <div>{b.website}</div> : null}
-            {b.trn ? <div>TRN: {b.trn}</div> : null}
+            {b.headerTagline ? <div className="pof-tagline-en">{b.headerTagline}</div> : null}
+            {/* All English contact details get their own full-width column —
+                previously these shared a single narrow right-hand column with
+                the Arabic text, which is what caused everything to wrap/squeeze. */}
+            <div className="pof-contact-en">
+              {addr ? <div>{addr}</div> : null}
+              {b.phone ? <div>Tel: {b.phone}</div> : null}
+              {b.email ? <div>Email: {b.email}</div> : null}
+              {b.website ? <div>{b.website}</div> : null}
+              {b.trn ? <div>TRN: {b.trn}</div> : null}
+            </div>
           </div>
         </div>
         <div className="pof-side-ar">
