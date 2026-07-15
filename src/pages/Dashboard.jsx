@@ -16,15 +16,19 @@ import { useAuth } from '../context/AuthContext.jsx';
 import TeamAttendanceCard from '../components/TeamAttendanceCard.jsx';
 import { LineChart, DonutWithCenter } from '../components/charts/MiniCharts.jsx';
 
+// Full funnel — matches LEAD_STAGES / leadStageOf used everywhere else in the
+// app (Leads page, reports): Lead → Opportunity → Enquiry → Buyer.
 const STAGES = [
-  { key: 'Enquiry',     color: '#2563EB' },
+  { key: 'Lead',        color: '#6B7280' },
   { key: 'Opportunity', color: '#F59E0B' },
+  { key: 'Enquiry',     color: '#2563EB' },
   { key: 'Buyer',       color: '#10B981' },
 ];
 const stageOfStatus = (status) => {
   if (status === 'Won') return 'Buyer';
-  if (status === 'Interested' || status === 'Follow-up') return 'Opportunity';
-  return 'Enquiry';
+  if (status === 'Follow-up') return 'Enquiry';
+  if (status === 'Interested' || status === 'Contacted') return 'Opportunity';
+  return 'Lead'; // New / Lost / anything else
 };
 const LEAD_STATUS_LIST = ['New', 'Contacted', 'Interested', 'Follow-up', 'Won', 'Lost'];
 
@@ -64,7 +68,7 @@ export default function Dashboard() {
   const statusMax = Math.max(1, ...Object.values(byStatus));
   const countryMax = Math.max(1, ...Object.values(byCountry));
 
-  const stageCounts = { Enquiry: 0, Opportunity: 0, Buyer: 0 };
+  const stageCounts = { Lead: 0, Opportunity: 0, Enquiry: 0, Buyer: 0 };
   Object.entries(leads.byStatus).forEach(([status, n]) => { stageCounts[stageOfStatus(status)] += n; });
   const pipeline = STAGES.map((s) => ({ label: s.key, value: stageCounts[s.key] || 0, color: s.color }));
   const sourceEntries = Object.entries(leads.bySource).sort((a, b) => b[1] - a[1]);
@@ -78,7 +82,7 @@ export default function Dashboard() {
       <ExpiryBanner subscription={subscription} isAdmin={isAdmin} />
 
       <div className="mb-5 grid grid-cols-2 gap-3.5 md:grid-cols-4">
-        <Stat value={stats.totalLeads} label="Total Contacts" color="border-info"     hint="View leads →"   onClick={() => navigate('/leads')} />
+        <Stat value={stats.totalLeads} label="Total Contacts Enquired" color="border-info"     hint="View leads →"   onClick={() => navigate('/leads')} />
         <Stat value={stats.buyers}     label="Buyers"               color="border-ok"       hint="View won →"     onClick={() => navigate('/leads?status=Won')} />
         <Stat value={stageCounts.Enquiry} label="Enquiries"          color="border-purple-400" hint="View leads →"  onClick={() => navigate('/leads')} />
         <Stat value={stats.pending}    label="Pending Delivery"     color="border-gold"       hint="View orders →" onClick={() => navigate('/orders?status=Pending')} />
