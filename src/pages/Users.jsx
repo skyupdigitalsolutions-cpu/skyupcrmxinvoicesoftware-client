@@ -196,9 +196,9 @@ function UserFormModal({ mode, user, onClose, onSaved }) {
         <Field label="Username">
           <Input value={form.username} placeholder="e.g. rahul1" disabled={isEdit}
             className={isEdit ? '!bg-gray-50 !text-ink-3' : ''}
-            onChange={(e) => set('username', e.target.value)} />
+            onChange={(e) => set('username', e.target.value.toLowerCase().replace(/\s+/g, ''))} />
           {isEdit && <p className="mt-1 text-[10px] text-ink-3">Username can't be changed.</p>}
-          {!isEdit && <p className="mt-1 text-[10px] text-ink-3">Saved in lowercase. Min 3 characters.</p>}
+          {!isEdit && <p className="mt-1 text-[10px] text-ink-3">Lowercase only, no spaces. Min 3 characters.</p>}
         </Field>
         <Field label="Email Address (used for password reset)">
           <Input type="email" value={form.email} placeholder="employee@company.com"
