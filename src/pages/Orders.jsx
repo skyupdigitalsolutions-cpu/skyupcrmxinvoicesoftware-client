@@ -85,15 +85,21 @@ function PrintOrderForm({ order, branding }) {
           body > *:not(#print-order-form) { display: none !important; }
           #print-order-form {
             display: block !important;
-            position: fixed; inset: 0;
+            /* IMPORTANT: must stay in normal document flow (position:relative,
+               NOT fixed/absolute) so the browser's print engine can paginate
+               content taller than one page across page 2, 3, etc. A
+               viewport-fixed element gets clipped to a single page instead —
+               this was why orders with many items stopped after however many
+               rows fit on page 1, with the rest simply never appearing. */
+            position: relative;
             width: 210mm; min-height: 297mm;
             margin: 0; padding: 12mm 13mm;
             font-family: Arial, sans-serif;
             font-size: 12px; color: #000; background: #fff; box-sizing: border-box;
           }
-          /* Faint, repeated logo watermark behind all content. Sized larger than
-             the page and rotated so tiles still cover the corners; grayscale +
-             low opacity keeps it from competing with the (black & white) text. */
+          /* Faint, single logo watermark behind all content — centered once,
+             not repeated. Grayscale + low opacity keeps it from competing
+             with the (black & white) text. */
           .pof-watermark {
             position: absolute;
             top: 50%; left: 50%;

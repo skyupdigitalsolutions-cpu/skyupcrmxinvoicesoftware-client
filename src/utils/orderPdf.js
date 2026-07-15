@@ -197,6 +197,55 @@ function drawArabicBlock(doc, text, { x, y, fontSize, maxWidth, hasArabicFont, l
   return y + lines.length * lineHeight;
 }
 
+// Loads the header logo as a data URL via fetch + blob — deliberately NOT
+// via a canvas (as the watermark tile does). If this exact image URL was
+// ever loaded anywhere else on the page as a plain <img> without CORS mode,
+// some browsers will serve it from cache in a way that taints a canvas on
+// draw (a SecurityError that gets silently swallowed by a catch block),
+// which is a likely cause of the logo silently not appearing. Fetching the
+// raw bytes directly sidesteps that failure mode entirely.
+async function loadLogoForPdf(logoUrl) {
+  if (!logoUrl) return null;
+  try {
+    const res = await fetch(logoUrl, { mode: 'cors', cache: 'no-store' });
+    if (!res.ok) throw new Error('logo fetch failed');
+    const blob = await res.blob();
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('logo read failed'));
+      reader.readAsDataURL(blob);
+    });
+    const { width, height } = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve({ width: im.naturalWidth, height: im.naturalHeight });
+      im.onerror = () => reject(new Error('logo dimension read failed'));
+      im.src = dataUrl;
+    });
+    const fmt = /image\/png/i.test(dataUrl) ? 'PNG' : /image\/jpe?g/i.test(dataUrl) ? 'JPEG' : 'PNG';
+    return { dataUrl, width, height, fmt };
+  } catch {
+    return null; // header falls back to text-only, same as before
+  }
+}
+
+// If drawing `neededHeight` more points would run past the bottom margin,
+// starts a new page and returns the fresh top-margin Y instead. Every
+// section after the items table (totals, terms, delivery details,
+// signatures) checks this first — previously they just kept using
+// whatever Y the table left off at, so on an order with enough items to
+// push the table close to the page bottom, everything after it could
+// silently draw past the visible page (never technically "cut off" by
+// jsPDF, just invisible below the printable area).
+const PAGE_BOTTOM_MARGIN = 60;
+function ensurePageSpace(doc, y, neededHeight, pageH, topMargin) {
+  if (y + neededHeight > pageH - PAGE_BOTTOM_MARGIN) {
+    doc.addPage();
+    return topMargin;
+  }
+  return y;
+}
+
 export async function buildOrderPdfBlob(order, branding = {}) {
   const JsPDF = await ensureJsPDF();
   const doc = new JsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
@@ -222,27 +271,12 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   // reference layout. Falls back to text-only if no logo is set.
   let y = 40;
   let nameX = M;
-  if (logoUrl) {
-    try {
-      const logoImg = await new Promise((resolve, reject) => {
-        const im = new Image();
-        im.crossOrigin = 'anonymous';
-        im.onload = () => resolve(im);
-        im.onerror = () => reject(new Error('logo load failed'));
-        im.src = logoUrl;
-      });
-      // Draw to a canvas first and export as PNG — more reliable across
-      // jsPDF versions than passing a raw <img> element straight to addImage.
-      const lc = document.createElement('canvas');
-      lc.width = logoImg.naturalWidth || logoImg.width;
-      lc.height = logoImg.naturalHeight || logoImg.height;
-      lc.getContext('2d').drawImage(logoImg, 0, 0);
-      const logoDataUrl = lc.toDataURL('image/png');
-      const logoH = 40;
-      const logoW = (lc.width / lc.height) * logoH;
-      doc.addImage(logoDataUrl, 'PNG', M, y - 12, logoW, logoH);
-      nameX = M + logoW + 12;
-    } catch { /* no logo — text-only header, as before */ }
+  const logoAsset = await loadLogoForPdf(logoUrl);
+  if (logoAsset) {
+    const logoH = 40;
+    const logoW = (logoAsset.width / logoAsset.height) * logoH;
+    doc.addImage(logoAsset.dataUrl, logoAsset.fmt, M, y - 12, logoW, logoH);
+    nameX = M + logoW + 12;
   }
   y += 8;
   doc.setFont(undefined, 'bold');
@@ -368,13 +402,19 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   ]);
   doc.autoTable({
     startY: y,
-    margin: { left: M, right: M },
+    margin: { left: M, right: M, bottom: 50, top: M },
     head: [['S.No.', 'Art No.', 'Description', 'Size', 'Pcs', 'Qty', 'Price', 'Amount']],
     body: rows,
     theme: 'grid',
     styles: { fontSize: 9, textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.4, cellPadding: 4.5 },
     headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.6 },
     columnStyles: { 0: { cellWidth: 26, halign: 'center' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' } },
+    // Repeat the column header at the top of every continued page — items
+    // that don't fit on page 1 flow onto page 2+ automatically (this is
+    // autoTable's default behavior; it was never actually disabled, but the
+    // missing explicit bottom margin above could make it misjudge how much
+    // room was left on a page).
+    showHead: 'everyPage',
   });
   y = doc.lastAutoTable.finalY + 14;
   // autoTable manipulates fill/text/draw colors extensively while rendering;
@@ -400,6 +440,8 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   const totalsBoxH = totals.length * rowH;
   const totalsBoxX = pageW - M - totalsBoxW;
   const wordsBoxW = totalsBoxX - M - 12;
+
+  y = ensurePageSpace(doc, y, totalsBoxH, pageH, M);
 
   // Words box (left)
   doc.setDrawColor(0, 0, 0);
@@ -448,6 +490,7 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   const termLines = TERMS.map((t) => doc.splitTextToSize(`\u2022  ${t}`, pageW - M * 2 - termsPadX * 2));
   const noteLines = doc.splitTextToSize('WE ARE NOT RESPONSIBLE FOR ANY DAMAGE OR SHORTAGE OF THE GOODS EXPORTED OUT OF UAE.', pageW - M * 2 - termsPadX * 2);
   const termsBoxH = termsPadY + 13 + termLines.flat().length * 12 + noteLines.length * 12 + 6;
+  y = ensurePageSpace(doc, y, termsBoxH, pageH, M);
   doc.rect(M, y, pageW - M * 2, termsBoxH);
   let ty = y + termsPadY;
   doc.setFont(undefined, 'bold');
@@ -466,16 +509,26 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   y += termsBoxH + 14;
 
   // ── Delivery + notes ────────────────────────────────────────────────────
+  const deliveryContact = clean(order.deliveryContact) || clean(fmtMobile(order.mobile, order.country));
+  const deliveryLines = [order.delivery, deliveryContact, order.notes].filter(Boolean).length;
+  y = ensurePageSpace(doc, y, deliveryLines * 14, pageH, M);
   doc.setFont(undefined, 'normal');
   doc.setFontSize(9.5);
   doc.setTextColor(0, 0, 0);
   if (order.delivery) { doc.text(`Delivery Details: ${clean(order.delivery)}`, M, y); y += 14; }
-  const deliveryContact = clean(order.deliveryContact) || clean(fmtMobile(order.mobile, order.country));
   if (deliveryContact) { doc.text(`Delivery Contact No.: ${deliveryContact}`, M, y); y += 14; }
   if (order.notes) { doc.text(`Notes: ${clean(order.notes)}`.slice(0, 180), M, y); y += 14; }
 
   // ── Signatures ──────────────────────────────────────────────────────────
-  const sigY = Math.max(y + 46, doc.internal.pageSize.getHeight() - 90);
+  // Needs ~58pt of room. If what's left on the page isn't enough, start a
+  // fresh page rather than letting the old Math.max(y+46, pageH-90) logic
+  // push the lines past the bottom of an already-full page (which just
+  // draws them off the visible page — never literally erroring, just
+  // invisible, which is how signatures could go "missing" on long orders).
+  y = ensurePageSpace(doc, y, 58, pageH, M);
+  // On whichever page they land on, sit near the bottom for a tidy look —
+  // but never above the content already drawn on that page.
+  const sigY = Math.max(y + 46, pageH - 90);
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.6);
