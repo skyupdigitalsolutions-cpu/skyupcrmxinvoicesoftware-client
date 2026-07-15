@@ -273,22 +273,36 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   let nameX = M;
   const logoAsset = await loadLogoForPdf(logoUrl);
   if (logoAsset) {
-    const logoH = 40;
+    const logoH = 46;
     const logoW = (logoAsset.width / logoAsset.height) * logoH;
-    doc.addImage(logoAsset.dataUrl, logoAsset.fmt, M, y - 12, logoW, logoH);
+    doc.addImage(logoAsset.dataUrl, logoAsset.fmt, M, y - 14, logoW, logoH);
     nameX = M + logoW + 12;
   }
   y += 8;
+  // The Arabic column always reserves a fixed share of the page (independent
+  // of how long the English name is) — so the English name's available
+  // width is whatever's left before that reserved share, not the full page.
+  const arabicColW = Math.min(230, pageW * 0.36);
+  const enAvailableW = pageW - nameX - M - arabicColW - 16;
   doc.setFont(undefined, 'bold');
-  doc.setFontSize(18);
   doc.setTextColor(0, 0, 0);
+  // Auto-shrink the company name to fit — same trick used for the "For
+  // {company}" signature line — instead of letting a long name overflow
+  // straight into the Arabic column with no width check at all (which is
+  // exactly what caused the two to visually collide).
+  let nameSize = 18;
+  doc.setFontSize(nameSize);
+  while (nameSize > 11 && doc.getTextWidth(companyEn) > enAvailableW) {
+    nameSize -= 0.5;
+    doc.setFontSize(nameSize);
+  }
   doc.text(companyEn, nameX, y);
   let leftY = y + 12;
   if (b.headerTagline) {
     doc.setFont(undefined, 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(60, 60, 60);
-    doc.text(clean(b.headerTagline).toUpperCase(), nameX, leftY, { maxWidth: pageW * 0.5 - nameX });
+    doc.text(clean(b.headerTagline).toUpperCase(), nameX, leftY, { maxWidth: enAvailableW });
     leftY += 11;
   }
   // English contact details get their own full column on the LEFT, under
@@ -306,7 +320,6 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   const hasArabicFont = (containsArabic(b.legalNameAr) || containsArabic(b.addressAr))
     ? await ensureArabicFont(doc)
     : false;
-  const arabicColW = Math.min(230, pageW - nameX - M - 10);
   let contactStartY = 26;
   if (b.legalNameAr) {
     contactStartY = drawArabicBlock(doc, b.legalNameAr, {

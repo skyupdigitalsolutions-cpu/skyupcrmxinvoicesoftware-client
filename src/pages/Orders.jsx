@@ -114,15 +114,24 @@ function PrintOrderForm({ order, branding }) {
             pointer-events: none;
           }
           .pof-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; border-bottom: 1.5px solid #000; padding-bottom: 3mm; margin-bottom: 3mm; }
-          .pof-brand { display: flex; flex-direction: column; gap: 2mm; flex: 1 1 55%; min-width: 0; }
+          /* flex-shrink:0 is the important part here — without it, this
+             column could be squeezed narrower than its own content (the
+             company name has white-space:nowrap so it can't wrap to
+             compensate), and the text would overflow straight into the
+             Arabic column next to it, causing the two to visually collide. */
+          .pof-brand { display: flex; flex-direction: column; gap: 2mm; flex: 0 0 auto; max-width: 66%; }
           .pof-brand-top { display: flex; align-items: center; gap: 5mm; }
-          .pof-logo { height: 22mm; width: auto; max-width: 52mm; object-fit: contain; flex-shrink: 0; }
-          .pof-logo-slot { height: 22mm; width: 40mm; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
-          .pof-company-en { font-size: 25px; font-weight: 900; letter-spacing: 0.5px; color: #000; text-transform: uppercase; line-height: 1.05; white-space: nowrap; }
-          .pof-contact-en { font-size: 10.5px; color: #000; line-height: 1.5; }
-          .pof-side-ar { flex: 1 1 40%; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
-          .pof-company-ar { font-size: 18px; font-weight: 700; color: #000; margin-bottom: 1.5mm; text-align: right; }
-          .pof-address-ar { font-size: 10.5px; color: #000; line-height: 1.5; text-align: right; }
+          .pof-logo { height: 26mm; width: auto; max-width: 58mm; object-fit: contain; flex-shrink: 0; }
+          .pof-logo-slot { height: 26mm; width: 44mm; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
+          .pof-company-en { font-size: 22px; font-weight: 900; letter-spacing: 0.4px; color: #000; text-transform: uppercase; line-height: 1.1; white-space: nowrap; }
+          .pof-contact-en { font-size: 10px; color: #000; line-height: 1.5; }
+          /* The Arabic side takes whatever's left (min-width:0 lets it
+             shrink below its content's natural width when needed) — Arabic
+             text wraps safely onto extra lines, so it's the side that
+             should flex, not the English name. */
+          .pof-side-ar { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-end; text-align: right; }
+          .pof-company-ar { font-size: 16px; font-weight: 700; color: #000; margin-bottom: 1.5mm; text-align: right; line-height: 1.25; }
+          .pof-address-ar { font-size: 10px; color: #000; line-height: 1.5; text-align: right; }
           .pof-title { text-align: center; font-size: 30px; font-weight: 900; letter-spacing: 4px; color: #000; text-transform: uppercase; margin: 2mm 0 4mm; }
 
           .pof-info { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-bottom: 4mm; border: 1px solid #000; }
