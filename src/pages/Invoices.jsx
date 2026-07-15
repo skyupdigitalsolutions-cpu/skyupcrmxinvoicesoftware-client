@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { FileText, Pencil, Trash2, MessageCircle, Download, RefreshCw, Save } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { FileText, Pencil, Trash2, MessageCircle, Download, RefreshCw, Save, FolderOpen, X } from 'lucide-react';
 import { invoiceApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -16,6 +16,10 @@ import OrderItemsEditor, { blankItem } from '../components/OrderItemsEditor.jsx'
 import { fmtAED, formatDate } from '../utils/format.js';
 import { invoiceWhatsAppUrl } from '../utils/whatsapp.js';
 import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
+import {
+  chooseDownloadFolder, getDownloadFolderName, clearDownloadFolder,
+  savePdfBlob, folderPickerSupported,
+} from '../utils/pdfSaver.js';
 
 export default function Invoices() {
   const { isAdmin } = useAuth();
@@ -139,15 +143,33 @@ export default function Invoices() {
   // Download the PDF through the API client so the Bearer token, base URL and
   // 401→refresh handling all apply. A plain <a href="/api/…"> can't do this: it
   // sends no auth header and, behind the SPA redirect, resolves to index.html.
+  // ── Shared PDF save-folder (same folder as order-form PDFs) ────────────────
+  const [pdfFolder, setPdfFolder] = useState(null);
+  useEffect(() => { getDownloadFolderName().then(setPdfFolder); }, []);
+
+  const setFolder = async () => {
+    try {
+      const name = await chooseDownloadFolder();
+      setPdfFolder(name);
+      show(`PDFs (invoices & order forms) will be saved to "${name}".`, 'success');
+    } catch (e) {
+      if (e?.name !== 'AbortError') show(e.message || 'Could not set the folder.', 'error');
+    }
+  };
+  const unsetFolder = async () => {
+    await clearDownloadFolder();
+    setPdfFolder(null);
+    show('Save folder cleared — PDFs will use normal browser downloads.');
+  };
+
   const downloadPdf = async (v) => {
     setDlBusy(v._id);
     try {
       const res = await api.get(`/invoices/${v._id}/pdf`, { responseType: 'blob' });
       const blob = new Blob([res.data], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = Object.assign(document.createElement('a'), { href: url, download: `INV-${v.invoiceNo}.pdf` });
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const filename = `INV-${v.invoiceNo}.pdf`;
+      const saved = await savePdfBlob(blob, filename);
+      show(saved.via === 'folder' ? `${filename} saved to "${saved.folder}".` : `${filename} downloaded.`, 'success');
     } catch (e) {
       // Fallback: open the stored Cloudinary copy directly if we have one.
       if (v.pdfUrl) window.open(v.pdfUrl, '_blank', 'noopener');
@@ -184,6 +206,23 @@ export default function Invoices() {
           <option value="Partial">Partial</option>
           <option value="Paid">Paid</option>
         </Select>
+        <Button
+          variant="outline" size="sm" onClick={setFolder}
+          title={folderPickerSupported()
+            ? 'Choose one folder where every downloaded invoice & order form PDF is saved'
+            : 'Folder picking needs Chrome/Edge on desktop — PDFs go to the browser Downloads folder'}
+        >
+          <span className="flex items-center gap-1.5">
+            <FolderOpen size={13} />{pdfFolder ? `Save to: ${pdfFolder}` : 'Set PDF Folder'}
+          </span>
+        </Button>
+        {pdfFolder && (
+          <button onClick={unsetFolder} title="Clear save folder"
+            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/[0.06]"
+            style={{ color: 'var(--text-muted)' }}>
+            <X size={12} />
+          </button>
+        )}
         {isAdmin && (
           <div className="ml-auto flex gap-2">
             <Button variant="outline" size="sm" disabled={!filtered.length} onClick={exportCsv}>

@@ -42,6 +42,7 @@ const INITIAL_FORM = {
   country: 'UAE',
   mobile: '',
   delivery: '',
+  deliveryContact: '',
   payTerms: 'Cash on Delivery',
   salesperson: '',
   items: [blankItem()],
@@ -386,6 +387,19 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState,
               onChange={(e) => set('delivery', e.target.value)}
             />
           </Field>
+
+          {/* Entered manually — never auto-filled from the customer's mobile. */}
+          <Field label="Delivery Contact No. (manual)">
+            <Input
+              type="tel"
+              value={form.deliveryContact}
+              placeholder="e.g. +971 501234567 (transporter / receiver)"
+              onChange={(e) => set('deliveryContact', e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
+            />
+            <span className="mt-1 block text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              Shown as "Delivery Contact No." on the order form — include the country code.
+            </span>
+          </Field>
         </div>
 
       </CardBody>
@@ -529,6 +543,7 @@ export default function OrderForm() {
             country:     o.country,
             mobile:      o.mobile,
             delivery:    o.delivery,
+            deliveryContact: o.deliveryContact || '',
             payTerms:    o.payTerms,
             salesperson: o.salesperson || '',
             items:       o.items.length ? o.items : [blankItem()],

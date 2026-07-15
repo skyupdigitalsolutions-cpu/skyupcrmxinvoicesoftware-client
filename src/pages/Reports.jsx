@@ -264,9 +264,9 @@ export default function Reports() {
           <Button size="sm" variant="dark" disabled={exporting || loading} onClick={exportPdf}>
             <span className="flex items-center gap-1.5"><Download size={13} />{exporting ? 'Exporting…' : 'Export PDF'}</span>
           </Button>
-          <Button size="sm" onClick={() => window.print()}>
+          {/* <Button size="sm" onClick={() => window.print()}>
             <Printer size={13} className="mr-1.5" />Print / PDF
-          </Button>
+          </Button> */}
         </div>
       </div>
 

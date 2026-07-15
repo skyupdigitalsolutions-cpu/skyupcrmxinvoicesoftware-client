@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Eye, Pencil, Truck, FileText, Trash2, ClipboardList,
-  MessageCircle, Printer, X, Check, Download, Phone,
+  MessageCircle, Printer, X, Check, Download, Phone, FolderOpen,
 } from 'lucide-react';
 import { orderApi, invoiceApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -20,6 +20,11 @@ import EmptyState from '../components/ui/EmptyState.jsx';
 import { Field, Select, Input, Textarea } from '../components/ui/Field.jsx';
 import { fmtAED, fmtN, formatDate, ALL_STATUSES, ORDER_STATUSES, DELIVERY_STATUSES, cleanPhone, fmtMobile } from '../utils/format.js';
 import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
+import { buildOrderPdfBlob } from '../utils/orderPdf.js';
+import {
+  chooseDownloadFolder, getDownloadFolderName, clearDownloadFolder,
+  savePdfBlob, folderPickerSupported,
+} from '../utils/pdfSaver.js';
 import { orderWhatsAppUrl } from '../utils/whatsapp.js';
 
 // ── Amount → words (up to 9,999,999) ─────────────────────────────────────────
@@ -253,7 +258,7 @@ function PrintOrderForm({ order, branding }) {
       {/* ── Delivery details ───────────────────────────────────────────────── */}
       <div className="pof-delivery">
         {order.delivery && <div><b>Delivery Details:</b> {order.delivery}</div>}
-        {order.mobile && <div style={{ marginTop: '1mm' }}><b>Delivery Contact No.:</b> {fmtMobile(order.mobile, order.country)}</div>}
+        {(order.deliveryContact || order.mobile) && <div style={{ marginTop: '1mm' }}><b>Delivery Contact No.:</b> {order.deliveryContact || fmtMobile(order.mobile, order.country)}</div>}
         {order.notes && <div style={{ marginTop: '1mm' }}><b>Notes:</b> {order.notes}</div>}
       </div>
 
@@ -342,6 +347,35 @@ export default function Orders() {
       setStatusModal(null);
       refetch();
     } catch (e) { show(apiError(e), 'error'); }
+  };
+
+  // ── PDF download + shared save-folder ──────────────────────────────────────
+  const [pdfFolder, setPdfFolder] = useState(null);
+  const [pdfBusy, setPdfBusy] = useState(null);
+  useEffect(() => { getDownloadFolderName().then(setPdfFolder); }, []);
+
+  const setFolder = async () => {
+    try {
+      const name = await chooseDownloadFolder();
+      setPdfFolder(name);
+      show(`PDFs (order forms & invoices) will be saved to "${name}".`, 'success');
+    } catch (e) {
+      if (e?.name !== 'AbortError') show(e.message || 'Could not set the folder.', 'error');
+    }
+  };
+  const unsetFolder = async () => {
+    await clearDownloadFolder();
+    setPdfFolder(null);
+    show('Save folder cleared — PDFs will use normal browser downloads.');
+  };
+  const downloadOrderPdf = async (o) => {
+    setPdfBusy(o._id);
+    try {
+      const { blob, filename } = await buildOrderPdfBlob(o, branding);
+      const saved = await savePdfBlob(blob, filename);
+      show(saved.via === 'folder' ? `${filename} saved to "${saved.folder}".` : `${filename} downloaded.`, 'success');
+    } catch (e) { show(e.message || 'Could not generate the PDF.', 'error'); }
+    finally { setPdfBusy(null); }
   };
 
   const convert = async (o) => {
@@ -436,6 +470,23 @@ export default function Orders() {
         <Input className="!w-auto" type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} />
         <Input className="!w-auto" type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} />
         <Button variant="outline" size="sm" className="ml-auto" onClick={() => setF({ search: '', phone: '', status: '', country: '', employee: '', from: '', to: '' })}>Clear</Button>
+        <Button
+          variant="outline" size="sm" onClick={setFolder}
+          title={folderPickerSupported()
+            ? 'Choose one folder where every downloaded order form & invoice PDF is saved'
+            : 'Folder picking needs Chrome/Edge on desktop — PDFs go to the browser Downloads folder'}
+        >
+          <span className="flex items-center gap-1.5">
+            <FolderOpen size={13} />{pdfFolder ? `Save to: ${pdfFolder}` : 'Set PDF Folder'}
+          </span>
+        </Button>
+        {pdfFolder && (
+          <button onClick={unsetFolder} title="Clear save folder"
+            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/[0.06]"
+            style={{ color: 'var(--text-muted)' }}>
+            <X size={12} />
+          </button>
+        )}
         {isAdmin && (
           <Button variant="outline" size="sm" disabled={!filtered.length} onClick={exportCsv}>
             <span className="flex items-center gap-1.5"><Download size={13} />Export CSV</span>
@@ -479,6 +530,7 @@ export default function Orders() {
                       <a className="btn-green btn-sm flex items-center gap-1" href={orderWhatsAppUrl(o)} target="_blank" rel="noreferrer">
                         <MessageCircle size={14} /> WhatsApp
                       </a>
+                      <IconBtn icon={Download} label={pdfBusy === o._id ? '…' : 'PDF'} size="sm" variant="outline" disabled={pdfBusy === o._id} onClick={() => downloadOrderPdf(o)} />
                       {o.status !== 'Cancelled' && o.status !== 'Invoiced' && !o.invoiceId && <IconBtn icon={FileText} label="Invoice" size="sm" variant="outline" onClick={() => convert(o)} />}
                       {isAdmin && <IconBtn icon={Trash2} label="Del" size="sm" variant="red" onClick={() => del(o)} />}
                     </div>
@@ -502,6 +554,7 @@ export default function Orders() {
               <div><span className="font-bold text-navy">Salesperson:</span> {viewOrder.salespersonName || '—'}</div>
               <div><span className="font-bold text-navy">Payment:</span> {viewOrder.payTerms}</div>
               <div><span className="font-bold text-navy">Due:</span> {fmtAED(viewOrder.due || 0)}</div>
+              <div><span className="font-bold text-navy">Delivery Contact:</span> {viewOrder.deliveryContact || fmtMobile(viewOrder.mobile, viewOrder.country) || '—'}</div>
             </div>
 
             <div className="mt-4 overflow-x-auto rounded-lg border border-gray-100">
@@ -542,6 +595,9 @@ export default function Orders() {
               </Button>
               <Button variant="dark" onClick={() => { setViewOrder(null); handlePrint(viewOrder); }}>
                 <span className="flex items-center gap-1"><Printer size={14} /> Print Order Form</span>
+              </Button>
+              <Button variant="outline" disabled={pdfBusy === viewOrder._id} onClick={() => downloadOrderPdf(viewOrder)}>
+                <span className="flex items-center gap-1"><Download size={14} /> Download PDF</span>
               </Button>
               <a className="btn-green btn flex items-center gap-1" href={orderWhatsAppUrl(viewOrder)} target="_blank" rel="noreferrer">
                 <MessageCircle size={14} /> WhatsApp
