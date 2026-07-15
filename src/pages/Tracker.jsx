@@ -23,7 +23,6 @@ const STEPS = [
   { key: 'Confirmed', label: 'Confirmed', icon: CheckCircle2 },
   { key: 'Market Delay', label: 'Market Delay', icon: AlertTriangle },
    { key: 'Packed', label: 'Packed', icon: Package },
-  { key: 'Shipped', label: 'Shipped', icon: Truck },
   { key: 'Out for Delivery', label: 'Out for Delivery', icon: Bike },
   { key: 'Delivered', label: 'Delivered', icon: PartyPopper },
 ];

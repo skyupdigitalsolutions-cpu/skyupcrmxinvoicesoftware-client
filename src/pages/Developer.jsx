@@ -253,11 +253,11 @@ function CompanyModal({ company, onClose, onSaved }) {
     <Modal open onClose={onClose} title={isEdit ? `Edit ${company.name}` : 'New Company'} width="sm:max-w-[560px]">
       <div className="space-y-3.5">
         <Field label="Company Name">
-          <Input value={form.name} placeholder="e.g. Sole & Stride" onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Input value={form.name} placeholder="e.g. Skyup" onChange={(e) => setForm({ ...form, name: e.target.value })} />
         </Field>
         {!isEdit && (
           <Field label="Slug (optional — auto-generated from name)">
-            <Input value={form.slug} placeholder="sole-and-stride" onChange={(e) => setForm({ ...form, slug: e.target.value })} />
+            <Input value={form.slug} placeholder="skyup" onChange={(e) => setForm({ ...form, slug: e.target.value })} />
           </Field>
         )}
 

@@ -60,7 +60,7 @@ export async function exportTablePdf({ title, columns, rows, meta = {}, filename
   doc.setFontSize(15);
   doc.setTextColor(26, 26, 46);
   doc.setFont(undefined, 'bold');
-  doc.text('Sole & Stride FOOTWEAR', 40, 38);
+  
 
   doc.setFontSize(11);
   doc.setTextColor(37, 99, 235);
@@ -138,7 +138,6 @@ export async function exportSectionsPdf({ title, sections, meta = {}, filename, 
   doc.setFontSize(15);
   doc.setTextColor(26, 26, 46);
   doc.setFont(undefined, 'bold');
-  doc.text('Sole & Stride FOOTWEAR', 40, 38);
 
   doc.setFontSize(11);
   doc.setTextColor(37, 99, 235);
@@ -188,7 +187,7 @@ export async function exportSectionsPdf({ title, sections, meta = {}, filename, 
       doc.setFontSize(11);
       doc.setTextColor(22, 33, 62);
       doc.setFont(undefined, 'bold');
-      doc.text(`${section.title} (${section.rows.length})`, 40, cursorY);
+ doc.text(`${section.title} (${section.rows.length})`, 40, cursorY);
       cursorY += 8;
 
       doc.autoTable({

@@ -314,7 +314,7 @@ export default function Orders() {
 
   // Same delivery stages tracked in the Delivery Tracker page — read the
   // real current stage from the status log rather than guessing it.
-  const STEP_KEYS = ['Pending', 'Confirmed', 'Market Delay', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered'];
+  const STEP_KEYS = ['Pending', 'Confirmed', 'Market Delay', 'Packed',  'Out for Delivery', 'Delivered'];
   const currentStageOf = (o) => {
     const hits = (o.statusHistory || []).filter((h) => STEP_KEYS.includes(h.status));
     if (!hits.length) return 'Pending';

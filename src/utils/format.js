@@ -151,20 +151,19 @@ export const cleanPhone = (num, country) => {
     return p;
 };
 
-export const ORDER_STATUSES = ['Pending', 'Confirmed', 'Packed', 'Market Delay', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled'];
-export const ALL_STATUSES = [...ORDER_STATUSES.slice(0, 1), 'Confirmed', 'Packed', 'Market Delay', 'Shipped', 'Out for Delivery', 'Delivered', 'Invoiced', 'Cancelled'];
+export const ORDER_STATUSES = ['Pending', 'Confirmed', 'Packed', 'Market Delay', 'Out for Delivery', 'Delivered', 'Cancelled'];
+export const ALL_STATUSES = [...ORDER_STATUSES.slice(0, 1), 'Confirmed', 'Packed', 'Market Delay', 'Out for Delivery', 'Delivered', 'Invoiced', 'Cancelled'];
 // Delivery stages selectable on an already-Invoiced order — its `status`
 // stays 'Invoiced', but `deliveryStatus` can keep advancing (or reflect an
 // earlier stage) so the tracker stays fully usable after the invoice is
 // generated. Everything except 'Invoiced' and 'Cancelled'.
-export const DELIVERY_STATUSES = ['Pending', 'Confirmed', 'Market Delay', 'Packed', 'Shipped', 'Out for Delivery', 'Delivered'];
+export const DELIVERY_STATUSES = ['Pending', 'Confirmed', 'Market Delay', 'Packed', 'Out for Delivery', 'Delivered'];
 
 export const statusClass = (s) => ({
     Pending: 'bg-warn-light text-warn',
     Confirmed: 'bg-info-light text-info',
     Packed: 'bg-info-light text-info',
     'Market Delay': 'bg-warn-light text-warn',
-    Shipped: 'bg-info-light text-info',
     'Out for Delivery': 'bg-warn-light text-warn',
     Delivered: 'bg-ok-light text-ok',
     Invoiced: 'bg-purple-100 text-purple-700',
