@@ -18,7 +18,7 @@ import Modal from '../components/ui/Modal.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Field, Select, Input, Textarea } from '../components/ui/Field.jsx';
-import { fmtAED, fmtN, formatDate, ALL_STATUSES, ORDER_STATUSES, DELIVERY_STATUSES, cleanPhone } from '../utils/format.js';
+import { fmtAED, fmtN, formatDate, ALL_STATUSES, ORDER_STATUSES, DELIVERY_STATUSES, cleanPhone, fmtMobile } from '../utils/format.js';
 import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 import { orderWhatsAppUrl } from '../utils/whatsapp.js';
 
@@ -168,7 +168,7 @@ function PrintOrderForm({ order, branding }) {
           <div className="pof-info-col-label">Billed To</div>
           <div className="pof-billed-name">{order.customer}</div>
           {order.city && <div className="pof-billed-city">{order.city}{order.country ? `, ${order.country}` : ''}</div>}
-          {order.mobile && <div className="pof-billed-city" style={{ marginTop: '2mm' }}>{order.mobile}</div>}
+          {order.mobile && <div className="pof-billed-city" style={{ marginTop: '2mm' }}>{fmtMobile(order.mobile, order.country)}</div>}
         </div>
         {/* Col 2 — Order Details */}
         <div className="pof-info-col">
@@ -253,7 +253,7 @@ function PrintOrderForm({ order, branding }) {
       {/* ── Delivery details ───────────────────────────────────────────────── */}
       <div className="pof-delivery">
         {order.delivery && <div><b>Delivery Details:</b> {order.delivery}</div>}
-        {order.mobile && <div style={{ marginTop: '1mm' }}><b>Delivery Contact No.:</b> {order.mobile}</div>}
+        {order.mobile && <div style={{ marginTop: '1mm' }}><b>Delivery Contact No.:</b> {fmtMobile(order.mobile, order.country)}</div>}
         {order.notes && <div style={{ marginTop: '1mm' }}><b>Notes:</b> {order.notes}</div>}
       </div>
 
@@ -314,12 +314,18 @@ export default function Orders() {
 
   // Same delivery stages tracked in the Delivery Tracker page — read the
   // real current stage from the status log rather than guessing it.
+  // Invoiced orders are always at least 'Confirmed' (matches the Tracker).
   const STEP_KEYS = ['Pending', 'Confirmed', 'Market Delay', 'Packed',  'Out for Delivery', 'Delivered'];
   const currentStageOf = (o) => {
     const hits = (o.statusHistory || []).filter((h) => STEP_KEYS.includes(h.status));
-    if (!hits.length) return 'Pending';
-    const sorted = [...hits].sort((a, b) => new Date(b.at) - new Date(a.at));
-    return sorted[0].status;
+    let stage = 'Pending';
+    if (hits.length) {
+      const sorted = [...hits].sort((a, b) => new Date(b.at) - new Date(a.at));
+      stage = sorted[0].status;
+    }
+    const invoiced = o.status === 'Invoiced' || o.invoiceId;
+    if (invoiced && STEP_KEYS.indexOf(stage) < STEP_KEYS.indexOf('Confirmed')) stage = 'Confirmed';
+    return stage;
   };
 
   const openStatus = (o) => {
@@ -339,11 +345,11 @@ export default function Orders() {
   };
 
   const convert = async (o) => {
-    const already = o.status === 'Invoiced' || o.invoiceId;
-    const msg = already
-      ? `Order #${o.orderNo} already has an invoice. Create an additional invoice?`
-      : `Convert order #${o.orderNo} to a tax invoice?`;
-    if (!confirm(msg)) return;
+    if (o.status === 'Invoiced' || o.invoiceId) {
+      show(`Order #${o.orderNo} is already invoiced — only one invoice can be created per order.`, 'error');
+      return;
+    }
+    if (!confirm(`Convert order #${o.orderNo} to a tax invoice?`)) return;
     try {
       const inv = await invoiceApi.fromOrder(o._id);
       show(`Invoice #${inv.invoiceNo} created.`, 'success');
@@ -473,7 +479,7 @@ export default function Orders() {
                       <a className="btn-green btn-sm flex items-center gap-1" href={orderWhatsAppUrl(o)} target="_blank" rel="noreferrer">
                         <MessageCircle size={14} /> WhatsApp
                       </a>
-                      {o.status !== 'Cancelled' && <IconBtn icon={FileText} label={o.invoiceId ? 'New Invoice' : 'Invoice'} size="sm" variant="outline" onClick={() => convert(o)} />}
+                      {o.status !== 'Cancelled' && o.status !== 'Invoiced' && !o.invoiceId && <IconBtn icon={FileText} label="Invoice" size="sm" variant="outline" onClick={() => convert(o)} />}
                       {isAdmin && <IconBtn icon={Trash2} label="Del" size="sm" variant="red" onClick={() => del(o)} />}
                     </div>
                   </td>

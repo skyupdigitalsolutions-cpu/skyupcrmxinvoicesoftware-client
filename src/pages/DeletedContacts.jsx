@@ -10,7 +10,7 @@ import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Input } from '../components/ui/Field.jsx';
 import { exportTableCsv } from '../utils/exportPdf.js';
-import { fmtDateTime } from '../utils/format.js';
+import { fmtDateTime, fmtMobile } from '../utils/format.js';
 
 // Admin-only reference report: contact numbers that were retained when their
 // lead was deleted. Data comes from the append-only DeletedContact archive on
@@ -36,7 +36,7 @@ export default function DeletedContacts() {
         columns: ['Sl. No', 'Name', 'Mobile', 'City', 'Country', 'Source', 'Last Status', 'Owner', 'Deleted By', 'Deleted On'],
         rows: filtered.map((c, i) => [
           i + 1,
-          c.name || '—', c.mobile || '—', c.city || '—', c.country || '—',
+          c.name || '—', fmtMobile(c.mobile, c.country) || '—', c.city || '—', c.country || '—',
           c.source || '—', c.status || '—', c.ownerName || '—',
           c.deletedByName || '—', fmtDateTime(c.createdAt),
         ]),
@@ -91,7 +91,7 @@ export default function DeletedContacts() {
                   <tr key={c._id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale [&>td]:align-middle">
                     <td className="px-2.5 py-2 text-xs text-ink-3">{idx + 1}</td>
                     <td className="px-2.5 py-2 text-xs font-bold text-navy-700">{c.name || '—'}</td>
-                    <td className="px-2.5 py-2 text-xs">{c.mobile || '—'}</td>
+                    <td className="px-2.5 py-2 text-xs">{fmtMobile(c.mobile, c.country) || '—'}</td>
                     <td className="px-2.5 py-2 text-xs">{c.city || '—'}</td>
                     <td className="px-2.5 py-2 text-xs whitespace-nowrap">{c.country || '—'}</td>
                     <td className="px-2.5 py-2 text-xs">{c.source || '—'}</td>

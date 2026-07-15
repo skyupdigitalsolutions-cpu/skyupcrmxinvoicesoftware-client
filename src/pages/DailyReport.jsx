@@ -12,7 +12,7 @@ import EmptyState from '../components/ui/EmptyState.jsx';
 import { exportSectionsPdf, exportSectionsCsv } from '../utils/exportPdf.js';
 import {
   formatDate, fmtDateTime, fmtTimeOnly, fmt, fmtNum, curCode, statusClass,
-  attendanceStatusLabel, attendanceStatusClass,
+  attendanceStatusLabel, attendanceStatusClass, fmtMobile,
 } from '../utils/format.js';
 
 // ── local date helpers (format.js only exposes formatDate) ──────────────────
@@ -80,6 +80,7 @@ export default function DailyReport() {
   const orders = data?.orders || [];
   const invoices = data?.invoices || [];
   const deliveries = data?.deliveries || [];
+  const pendingDeliveries = data?.pendingDeliveries || [];
 
   const goBack = () => setViewDate((d) => addDays(d, -1));
   const goForward = () => { if (!viewingToday) setViewDate((d) => addDays(d, 1)); };
@@ -103,7 +104,7 @@ export default function DailyReport() {
       title: 'Leads',
       columns: ['Sl. No', 'Name', 'Mobile', 'Source', 'Status', 'Owner', 'Remark', 'Date'],
       rows: leads.map((l, i) => [
-        i + 1, l.name, l.mobile || '—', l.source || '—', l.status,
+        i + 1, l.name, fmtMobile(l.mobile, l.country) || '—', l.source || '—', l.status,
         l.assignedUserName || 'Unassigned', l.remark || '—', fmtDateTime(l.date),
       ]),
     },
@@ -134,6 +135,14 @@ export default function DailyReport() {
       ]),
     },
     {
+      title: 'Delivery Pending',
+      columns: ['Sl. No', 'Order #', 'Customer', 'Mobile', 'City', 'Stage', 'Delivery Details', 'Salesperson', 'Ordered'],
+      rows: pendingDeliveries.map((p, i) => [
+        i + 1, `#${p.orderNo}`, p.customer, fmtMobile(p.mobile, p.country) || '—', p.city || '—',
+        p.stage, p.deliveryDetails || '—', p.salespersonName || '—', formatDate(p.orderedAt),
+      ]),
+    },
+    {
       title: 'Employee Activity',
       columns: ['Sl. No', 'Employee', 'Attendance', 'Login', 'Logout', 'Hours', 'Leads', 'Calls', 'In Progress', 'Buyers'],
       rows: employees.map((e, i) => [
@@ -146,7 +155,7 @@ export default function DailyReport() {
       title: 'Follow-ups',
       columns: ['Sl. No', 'Name', 'Mobile', 'Note', 'Urgency', 'Due', 'Assigned To'],
       rows: followUps.map((f, i) => [
-        i + 1, f.name, f.mobile || '—', f.note || '—', f.urgency, f.daysLabel, f.assignedUser || 'Unassigned',
+        i + 1, f.name, fmtMobile(f.mobile, f.country) || '—', f.note || '—', f.urgency, f.daysLabel, f.assignedUser || 'Unassigned',
       ]),
     },
     {
@@ -161,7 +170,7 @@ export default function DailyReport() {
   const exportMeta = () => ({
     Date: formatDate(viewDate),
     Leads: leads.length, Orders: orders.length, Invoices: invoices.length,
-    Deliveries: deliveries.length, Employees: employees.length,
+    Deliveries: deliveries.length, 'Delivery Pending': pendingDeliveries.length, Employees: employees.length,
   });
 
   const exportPdf = async () => {
@@ -350,7 +359,7 @@ export default function DailyReport() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-bold">{l.name}</span>
-                      <span className="font-mono text-[11px] text-ink-3">{isAdmin ? (l.mobile || '—') : '••••••'}</span>
+                      <span className="font-mono text-[11px] text-ink-3">{isAdmin ? (fmtMobile(l.mobile, l.country) || '—') : '••••••'}</span>
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-2">
                       <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: SOURCE_COLORS[i % SOURCE_COLORS.length] + '22', color: SOURCE_COLORS[i % SOURCE_COLORS.length] }}>{l.source}</span>
@@ -452,7 +461,10 @@ export default function DailyReport() {
       {/* ── DELIVERY ── */}
       {tab === 'delivery' && (
         <div className="space-y-4">
-          <StatCard label="Delivery Updates" value={deliveries.length} sub={formatDate(viewDate)} tone="border-gold" />
+          <div className="grid grid-cols-2 gap-3.5 md:grid-cols-4">
+            <StatCard label="Delivery Updates" value={deliveries.length} sub={formatDate(viewDate)} tone="border-gold" />
+            <StatCard label="Delivery Pending" value={pendingDeliveries.length} sub="Awaiting delivery" tone="border-warn" />
+          </div>
           <Card><CardHead title={`Delivery Activity · ${formatDate(viewDate)}`} /><CardBody className="!p-0">
             {deliveries.length === 0 ? <EmptyState title="No delivery activity" hint="No order moved to Shipped, Out for Delivery, or Delivered on this date." /> : (
               <div>
@@ -461,12 +473,39 @@ export default function DailyReport() {
                     <span className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold-pale text-[10px] font-bold text-navy">#{d.orderNo}</span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-bold">{d.customer} <span className="ml-1 font-mono text-[11px] font-normal text-ink-3">{isAdmin ? (d.mobile || '') : '••••••'}</span></span>
+                        <span className="text-xs font-bold">{d.customer} <span className="ml-1 font-mono text-[11px] font-normal text-ink-3">{isAdmin ? (fmtMobile(d.mobile, d.country) || '') : '••••••'}</span></span>
                         <span className={`rounded px-2 py-0.5 text-[10px] font-bold ${statusClass(d.stage)}`}>{d.stage}</span>
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
                         <span className="truncate text-[11px] text-ink-3">{d.deliveryDetails || d.note || 'No delivery note'}</span>
                         <span className="shrink-0 text-[11px] text-ink-3">{d.salespersonName || d.by || 'Unassigned'} · {fmtTimeOnly(d.at)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody></Card>
+
+          {/* Orders still awaiting delivery — current state, not day-bound. */}
+          <Card><CardHead title={`Delivery Pending (${pendingDeliveries.length})`} /><CardBody className="!p-0">
+            {pendingDeliveries.length === 0 ? <EmptyState title="Nothing pending" hint="Every order has been delivered. 🎉" /> : (
+              <div>
+                {pendingDeliveries.map((p, i) => (
+                  <div key={String(p._id || i)} className="flex items-start gap-3 border-b border-gray-100 px-4 py-3 last:border-0">
+                    <span className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warn-light text-[10px] font-bold text-warn">#{p.orderNo}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-bold">
+                          {p.customer}
+                          <span className="ml-1 font-mono text-[11px] font-normal text-ink-3">{isAdmin ? (fmtMobile(p.mobile, p.country) || '') : '••••••'}</span>
+                          {p.invoiced && <span className="ml-2 text-[9px] font-bold uppercase tracking-wide text-purple-700">Invoiced</span>}
+                        </span>
+                        <span className={`rounded px-2 py-0.5 text-[10px] font-bold ${statusClass(p.stage)}`}>{p.stage}</span>
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
+                        <span className="truncate text-[11px] text-ink-3">{p.deliveryDetails || 'No delivery note'}</span>
+                        <span className="shrink-0 text-[11px] text-ink-3">{p.salespersonName || 'Unassigned'} · Ordered {formatDate(p.orderedAt)}</span>
                       </div>
                     </div>
                   </div>
@@ -494,7 +533,7 @@ export default function DailyReport() {
                     <span className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: f.dotColor }} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-bold">{f.name} <span className="ml-1 font-mono text-[11px] font-normal text-ink-3">{isAdmin ? (f.mobile || '') : '••••••'}</span></span>
+                        <span className="text-xs font-bold">{f.name} <span className="ml-1 font-mono text-[11px] font-normal text-ink-3">{isAdmin ? (fmtMobile(f.mobile, f.country) || '') : '••••••'}</span></span>
                         <span className={`rounded px-2 py-0.5 text-[10px] font-bold ${f.urgency === 'overdue' ? 'bg-danger-light text-danger' : f.urgency === 'today' ? 'bg-warn-light text-warn' : 'bg-info-light text-info'}`}>{f.daysLabel}</span>
                       </div>
                       <div className="mt-0.5 flex items-center justify-between gap-2">

@@ -80,8 +80,8 @@ export default function Dashboard() {
       <div className="mb-5 grid grid-cols-2 gap-3.5 md:grid-cols-4">
         <Stat value={stats.totalLeads} label="Total Contacts Enquired" color="border-info"     hint="View leads →"   onClick={() => navigate('/leads')} />
         <Stat value={stats.buyers}     label="Buyers"               color="border-ok"       hint="View won →"     onClick={() => navigate('/leads?status=Won')} />
-        <Stat value={stats.sources}    label="Active Sources"       color="border-purple-400" />
-        <Stat value={stats.campaigns}  label="Campaigns"            color="border-gold" />
+        <Stat value={stageCounts.Enquiry} label="Enquiries"          color="border-purple-400" hint="View leads →"  onClick={() => navigate('/leads')} />
+        <Stat value={stats.pending}    label="Pending Delivery"     color="border-gold"       hint="View orders →" onClick={() => navigate('/orders?status=Pending')} />
       </div>
 
       <div className="mb-5 flex flex-wrap items-center gap-2">

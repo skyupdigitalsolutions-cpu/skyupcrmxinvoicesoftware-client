@@ -176,6 +176,21 @@ export const LEAD_SOURCES = ['Walk-in', 'WhatsApp', 'Instagram', 'Facebook', 'Re
 export const ALL_COUNTRY_NAMES = Object.keys(COUNTRY_CODES);
 export const dialFor = (country) => COUNTRY_CODES[country] || '';
 
+// Display helper: mobile with its country dial code, e.g. "+971 506731305".
+// Strips a leading zero, avoids double-prefixing when the stored number
+// already includes the code, and falls back to the raw value when the
+// country's dial code is unknown.
+export const fmtMobile = (num, country) => {
+    if (!num) return '';
+    let p = String(num).replace(/[^0-9]/g, '');
+    if (!p) return String(num);
+    if (p.startsWith('0')) p = p.slice(1);
+    const code = COUNTRY_CODES[country] || '';
+    if (!code) return String(num);
+    if (p.startsWith(code)) return `+${code} ${p.slice(code.length)}`;
+    return `+${code} ${p}`;
+};
+
 export const leadStatusClass = (s) => ({
     New: 'bg-info-light text-info',
     Contacted: 'bg-warn-light text-warn',

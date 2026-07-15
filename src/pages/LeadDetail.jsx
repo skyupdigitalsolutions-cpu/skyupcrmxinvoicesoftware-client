@@ -9,7 +9,7 @@ import { Card, CardHead, CardBody } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import { Field, Input, Textarea } from '../components/ui/Field.jsx';
-import { formatDate, fmtDateTime, leadStatusClass, LEAD_STATUSES } from '../utils/format.js';
+import { formatDate, fmtDateTime, leadStatusClass, LEAD_STATUSES, fmtMobile } from '../utils/format.js';
 
 export default function LeadDetail() {
   const { id } = useParams();
@@ -115,7 +115,7 @@ export default function LeadDetail() {
                 <Row label="Status">
                   <span className={`status ${leadStatusClass(lead.status)}`}>{lead.status}</span>
                 </Row>
-                <Row label="Mobile">{lead.mobile || '—'}</Row>
+                <Row label="Mobile">{fmtMobile(lead.mobile, lead.country) || '—'}</Row>
                 <Row label="Email">{lead.email || '—'}</Row>
                 <Row label="Country">{lead.country}</Row>
                 <Row label="City">{lead.city || '—'}</Row>

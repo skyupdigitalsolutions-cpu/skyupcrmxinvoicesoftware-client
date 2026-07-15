@@ -24,7 +24,7 @@ import OrderItemsEditor, { blankItem } from '../components/OrderItemsEditor.jsx'
 import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 import {
   formatDate, fmtAED, fmtDateTime, leadStatusClass,
-  LEAD_STATUSES, LEAD_SOURCES, ALL_COUNTRY_NAMES, dialFor, cleanPhone,
+  LEAD_STATUSES, LEAD_SOURCES, ALL_COUNTRY_NAMES, dialFor, cleanPhone, fmtMobile,
   LEAD_STAGES, leadStageOf, leadStageClass, COUNTRY_CODES,
 } from '../utils/format.js';
 
@@ -280,7 +280,7 @@ export default function Leads() {
       columns: ['Sl. No', 'Name', 'Mobile', 'Source', 'Interest', 'Owner', 'Country', 'Stage', 'Status', 'Order #'],
       rows: filtered.map((l, idx) => [
         idx + 1,
-        l.name, l.mobile || '—', l.source || '—', l.interest || '—', l.ownerName || '—',
+        l.name, fmtMobile(l.mobile, l.country) || '—', l.source || '—', l.interest || '—', l.ownerName || '—',
         l.country || '—', leadStageOf(l), l.status, l.orderNo ? `#${l.orderNo}` : '—',
       ]),
       meta: { Employee: empName || 'All', Records: filtered.length },
@@ -496,7 +496,7 @@ export default function Leads() {
                       </div>
                     </td>
                     <td className="px-2.5 py-2 text-xs">
-                      {l.mobile || '—'}
+                      {fmtMobile(l.mobile, l.country) || '—'}
                       <div className="text-[10px] text-ink-3">{l.email}</div>
                     </td>
                     <td className="px-2.5 py-2 text-xs">
@@ -623,7 +623,7 @@ export default function Leads() {
                     {importRows.leads.slice(0, 8).map((l, i) => (
                       <tr key={i} className="border-t border-gray-100">
                         <td className="px-2 py-1 font-bold">{l.name}</td>
-                        <td className="px-2 py-1">{l.mobile || '—'}</td>
+                        <td className="px-2 py-1">{fmtMobile(l.mobile, l.country) || '—'}</td>
                         <td className="px-2 py-1">{l.source}</td>
                         <td className="px-2 py-1">{leadStageOf(l)}</td>
                         <td className="px-2 py-1">{l.delivery || '—'}</td>
@@ -840,16 +840,24 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
                 <CountrySelect value={values.country} onChange={(v) => setFieldValue('country', v)} />
               </FieldRow>
 
-              <FieldRow label="Mobile" name="mobile" error={touched.mobile && errors.mobile}>
+              <FieldRow
+                label="Mobile"
+                name="mobile"
+                error={(touched.mobile && errors.mobile) || (!isEdit && dupe ? 'Number already exists' : '')}
+              >
                 <div className="flex">
                   <span
                     className="flex items-center whitespace-nowrap rounded-l-md border border-r-0 px-2.5 text-[13px] font-bold"
-                    style={{ backgroundColor: 'var(--bg-card-head)', borderColor: 'var(--input-border)', color: 'var(--text-primary)' }}
+                    style={{
+                      backgroundColor: 'var(--bg-card-head)',
+                      borderColor: !isEdit && dupe ? '#DC2626' : 'var(--input-border)',
+                      color: 'var(--text-primary)',
+                    }}
                   >
                     +{dialFor(values.country) || '—'}
                   </span>
                   <Input
-                    className="!rounded-l-none"
+                    className={`!rounded-l-none ${!isEdit && dupe ? '!border-danger' : ''}`}
                     name="mobile"
                     value={values.mobile}
                     placeholder="e.g. 506731305"
@@ -857,7 +865,11 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
                     onBlur={handleBlur}
                     readOnly={isEdit}
                     title={isEdit ? "Mobile number can't be changed after a lead is created" : undefined}
-                    style={isEdit ? { backgroundColor: 'var(--bg-card-head)', cursor: 'not-allowed' } : undefined}
+                    style={
+                      isEdit
+                        ? { backgroundColor: 'var(--bg-card-head)', cursor: 'not-allowed' }
+                        : dupe ? { borderColor: '#DC2626' } : undefined
+                    }
                   />
                 </div>
                 {isEdit && <span className="mt-1 block text-[10px]" style={{ color: 'var(--text-muted)' }}>Mobile number can't be edited after creation.</span>}

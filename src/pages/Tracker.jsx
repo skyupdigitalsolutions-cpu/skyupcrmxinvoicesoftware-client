@@ -33,11 +33,19 @@ const STEP_KEYS = STEPS.map((s) => s.key);
 // (latest entry whose status is a delivery stage), so it's never guessed or
 // auto-set to "Delivered" just because an invoice exists. Falls back to
 // 'Pending' if nothing else was ever recorded.
+// Condition: once an order has an invoice, its tracker stage is at least
+// 'Confirmed' — an invoiced order can never still show "Order Placed".
+const STAGE_RANK = (s) => STEP_KEYS.indexOf(s);
 const currentStageOf = (o) => {
   const hits = (o.statusHistory || []).filter((h) => STEP_KEYS.includes(h.status));
-  if (!hits.length) return 'Pending';
-  const sorted = [...hits].sort((a, b) => new Date(b.at) - new Date(a.at));
-  return sorted[0].status;
+  let stage = 'Pending';
+  if (hits.length) {
+    const sorted = [...hits].sort((a, b) => new Date(b.at) - new Date(a.at));
+    stage = sorted[0].status;
+  }
+  const invoiced = o.status === 'Invoiced' || o.invoiceId;
+  if (invoiced && STAGE_RANK(stage) < STAGE_RANK('Confirmed')) stage = 'Confirmed';
+  return stage;
 };
 
 // Find the date a given status was first reached, from statusHistory.
@@ -46,6 +54,12 @@ const dateForStatus = (o, statusKey) => {
   if (hit) return hit.at;
   // 'Pending' has no history entry — fall back to the order's creation date.
   if (statusKey === 'Pending') return o.createdAt || o.date;
+  // Invoiced orders are auto-confirmed: if no explicit 'Confirmed' entry
+  // exists, use the invoicing date as the confirmation date.
+  if (statusKey === 'Confirmed' && (o.status === 'Invoiced' || o.invoiceId)) {
+    const inv = (o.statusHistory || []).find((h) => h.status === 'Invoiced');
+    if (inv) return inv.at;
+  }
   return null;
 };
 

@@ -19,7 +19,7 @@ import { exportSectionsPdf, exportSectionsCsv } from '../utils/exportPdf.js';
 import {
   fmtDHS, fmtAED, formatDate, fmtNum, curCode,
   LEAD_STATUSES, LEAD_SOURCES, leadStatusClass,
-  LEAD_STAGES, leadStageOf, leadStageClass,
+  LEAD_STAGES, leadStageOf, leadStageClass, fmtMobile,
 } from '../utils/format.js';
 
 const SOURCE_COLORS = ['#2563EB', '#7C3AED', '#0891B2', '#059669', '#D97706', '#DC2626', '#0D9488', '#9333EA'];
@@ -166,7 +166,7 @@ export default function Reports() {
       title: 'Leads',
       columns: ['Sl. No', 'Name', 'Phone', 'Source', 'Country', 'Employee', 'Stage', 'Status', 'Date', 'Remark'],
       rows: filtered.map((l, i) => [
-        i + 1, l.name, l.mobile || '—', l.source || '—', l.country || '—',
+        i + 1, l.name, fmtMobile(l.mobile, l.country) || '—', l.source || '—', l.country || '—',
         l.ownerName || '—', leadStageOf(l), l.status, formatDate(l.createdAt), l.remark || '—',
       ]),
     },
@@ -401,7 +401,7 @@ export default function Reports() {
                       <tr key={l._id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale">
                         <td className="px-2.5 py-2 text-xs text-ink-3">{(safePage - 1) * PER_PAGE + i + 1}</td>
                         <td className="px-2.5 py-2 text-xs font-bold">{l.name}</td>
-                        <td className="px-2.5 py-2 font-mono text-xs text-ink-2">{l.mobile || '—'}</td>
+                        <td className="px-2.5 py-2 font-mono text-xs text-ink-2">{fmtMobile(l.mobile, l.country) || '—'}</td>
                         <td className="px-2.5 py-2 text-xs">{l.source}</td>
                         <td className="px-2.5 py-2 text-xs">{l.country || '—'}</td>
                         <td className="px-2.5 py-2 text-xs">{l.ownerName || '—'}</td>

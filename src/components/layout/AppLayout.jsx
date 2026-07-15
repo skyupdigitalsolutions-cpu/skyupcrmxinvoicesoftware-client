@@ -100,9 +100,45 @@ function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
   const wrapRef = useRef(null);
+  // Previous unread count — used to detect NEW notifications so the chime
+  // only plays when the count goes up (never on first load or mark-as-read).
+  const prevUnread = useRef(null);
+  const audioCtxRef = useRef(null);
+
+  // Two-tone "ding-dong" bell chime via Web Audio (no asset file needed).
+  // Browsers may block audio until the user's first interaction with the
+  // page; failures are silently ignored.
+  const playChime = () => {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const t0 = ctx.currentTime;
+      [[880, 0], [1174.66, 0.18]].forEach(([freq, dt]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t0 + dt);
+        gain.gain.exponentialRampToValueAtTime(0.2, t0 + dt + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.5);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0 + dt);
+        osc.stop(t0 + dt + 0.55);
+      });
+    } catch { /* audio unavailable/blocked — ignore */ }
+  };
 
   const loadCount = async () => {
-    try { setUnread(await notificationApi.unreadCount()); } catch { /* ignore */ }
+    try {
+      const n = await notificationApi.unreadCount();
+      setUnread(n);
+      if (prevUnread.current !== null && n > prevUnread.current) playChime();
+      prevUnread.current = n;
+    } catch { /* ignore */ }
   };
 
   const loadList = async () => {
@@ -111,6 +147,7 @@ function NotificationBell() {
       const { notifications, unread: u } = await notificationApi.list({ limit: 20 });
       setItems(notifications || []);
       setUnread(u ?? 0);
+      prevUnread.current = u ?? 0;
     } catch { /* ignore */ }
     finally { setLoading(false); }
   };
@@ -147,6 +184,7 @@ function NotificationBell() {
     try { await notificationApi.markAllRead(); } catch { /* ignore */ }
     setItems((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnread(0);
+    prevUnread.current = 0;
   };
 
   const fmt = (d) => {
