@@ -277,7 +277,13 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   // contact lines) — not just against the name's single line.
   const contact = [addr, b.phone ? `Tel: ${clean(b.phone)}` : '', b.email ? `Email: ${clean(b.email)}` : '', b.trn ? `TRN: ${clean(b.trn)}` : '']
     .filter(Boolean);
-  const textBlockH = 16 + (b.headerTagline ? 11 : 0) + contact.length * 12;
+  // Rough estimate — addr is often the longest line and may wrap to 2 lines;
+  // exact wrapped width isn't known yet (it depends on nameX, which depends
+  // on the logo we're about to size), so this pads generously rather than
+  // precisely, just to keep the logo reasonably centered.
+  const contactLinesEstimate = contact.length + (addr && addr.length > 40 ? 1 : 0);
+  const taglineLinesEstimate = b.headerTagline ? (b.headerTagline.length > 45 ? 2 : 1) : 0;
+  const textBlockH = 16 + taglineLinesEstimate * 10 + contactLinesEstimate * 12;
 
   const logoAsset = await loadLogoForPdf(logoUrl);
   if (logoAsset) {
@@ -311,8 +317,9 @@ export async function buildOrderPdfBlob(order, branding = {}) {
     doc.setFont(undefined, 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(60, 60, 60);
-    doc.text(clean(b.headerTagline).toUpperCase(), nameX, leftY, { maxWidth: enAvailableW });
-    leftY += 11;
+    const taglineLines = doc.splitTextToSize(clean(b.headerTagline).toUpperCase(), enAvailableW);
+    taglineLines.forEach((tl) => { doc.text(tl, nameX, leftY); leftY += 10; });
+    leftY += 1;
   }
   // English contact details get their own full column on the LEFT, under
   // the company name — previously these shared the narrow right-hand column
@@ -320,8 +327,12 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   doc.setFont(undefined, 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(0, 0, 0);
-  contact.forEach((line, i) => doc.text(line, nameX, leftY + i * 12));
-  const leftColBottom = leftY + contact.length * 12;
+  let contactY = leftY;
+  contact.forEach((line) => {
+    const wrapped = doc.splitTextToSize(line, enAvailableW);
+    wrapped.forEach((wl) => { doc.text(wl, nameX, contactY); contactY += 12; });
+  });
+  const leftColBottom = contactY;
 
   // ── Arabic company name + address — own column on the RIGHT only ────────
   const hasArabicFont = (containsArabic(b.legalNameAr) || containsArabic(b.addressAr))
@@ -540,14 +551,15 @@ export async function buildOrderPdfBlob(order, branding = {}) {
 
   // ── Signatures ──────────────────────────────────────────────────────────
   // Needs ~58pt of room. If what's left on the page isn't enough, start a
-  // fresh page rather than letting the old Math.max(y+46, pageH-90) logic
-  // push the lines past the bottom of an already-full page (which just
-  // draws them off the visible page — never literally erroring, just
-  // invisible, which is how signatures could go "missing" on long orders).
+  // fresh page rather than letting signatures draw past the bottom of an
+  // already-full page (which never errors — it just silently draws off the
+  // visible page, which is how signatures could go "missing" on long orders).
   y = ensurePageSpace(doc, y, 58, pageH, M);
-  // On whichever page they land on, sit near the bottom for a tidy look —
-  // but never above the content already drawn on that page.
-  const sigY = Math.max(y + 46, pageH - 90);
+  // Sit right after the content — NOT pinned near the bottom of the page.
+  // Pinning them near the bottom looks fine on a full page, but on a short
+  // page (e.g. a continuation page with only a few leftover items) it left
+  // a large empty gap between the content and the signature lines.
+  const sigY = y + 46;
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.6);
