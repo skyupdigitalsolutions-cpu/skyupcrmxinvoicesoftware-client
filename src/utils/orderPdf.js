@@ -7,6 +7,7 @@
 // list-export util uses), so it has NO dependency on exportPdf.js exports.
 
 import { fmtMobile, fmtNum, curCode, formatDate } from './format.js';
+import { reshapeArabicForPdf, containsArabic } from './arabicShape.js';
 
 // ── jsPDF loader (CDN, cached after first load) ──────────────────────────────
 const CDN = {
@@ -94,7 +95,9 @@ async function loadLogoTile(logoUrl) {
       im.onerror = () => reject(new Error('logo failed to load'));
       im.src = logoUrl;
     });
-    const size = 200;
+    // Higher-res source canvas than before (was 200) — the watermark is now
+    // drawn much larger on the page, so a low-res source would look blurry.
+    const size = 420;
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
@@ -110,16 +113,63 @@ async function loadLogoTile(logoUrl) {
   }
 }
 
-// Tiles the pre-faded watermark image. No GState, no save/restore — just
-// plain addImage calls, so this cannot leak any opacity/state into whatever
-// is drawn afterward.
+// Places just a few large, sparse repeats of the faded logo — matching the
+// reference, which shows only 2-3 big diagonal marks, not a dense grid of
+// small tiles. A 2-column x 3-row scatter covers the page without looking busy.
 function paintWatermark(doc, tileDataUrl, pageW, pageH) {
   if (!tileDataUrl) return;
-  const tile = 150; // pt spacing between repeats — generous so it reads as a faint texture
-  for (let y = -tile / 2; y < pageH; y += tile) {
-    for (let x = -tile / 2; x < pageW; x += tile) {
-      doc.addImage(tileDataUrl, 'PNG', x, y, tile * 0.75, tile * 0.75, undefined, 'FAST', -28);
-    }
+  const size = pageW * 0.6; // large — each mark spans well over half the page width
+  const positions = [
+    { x: pageW * 0.05, y: pageH * 0.04 },
+    { x: pageW * 0.55, y: pageH * 0.42 },
+    { x: pageW * -0.05, y: pageH * 0.78 },
+  ];
+  positions.forEach(({ x, y }) => {
+    doc.addImage(tileDataUrl, 'PNG', x, y, size, size, undefined, 'FAST', -28);
+  });
+}
+
+// ── Arabic font (Amiri) ──────────────────────────────────────────────────────
+// jsPDF's built-in fonts only cover basic Latin — Arabic text needs a real
+// Unicode Arabic font embedded into the PDF. Amiri is open-source (OFL) and
+// its actual TTF is committed (not just zipped in a release) to Google's
+// public `google/fonts` repo, so it's a stable, CORS-open, always-available
+// URL — fetched once and cached, since the same 430KB file would otherwise
+// be re-downloaded for every PDF.
+const ARABIC_FONT_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/amiri/Amiri-Regular.ttf';
+let arabicFontBase64Promise = null;
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000; // avoid call-stack limits on String.fromCharCode(...bigArray)
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function loadArabicFontBase64() {
+  if (!arabicFontBase64Promise) {
+    arabicFontBase64Promise = fetch(ARABIC_FONT_URL)
+      .then((r) => { if (!r.ok) throw new Error('font fetch failed'); return r.arrayBuffer(); })
+      .then(arrayBufferToBase64)
+      .catch(() => null); // caller falls back to skipping Arabic text rather than a broken PDF
+  }
+  return arabicFontBase64Promise;
+}
+
+// Registers the Arabic font on THIS doc instance (fonts must be added
+// per-document in jsPDF) and returns whether it succeeded.
+async function ensureArabicFont(doc) {
+  const base64 = await loadArabicFontBase64();
+  if (!base64) return false;
+  try {
+    doc.addFileToVFS('Amiri-Regular.ttf', base64);
+    doc.addFont('Amiri-Regular.ttf', 'Amiri', 'normal');
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -144,35 +194,90 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   doc.setTextColor(0, 0, 0);
 
   // ── Company header ──────────────────────────────────────────────────────
-  let y = 48;
+  // Logo image on the left, company name to its right — matches the
+  // reference layout. Falls back to text-only if no logo is set.
+  let y = 40;
+  let nameX = M;
+  if (logoUrl) {
+    try {
+      const logoImg = await new Promise((resolve, reject) => {
+        const im = new Image();
+        im.crossOrigin = 'anonymous';
+        im.onload = () => resolve(im);
+        im.onerror = () => reject(new Error('logo load failed'));
+        im.src = logoUrl;
+      });
+      // Draw to a canvas first and export as PNG — more reliable across
+      // jsPDF versions than passing a raw <img> element straight to addImage.
+      const lc = document.createElement('canvas');
+      lc.width = logoImg.naturalWidth || logoImg.width;
+      lc.height = logoImg.naturalHeight || logoImg.height;
+      lc.getContext('2d').drawImage(logoImg, 0, 0);
+      const logoDataUrl = lc.toDataURL('image/png');
+      const logoH = 40;
+      const logoW = (lc.width / lc.height) * logoH;
+      doc.addImage(logoDataUrl, 'PNG', M, y - 12, logoW, logoH);
+      nameX = M + logoW + 12;
+    } catch { /* no logo — text-only header, as before */ }
+  }
+  y += 8;
   doc.setFont(undefined, 'bold');
   doc.setFontSize(18);
   doc.setTextColor(0, 0, 0);
-  doc.text(companyEn, M, y);
+  doc.text(companyEn, nameX, y);
+  if (b.headerTagline) {
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(60, 60, 60);
+    doc.text(clean(b.headerTagline).toUpperCase(), nameX, y + 12, { maxWidth: pageW - nameX - M });
+  }
   doc.setFont(undefined, 'normal');
   doc.setFontSize(8.5);
+  doc.setTextColor(0, 0, 0);
   const contact = [addr, b.phone ? `Tel: ${clean(b.phone)}` : '', b.email ? `Email: ${clean(b.email)}` : '', b.trn ? `TRN: ${clean(b.trn)}` : '']
     .filter(Boolean);
-  contact.forEach((line, i) => doc.text(line, pageW - M, 30 + i * 12, { align: 'right' }));
 
-  y += 28;
+  // ── Arabic company name + address (real shaping, not just Latin fallback) ──
+  const hasArabicFont = (containsArabic(b.legalNameAr) || containsArabic(b.addressAr))
+    ? await ensureArabicFont(doc)
+    : false;
+  let contactStartY = 26;
+  if (b.legalNameAr) {
+    doc.setFont(hasArabicFont ? 'Amiri' : undefined, 'normal');
+    doc.setFontSize(13);
+    doc.setTextColor(0, 0, 0);
+    const text = hasArabicFont ? reshapeArabicForPdf(b.legalNameAr) : clean(b.legalNameAr);
+    doc.text(text, pageW - M, contactStartY, { align: 'right' });
+    contactStartY += 16;
+    doc.setFont(undefined, 'normal'); // back to the default Latin font
+  }
+  if (b.addressAr) {
+    doc.setFont(hasArabicFont ? 'Amiri' : undefined, 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(0, 0, 0);
+    const text = hasArabicFont ? reshapeArabicForPdf(b.addressAr) : clean(b.addressAr);
+    doc.text(text, pageW - M, contactStartY, { align: 'right', maxWidth: pageW - nameX - M });
+    contactStartY += 12;
+    doc.setFont(undefined, 'normal');
+  }
+  doc.setFontSize(8.5);
+  contact.forEach((line, i) => doc.text(line, pageW - M, contactStartY + i * 12, { align: 'right' }));
+
+  y += 26;
   doc.setFont(undefined, 'bold');
   doc.setFontSize(17);
   doc.setTextColor(0, 0, 0);
-  doc.text('ORDER FORM', pageW / 2, y, { align: 'center' });
+  doc.text('ORDER FORM', pageW / 2, y, { align: 'center', charSpace: 1.4 });
   doc.setLineWidth(0.8);
   doc.line(M, y + 8, pageW - M, y + 8);
 
   // ── Info block: Billed To | Order Details | Payment Record ──────────────
-  y += 30;
+  // Bordered box with two vertical dividers between columns, matching the
+  // reference layout (not just floating text).
+  y += 26;
+  const boxTop = y;
   const colW = (pageW - M * 2) / 3;
-  doc.setFontSize(8.5);
-  doc.setTextColor(90, 90, 90);
-  doc.text('BILLED TO', M, y);
-  doc.text('ORDER DETAILS', M + colW, y);
-  doc.text('PAYMENT RECORD', M + colW * 2, y);
-  doc.setFontSize(10);
-
+  const padX = 10;
   const left = [
     clean(order.customer),
     clean([order.city, order.country].filter(Boolean).join(', ')),
@@ -189,21 +294,37 @@ export async function buildOrderPdfBlob(order, branding = {}) {
     `Status: ${order.due > 0 ? 'Pending' : 'Paid'}`,
     `Due Amount: ${fmtNum(order.due || 0)} ${curCode()}`,
   ];
+  const rowCount = Math.max(left.length, mid.length, payment.length);
+  const boxH = 18 + 15 + rowCount * 13.5 + 10;
+
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.7);
+  doc.rect(M, boxTop, pageW - M * 2, boxH);
+  doc.line(M + colW, boxTop, M + colW, boxTop + boxH);
+  doc.line(M + colW * 2, boxTop, M + colW * 2, boxTop + boxH);
+
+  let ly = boxTop + 16;
+  doc.setFontSize(8.5);
+  doc.setTextColor(90, 90, 90);
+  doc.setFont(undefined, 'bold');
+  doc.text('BILLED TO', M + padX, ly);
+  doc.text('ORDER DETAILS', M + colW + padX, ly);
+  doc.text('PAYMENT RECORD', M + colW * 2 + padX, ly);
+
+  ly += 17;
+  doc.setFontSize(10);
   // Every column explicitly forces black before drawing — no line here relies
   // on color state carried over from the block above or from a previous loop.
-  doc.setTextColor(0, 0, 0);
   left.forEach((line, i) => {
     doc.setFont(undefined, i === 0 ? 'bold' : 'normal');
     doc.setTextColor(0, 0, 0);
-    doc.text(line, M, y + 15 + i * 13.5);
+    doc.text(line, M + padX, ly + i * 13.5);
   });
   doc.setFont(undefined, 'normal');
-  doc.setTextColor(0, 0, 0);
-  mid.forEach((line, i) => { doc.setTextColor(0, 0, 0); doc.text(line, M + colW, y + 15 + i * 13.5); });
-  doc.setTextColor(0, 0, 0);
-  payment.forEach((line, i) => { doc.setTextColor(0, 0, 0); doc.text(line, M + colW * 2, y + 15 + i * 13.5); });
+  mid.forEach((line, i) => { doc.setTextColor(0, 0, 0); doc.text(line, M + colW + padX, ly + i * 13.5); });
+  payment.forEach((line, i) => { doc.setTextColor(0, 0, 0); doc.text(line, M + colW * 2 + padX, ly + i * 13.5); });
 
-  y += 15 + Math.max(left.length, mid.length, payment.length) * 13.5 + 12;
+  y = boxTop + boxH + 16;
 
   // ── Items table ─────────────────────────────────────────────────────────
   const items = order.items || [];
@@ -212,21 +333,20 @@ export async function buildOrderPdfBlob(order, branding = {}) {
     clean(it.modelCode),
     clean(it.description) || '-',
     clean(it.size) || '-',
-    clean(it.unit) || '-',
-    it.qty ?? 0,
     it.pieces || '-',
+    it.qty ?? 0,
     fmtNum(it.price || 0),
     fmtNum((it.qty || 0) * (it.price || 0)),
   ]);
   doc.autoTable({
     startY: y,
     margin: { left: M, right: M },
-    head: [['Sl', 'Article No.', 'Description', 'Size', 'Unit', 'Qty', 'Pieces', `Rate (${curCode()})`, `Amount (${curCode()})`]],
+    head: [['S.No.', 'Art No.', 'Description', 'Size', 'Pcs', 'Qty', 'Price', 'Amount']],
     body: rows,
     theme: 'grid',
     styles: { fontSize: 9, textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.4, cellPadding: 4.5 },
-    headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.6 },
-    columnStyles: { 0: { cellWidth: 24 }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' } },
+    headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.6 },
+    columnStyles: { 0: { cellWidth: 26, halign: 'center' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' } },
   });
   y = doc.lastAutoTable.finalY + 14;
   // autoTable manipulates fill/text/draw colors extensively while rendering;
@@ -236,6 +356,8 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   doc.setFont(undefined, 'normal');
 
   // ── Totals ──────────────────────────────────────────────────────────────
+  // Words box (left) + totals box with a black Grand Total row (right),
+  // both bordered and sharing the same height, matching the reference.
   const subTotal = items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0);
   const pct = order.discount || 0; // `discount` is a PERCENT (0-100), same as the print form
   const grandTotal = order.grandTotal ?? Math.max(0, subTotal * (1 - pct / 100));
@@ -244,24 +366,43 @@ export async function buildOrderPdfBlob(order, branding = {}) {
     ...(pct > 0 ? [[`Discount (${pct}%)`, `- ${fmtNum(subTotal * pct / 100)}`]] : []),
     ['Grand Total', fmtNum(grandTotal)],
   ];
-  // Order total in words — same wording rule as the printed form.
+
+  const totalsBoxW = 190;
+  const rowH = 22;
+  const totalsBoxH = totals.length * rowH;
+  const totalsBoxX = pageW - M - totalsBoxW;
+  const wordsBoxW = totalsBoxX - M - 12;
+
+  // Words box (left)
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.7);
+  doc.rect(M, y, wordsBoxW, totalsBoxH);
   doc.setFontSize(8.5);
   doc.setTextColor(90, 90, 90);
   doc.setFont(undefined, 'bold');
-  doc.text('ORDER TOTAL IN WORDS', M, y);
+  doc.text('ORDER TOTAL IN WORDS', M + 10, y + 16);
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(11);
-  doc.text(clean(amountToWords(grandTotal)), M, y + 15, { maxWidth: pageW - M * 2 - 190 });
+  doc.text(clean(amountToWords(grandTotal)), M + 10, y + 32, { maxWidth: wordsBoxW - 20 });
 
+  // Totals box (right) — each row bordered, Grand Total row filled black.
   doc.setFontSize(10);
   totals.forEach(([label, val], i) => {
-    const bold = label === 'Grand Total';
-    doc.setFont(undefined, bold ? 'bold' : 'normal');
-    doc.setTextColor(0, 0, 0);
-    doc.text(`${label}:`, pageW - M - 140, y + i * 15);
-    doc.text(`${val} ${curCode()}`, pageW - M, y + i * 15, { align: 'right' });
+    const rowY = y + i * rowH;
+    const isGrand = label === 'Grand Total';
+    if (isGrand) {
+      doc.setFillColor(0, 0, 0);
+      doc.rect(totalsBoxX, rowY, totalsBoxW, rowH, 'F');
+    }
+    doc.setDrawColor(0, 0, 0);
+    doc.rect(totalsBoxX, rowY, totalsBoxW, rowH);
+    doc.setFont(undefined, isGrand ? 'bold' : 'normal');
+    doc.setTextColor(isGrand ? 255 : 0, isGrand ? 255 : 0, isGrand ? 255 : 0);
+    doc.text(label, totalsBoxX + 10, rowY + rowH / 2 + 3.5);
+    doc.text(`${val} ${curCode()}`, totalsBoxX + totalsBoxW - 10, rowY + rowH / 2 + 3.5, { align: 'right' });
   });
-  y += totals.length * 15 + 22;
+  doc.setTextColor(0, 0, 0);
+  y += totalsBoxH + 20;
 
   // ── Terms ───────────────────────────────────────────────────────────────
   const TERMS = [
