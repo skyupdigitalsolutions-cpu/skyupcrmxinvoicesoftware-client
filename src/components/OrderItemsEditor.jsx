@@ -15,6 +15,9 @@ const CATEGORIES = [
 // it now holds the selected category instead of free text. `brand` is dropped.
 const blankItem = () => ({ modelCode: '', description: '', size: '', unit: 'PAIR', qty: 1, pieces: 0, price: 0 });
 
+// Standard footwear size ranges — shown as a dropdown on each item row.
+const SIZES = ['16to20', '20-25', '25-30', '31-36', '36-40', '40-45', '44-48'];
+
 // Common pieces-per-box values for footwear cartons (used as datalist hints).
 const PCS_PER_BOX = [12, 24, 36, 60, 72];
 
@@ -83,12 +86,16 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
                     {legacy && <option value={it.description}>{it.description}</option>}
                   </select>
 
-                  <input
+                  <select
                     className="li"
                     value={it.size || ''}
-                    placeholder="e.g. 40-45"
                     onChange={(e) => update(i, { size: e.target.value })}
-                  />
+                    style={{ color: it.size ? 'var(--text-primary)' : 'var(--text-muted, #9aa1ab)' }}
+                  >
+                    <option value="">Select size…</option>
+                    {SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    {it.size && !SIZES.includes(it.size) && <option value={it.size}>{it.size}</option>}
+                  </select>
 
                   <input
                     className="li text-center"
@@ -157,4 +164,4 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
   );
 }
 
-export { blankItem, CATEGORIES };
+export { blankItem, CATEGORIES, SIZES };

@@ -255,7 +255,7 @@ export default function Invoices() {
                 <tr className="bg-navy-800 text-white">
                   {[
                     'Sl. No', 'Invoice #', 'Date', 'Order #', 'Customer',
-                    'Country', 'Amount (AED)', 'Disc.', 'VAT', 'Total (AED)', 'Payment Status', 'Actions',
+                    'Country', 'Amount (AED)', 'Disc.',  'Total (AED)', 'Payment Status', 'Actions',
                   ].map((h) => (
                     <th
                       key={h}

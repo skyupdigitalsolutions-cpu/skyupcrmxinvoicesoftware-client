@@ -1,8 +1,9 @@
-import { Target } from 'lucide-react';
+import { Target, History } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { leadApi } from '../api/endpoints.js';
 import { useToast } from '../context/ToastContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { apiError } from '../api/client.js';
 import PageTitle from '../components/layout/PageTitle.jsx';
 import { Card, CardHead, CardBody } from '../components/ui/Card.jsx';
@@ -15,6 +16,7 @@ export default function LeadDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { show } = useToast();
+  const { isAdmin } = useAuth();
 
   const [payload, setPayload]   = useState(null);  // { lead, isOwner, canEdit, canContribute }
   const [loading, setLoading]   = useState(true);
@@ -206,9 +208,69 @@ export default function LeadDetail() {
               )}
             </CardBody>
           </Card>
+
+          {/* Edit History — admin-only oversight of who changed what */}
+          {isAdmin && (
+            <Card>
+              <CardHead
+                title={
+                  <span className="flex items-center gap-1.5">
+                    <History size={14} /> Edit History ({(lead.editHistory || []).length})
+                  </span>
+                }
+              />
+              <CardBody>
+                {(lead.editHistory || []).length === 0 ? (
+                  <p className="text-[12px] text-ink-3 py-2">No edits recorded yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {[...lead.editHistory].reverse().map((entry, i) => (
+                      <EditHistoryEntry key={entry._id || i} entry={entry} />
+                    ))}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+          )}
         </div>
       </div>
     </>
+  );
+}
+
+// Human-readable labels — mirrors the server's FIELD_LABELS so admins see the
+// same names in both notifications and this history view.
+const FIELD_LABELS = {
+  name: 'Name', mobile: 'Mobile', country: 'Country', city: 'City', email: 'Email',
+  source: 'Source', campaign: 'Campaign', interest: 'Interest', remark: 'Remark',
+  delivery: 'Delivery', status: 'Status', followUpAt: 'Follow-up date', owner: 'Owner',
+};
+
+const fmtHistVal = (field, v) => {
+  if (v === null || v === undefined || v === '') return '—';
+  if (field === 'followUpAt') return formatDate(v);
+  return String(v);
+};
+
+function EditHistoryEntry({ entry }) {
+  return (
+    <div className="rounded-md bg-gray-50 px-3 py-2.5">
+      <p className="text-[10px] text-ink-3">
+        <span className="font-bold text-ink">{entry.byName || 'Unknown'}</span>
+        <span className="mx-1">·</span>
+        {fmtDateTime(entry.at)}
+      </p>
+      <div className="mt-1.5 space-y-1">
+        {(entry.changes || []).map((c, i) => (
+          <div key={i} className="text-[11.5px] text-ink">
+            <span className="font-semibold">{FIELD_LABELS[c.field] || c.field}:</span>{' '}
+            <span className="text-ink-3 line-through">{fmtHistVal(c.field, c.from)}</span>
+            {' → '}
+            <span className="font-semibold">{fmtHistVal(c.field, c.to)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

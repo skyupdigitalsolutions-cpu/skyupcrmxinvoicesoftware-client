@@ -52,15 +52,90 @@ const clean = (s) => String(s ?? '')
   .replace(/[^\x20-\x7E]/g, '')
   .trim();
 
+// ── Amount → words (mirrors the printed order form) ──────────────────────────
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+  'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+function hundredsToWords(n) {
+  if (n === 0) return '';
+  if (n < 20) return ONES[n];
+  if (n < 100) return TENS[Math.floor(n / 10)] + (n % 10 ? ' ' + ONES[n % 10] : '');
+  return ONES[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + hundredsToWords(n % 100) : '');
+}
+function amountToWords(amount) {
+  const n = Math.round(Number(amount) || 0);
+  if (n === 0) return 'Zero Only';
+  const millions = Math.floor(n / 1_000_000);
+  const thousands = Math.floor((n % 1_000_000) / 1_000);
+  const remainder = n % 1_000;
+  let result = '';
+  if (millions) result += hundredsToWords(millions) + ' Million ';
+  if (thousands) result += hundredsToWords(thousands) + ' Thousand ';
+  if (remainder) result += hundredsToWords(remainder);
+  return result.trim() + ' Only';
+}
+
+// ── Watermark tile: the company logo, faded + rotated, baked into a single
+// transparent PNG via canvas (so no per-placement rotation/opacity API is
+// needed — just tile the same image across the page). Returns null if the
+// logo can't be loaded (e.g. CORS-blocked), so the PDF still generates fine
+// without a watermark rather than failing.
+async function buildWatermarkTile(logoUrl) {
+  if (!logoUrl) return null;
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.crossOrigin = 'anonymous';
+      im.onload = () => resolve(im);
+      im.onerror = () => reject(new Error('logo failed to load'));
+      im.src = logoUrl;
+    });
+    const size = 260; // square canvas — big enough that a rotated logo never clips
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, size, size); // keep transparency (no fill)
+    ctx.translate(size / 2, size / 2);
+    ctx.rotate((-28 * Math.PI) / 180);
+    ctx.globalAlpha = 0.07;
+    // grayscale-ish fade: draw once normally (color is barely visible at 7%
+    // opacity anyway, and skipping a second desaturation pass keeps this fast)
+    const scale = Math.min(size * 0.62 / img.width, size * 0.62 / img.height);
+    const w = img.width * scale, h = img.height * scale;
+    ctx.drawImage(img, -w / 2, -h / 2, w, h);
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null; // no watermark rather than a broken PDF
+  }
+}
+
+function paintWatermark(doc, tileDataUrl, pageW, pageH) {
+  if (!tileDataUrl) return;
+  const tile = 95; // pt spacing between repeats
+  for (let y = -tile / 2; y < pageH; y += tile) {
+    for (let x = -tile / 2; x < pageW; x += tile) {
+      doc.addImage(tileDataUrl, 'PNG', x, y, tile, tile);
+    }
+  }
+}
+
 export async function buildOrderPdfBlob(order, branding = {}) {
   const JsPDF = await ensureJsPDF();
   const doc = new JsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
   const M = 40; // page margin
 
   const b = branding || {};
   const companyEn = clean(b.legalName || b.headerName || 'Company Name');
   const addr = clean([b.addressLine1, b.addressLine2, b.city].filter(Boolean).join(', '));
+
+  // ── Watermark (faint, repeated logo) — drawn first so everything else
+  // paints on top of it. Same logo source used in the header.
+  const logoUrl = b.receiptLogoUrl || b.logoUrl || '';
+  const watermarkTile = await buildWatermarkTile(logoUrl);
+  paintWatermark(doc, watermarkTile, pageW, pageH);
 
   // ── Company header ──────────────────────────────────────────────────────
   let y = 46;
@@ -81,13 +156,14 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   doc.setLineWidth(0.8);
   doc.line(M, y + 8, pageW - M, y + 8);
 
-  // ── Info block: Billed To | Order Details ───────────────────────────────
+  // ── Info block: Billed To | Order Details | Payment Record ──────────────
   y += 28;
-  const colW = (pageW - M * 2) / 2;
+  const colW = (pageW - M * 2) / 3;
   doc.setFontSize(8);
   doc.setTextColor(90, 90, 90);
   doc.text('BILLED TO', M, y);
   doc.text('ORDER DETAILS', M + colW, y);
+  doc.text('PAYMENT RECORD', M + colW * 2, y);
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(9.5);
 
@@ -96,21 +172,26 @@ export async function buildOrderPdfBlob(order, branding = {}) {
     clean([order.city, order.country].filter(Boolean).join(', ')),
     clean(fmtMobile(order.mobile, order.country)),
   ].filter(Boolean);
-  const right = [
+  const mid = [
     `Order #: ${order.orderNo}`,
     `Date: ${formatDate(order.date)}`,
     `Salesperson: ${clean(order.salespersonName) || '-'}`,
-    `Payment Terms: ${clean(order.payTerms) || '-'}`,
     `Status: ${clean(order.status)}`,
+  ];
+  const payment = [
+    `Payment: ${clean(order.payTerms) || '-'}`,
+    `Status: ${order.due > 0 ? 'Pending' : 'Paid'}`,
+    `Due Amount: ${fmtNum(order.due || 0)} ${curCode()}`,
   ];
   left.forEach((line, i) => {
     doc.setFont(undefined, i === 0 ? 'bold' : 'normal');
     doc.text(line, M, y + 14 + i * 13);
   });
   doc.setFont(undefined, 'normal');
-  right.forEach((line, i) => doc.text(line, M + colW, y + 14 + i * 13));
+  mid.forEach((line, i) => doc.text(line, M + colW, y + 14 + i * 13));
+  payment.forEach((line, i) => doc.text(line, M + colW * 2, y + 14 + i * 13));
 
-  y += 14 + Math.max(left.length, right.length) * 13 + 12;
+  y += 14 + Math.max(left.length, mid.length, payment.length) * 13 + 12;
 
   // ── Items table ─────────────────────────────────────────────────────────
   const items = order.items || [];
@@ -139,14 +220,22 @@ export async function buildOrderPdfBlob(order, branding = {}) {
 
   // ── Totals ──────────────────────────────────────────────────────────────
   const subTotal = items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0);
-  const discount = order.discount || 0;
-  const grandTotal = order.grandTotal ?? (subTotal - discount);
+  const pct = order.discount || 0; // `discount` is a PERCENT (0-100), same as the print form
+  const grandTotal = order.grandTotal ?? Math.max(0, subTotal * (1 - pct / 100));
   const totals = [
     ['Sub Total', fmtNum(subTotal)],
-    ...(discount ? [['Discount', `- ${fmtNum(discount)}`]] : []),
+    ...(pct > 0 ? [[`Discount (${pct}%)`, `- ${fmtNum(subTotal * pct / 100)}`]] : []),
     ['Grand Total', fmtNum(grandTotal)],
-    ...(order.due ? [['Due', fmtNum(order.due)]] : []),
   ];
+  // Order total in words — same wording rule as the printed form.
+  doc.setFontSize(8);
+  doc.setTextColor(90, 90, 90);
+  doc.setFont(undefined, 'bold');
+  doc.text('ORDER TOTAL IN WORDS', M, y);
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(10.5);
+  doc.text(clean(amountToWords(grandTotal)), M, y + 14, { maxWidth: pageW - M * 2 - 190 });
+
   doc.setFontSize(9.5);
   totals.forEach(([label, val], i) => {
     const bold = label === 'Grand Total';
@@ -154,13 +243,43 @@ export async function buildOrderPdfBlob(order, branding = {}) {
     doc.text(`${label}:`, pageW - M - 140, y + i * 14);
     doc.text(`${val} ${curCode()}`, pageW - M, y + i * 14, { align: 'right' });
   });
-  y += totals.length * 14 + 16;
+  y += totals.length * 14 + 20;
+
+  // ── Terms ───────────────────────────────────────────────────────────────
+  const TERMS = [
+    'Any alteration in bill, old sale terms, buyer is not allowed.',
+    'Goods once sold will not be taken back or exchange after 4 days.',
+    'Cartons with shortage will not be taken back.',
+    'Delivery will be made within 1-2 days after confirm the order.',
+    'Check goods received in perfect sound condition at the time of the delivery.',
+  ];
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.6);
+  const termsPadX = 10, termsPadY = 12;
+  doc.setFontSize(9);
+  const termLines = TERMS.map((t) => doc.splitTextToSize(`\u2022  ${t}`, pageW - M * 2 - termsPadX * 2));
+  const noteLines = doc.splitTextToSize('WE ARE NOT RESPONSIBLE FOR ANY DAMAGE OR SHORTAGE OF THE GOODS EXPORTED OUT OF UAE.', pageW - M * 2 - termsPadX * 2);
+  const termsBoxH = termsPadY + 12 + termLines.flat().length * 11.5 + noteLines.length * 11.5 + 6;
+  doc.rect(M, y, pageW - M * 2, termsBoxH);
+  let ty = y + termsPadY;
+  doc.setFont(undefined, 'bold');
+  doc.text('TERMS :', M + termsPadX, ty);
+  ty += 13;
+  doc.setFont(undefined, 'normal');
+  termLines.forEach((lines) => {
+    lines.forEach((line) => { doc.text(line, M + termsPadX, ty); ty += 11.5; });
+  });
+  ty += 2;
+  doc.setFont(undefined, 'bold');
+  noteLines.forEach((line) => { doc.text(line, M + termsPadX, ty); ty += 11.5; });
+  y += termsBoxH + 14;
 
   // ── Delivery + notes ────────────────────────────────────────────────────
   doc.setFont(undefined, 'normal');
   doc.setFontSize(9);
   if (order.delivery) { doc.text(`Delivery Details: ${clean(order.delivery)}`, M, y); y += 13; }
-  if (order.mobile) { doc.text(`Delivery Contact No.: ${clean(fmtMobile(order.mobile, order.country))}`, M, y); y += 13; }
+  const deliveryContact = clean(order.deliveryContact) || clean(fmtMobile(order.mobile, order.country));
+  if (deliveryContact) { doc.text(`Delivery Contact No.: ${deliveryContact}`, M, y); y += 13; }
   if (order.notes) { doc.text(`Notes: ${clean(order.notes)}`.slice(0, 180), M, y); y += 13; }
 
   // ── Signatures ──────────────────────────────────────────────────────────

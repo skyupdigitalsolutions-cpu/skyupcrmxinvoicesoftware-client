@@ -213,6 +213,7 @@ export default function Leads() {
     source: searchParams.get('source') || '',
     stage: searchParams.get('stage') || '',
     country: searchParams.get('country') || '',
+    campaign: searchParams.get('campaign') || '',
     employee: '',
   });
   const [sales, setSales] = useState([]);
@@ -239,6 +240,7 @@ export default function Leads() {
       if (f.source && l.source !== f.source) return false;
       if (f.stage && leadStageOf(l) !== f.stage) return false;
       if (f.country && l.country !== f.country) return false;
+      if (f.campaign && (l.campaign || '') !== f.campaign) return false;
       if (f.employee && String(l.owner) !== String(f.employee)) return false;
       if (f.search) {
         const q = f.search.toLowerCase();
@@ -252,6 +254,13 @@ export default function Leads() {
   const countryOptions = useMemo(() => {
     if (!leads) return [];
     return [...new Set(leads.map((l) => l.country).filter(Boolean))].sort();
+  }, [leads]);
+
+  // Campaign filter is optional — only leads that were actually tagged with
+  // a campaign show up here, so the dropdown only lists campaigns that exist.
+  const campaignOptions = useMemo(() => {
+    if (!leads) return [];
+    return [...new Set(leads.map((l) => (l.campaign || '').trim()).filter(Boolean))].sort();
   }, [leads]);
 
   // Employee filter options. Start from active sales users, then fold in EVERY
@@ -426,6 +435,14 @@ export default function Leads() {
           <option value="">All Countries</option>
           {countryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
+        {/* Campaign filter — optional; only appears meaningful once at least
+            one lead has been tagged with a campaign. */}
+        {campaignOptions.length > 0 && (
+          <Select className="!w-auto" value={f.campaign} onChange={(e) => setF({ ...f, campaign: e.target.value })}>
+            <option value="">All Campaigns</option>
+            {campaignOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+          </Select>
+        )}
         {isAdmin && (
           <Select className="!w-auto" value={f.employee} onChange={(e) => setF({ ...f, employee: e.target.value })}>
             <option value="">All Employees</option>
@@ -435,7 +452,7 @@ export default function Leads() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setF({ search: '', status: '', source: '', stage: '', country: '', employee: '' })}
+          onClick={() => setF({ search: '', status: '', source: '', stage: '', country: '', campaign: '', employee: '' })}
         >
           Clear
         </Button>

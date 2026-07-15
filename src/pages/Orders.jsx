@@ -91,6 +91,20 @@ function PrintOrderForm({ order, branding }) {
             font-family: Arial, sans-serif;
             font-size: 12px; color: #000; background: #fff; box-sizing: border-box;
           }
+          /* Faint, repeated logo watermark behind all content. Sized larger than
+             the page and rotated so tiles still cover the corners; grayscale +
+             low opacity keeps it from competing with the (black & white) text. */
+          .pof-watermark {
+            position: absolute;
+            top: -35%; left: -35%; width: 170%; height: 170%;
+            background-image: var(--pof-wm-url);
+            background-repeat: repeat;
+            background-size: 46mm 46mm;
+            transform: rotate(-28deg);
+            opacity: 0.07;
+            filter: grayscale(1);
+            pointer-events: none;
+          }
           .pof-header { display: flex; align-items: center; justify-content: space-between; gap: 6mm; border-bottom: 1.5px solid #000; padding-bottom: 3mm; margin-bottom: 3mm; }
           .pof-brand { display: flex; align-items: center; gap: 5mm; }
           .pof-logo { height: 22mm; width: auto; max-width: 52mm; object-fit: contain; }
@@ -133,8 +147,9 @@ function PrintOrderForm({ order, branding }) {
 
           .pof-terms { border: 1px solid #000; padding: 3.5mm 4mm; margin-bottom: 4mm; }
           .pof-terms-title { font-size: 12px; font-weight: 700; margin-bottom: 2mm; color: #000; }
-          .pof-terms ol { margin: 0; padding-left: 5mm; }
+          .pof-terms ol { margin: 0; padding-left: 5mm; list-style: disc; }
           .pof-terms li { font-size: 11px; color: #000; margin-bottom: 1mm; }
+          .pof-terms-note { font-size: 11px; color: #000; margin-top: 1mm; font-weight: 700; }
 
           .pof-delivery { font-size: 12px; color: #000; margin-bottom: 3mm; }
           .pof-delivery b { color: #000; }
@@ -143,6 +158,11 @@ function PrintOrderForm({ order, branding }) {
           .pof-sign-box { width: 45%; border-top: 1px solid #000; padding-top: 2mm; font-size: 12px; font-weight: 700; color: #000; text-align: center; }
         }
       `}</style>
+
+      {/* ── Watermark: faint, repeated company logo behind everything ────── */}
+      {logoSrc && (
+        <div className="pof-watermark" style={{ '--pof-wm-url': `url("${logoSrc}")` }} />
+      )}
 
       {/* ── Company header (branding-driven, EN + Arabic) ───────────────────── */}
       <div className="pof-header">
@@ -186,7 +206,8 @@ function PrintOrderForm({ order, branding }) {
         {/* Col 3 — Payment Record */}
         <div className="pof-info-col">
           <div className="pof-info-col-label">Payment Record</div>
-          <div className="pof-info-row"><span className="pof-info-key">Payment Status:</span><span className="pof-info-val accent">{order.payTerms}</span></div>
+          <div className="pof-info-row"><span className="pof-info-key">Payment:</span><span className="pof-info-val accent">{order.payTerms}</span></div>
+          <div className="pof-info-row"><span className="pof-info-key">Status:</span><span className="pof-info-val accent">{order.due > 0 ? 'Pending' : 'Paid'}</span></div>
           <div className="pof-info-row"><span className="pof-info-key">Due Amount:</span><span className="pof-info-val blue">{fmtAED(order.due || 0)}</span></div>
         </div>
       </div>
@@ -251,8 +272,8 @@ function PrintOrderForm({ order, branding }) {
           <li>Cartons with shortage will not be taken back.</li>
           <li>Delivery will be made within 1–2 days after confirm the order.</li>
           <li>Check goods received in perfect sound condition at the time of the delivery.</li>
-          <li>WE ARE NOT RESPONSIBLE FOR ANY DAMAGE OR SHORTAGE OF THE GOODS EXPORTED OUT OF UAE.</li>
         </ol>
+        <div className="pof-terms-note">WE ARE NOT RESPONSIBLE FOR ANY DAMAGE OR SHORTAGE OF THE GOODS EXPORTED OUT OF UAE.</div>
       </div>
 
       {/* ── Delivery details ───────────────────────────────────────────────── */}
