@@ -11,6 +11,7 @@ import {
   Trash2, AlertCircle, ArrowRight,
 } from 'lucide-react';
 import { notificationApi, chatApi } from '../../api/endpoints.js';
+import TermsViewerModal from '../TermsViewerModal.jsx';
 
 const NAV = [
   { to: '/dashboard',   label: 'Dashboard',        icon: LayoutDashboard },
@@ -454,6 +455,7 @@ export default function AppLayout({ children }) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [chatUnread, setChatUnread] = useState(0);
+  const [showTerms, setShowTerms] = useState(false);
 
   // Poll chat unread total for the sidebar badge (skipped for developers, who
   // have no company-scoped chat). Refreshes on every route change too.
@@ -563,8 +565,23 @@ export default function AppLayout({ children }) {
           </div>
         )}
 
-        <main className="min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5">{children}</main>
+        <main className="min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5">
+          {children}
+          <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-3 pb-1 text-[11px]" style={{ borderColor: 'var(--header-border)', color: 'var(--text-muted)' }}>
+            <span>&copy; {new Date().getFullYear()} SkyUp CRM Software</span>
+            <span aria-hidden>·</span>
+            <button
+              type="button"
+              onClick={() => setShowTerms(true)}
+              className="underline-offset-2 hover:underline"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Terms &amp; Conditions
+            </button>
+          </footer>
+        </main>
       </div>
+      <TermsViewerModal open={showTerms} onClose={() => setShowTerms(false)} />
     </div>
   );
 }

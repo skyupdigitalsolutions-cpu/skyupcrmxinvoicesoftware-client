@@ -121,3 +121,11 @@ export const platformApi = {
     setExpiryEmail: (body) => api.patch('/platform/expiry-email', body).then((r) => r.data.settings),
     testExpiryEmail: (to) => api.post('/platform/expiry-email/test', { to }).then((r) => r.data),
 };
+
+// ── Terms & Conditions ──────────────────────────────────────────────────────
+export const termsApi = {
+    getCurrent: () => api.get('/terms/current').then((r) => r.data.terms),
+    accept: () => api.post('/terms/accept').then((r) => r.data),
+    // developer only
+    setCurrent: (body) => api.patch('/terms/current', body).then((r) => r.data.terms),
+};

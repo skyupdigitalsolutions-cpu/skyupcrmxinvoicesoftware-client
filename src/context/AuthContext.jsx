@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { PauseCircle } from 'lucide-react';
 import { api, setAccessToken, onAuthFailure, onAccountPaused } from '../api/client.js';
-import { authApi } from '../api/endpoints.js';
+import { authApi, termsApi } from '../api/endpoints.js';
 import { setActiveCurrency } from '../utils/format.js';
+import TermsGate from '../components/TermsGate.jsx';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -47,6 +48,28 @@ export function AuthProvider({ children }) {
   const isAdmin = user?.role === 'admin';
   const isDeveloper = user?.role === 'developer';
 
+  // ── Terms & Conditions gate ────────────────────────────────────────────
+  // Fetched once a user is logged in; compared against their
+  // termsAcceptedVersion to decide whether to block the app. Developers
+  // (platform owner) are exempt, same as the subscription-pause check below.
+  const [currentTerms, setCurrentTerms] = useState(null);
+  useEffect(() => {
+    if (!user || isDeveloper) { setCurrentTerms(null); return; }
+    let active = true;
+    termsApi.getCurrent().then((t) => { if (active) setCurrentTerms(t); }).catch(() => {});
+    return () => { active = false; };
+  }, [user?.id, isDeveloper]);
+
+  const needsTermsAcceptance = !!(
+    user && !isDeveloper && currentTerms && (user.termsAcceptedVersion || 0) < (currentTerms.version || 1)
+  );
+
+  const acceptTerms = async () => {
+    await termsApi.accept();
+    // Unblock immediately without requiring a refresh/re-login.
+    setUser((u) => (u ? { ...u, termsAcceptedVersion: currentTerms.version } : u));
+  };
+
   // Tenant info attached by the server (currency + branding). Null for developer.
   const company = user?.company && typeof user.company === 'object' ? user.company : null;
   const branding = company?.branding || null;
@@ -67,6 +90,17 @@ export function AuthProvider({ children }) {
     return (
       <AuthContext.Provider value={{ user, loading, login, logout, isAdmin, isDeveloper, company, branding, currency, subscription, paused: true }}>
         <AccountPausedScreen message={pausedMsg} onLogout={logout} brandName={branding?.headerName} />
+      </AuthContext.Provider>
+    );
+  }
+
+  // Mandatory Terms & Conditions acceptance — blocks everything else until
+  // accepted. Checked after the paused screen (a paused company has bigger
+  // problems to resolve first) but before the app itself ever renders.
+  if (needsTermsAcceptance) {
+    return (
+      <AuthContext.Provider value={{ user, loading, login, logout, isAdmin, isDeveloper, company, branding, currency, subscription, paused: false }}>
+        <TermsGate terms={currentTerms} onAccept={acceptTerms} onLogout={logout} />
       </AuthContext.Provider>
     );
   }

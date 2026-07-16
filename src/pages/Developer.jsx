@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
   Building2, Plus, Pencil, Trash2, Users, Shield, Loader2, Target,
-  Cloud, Mail, DollarSign, ChevronDown, ChevronRight, Send, Eye, EyeOff,
-  Palette, Image as ImageIcon, Server,
+  Cloud, Mail, DollarSign, ChevronDown, ChevronRight, ChevronUp, Send, Eye, EyeOff,
+  Palette, Image as ImageIcon, Server, FileCheck,
   Languages,
 } from 'lucide-react';
-import { companyApi, platformApi } from '../api/endpoints.js';
+import { companyApi, platformApi, termsApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { apiError } from '../api/client.js';
@@ -966,6 +966,162 @@ function PlatformEmailCard() {
   );
 }
 
+// ── Terms & Conditions Editor ──────────────────────────────────────────────────
+// Platform-wide Terms & Conditions singleton — edited here, read by
+// TermsGate (mandatory acceptance popup) and TermsViewerModal (footer link).
+// Saving bumps the published version server-side, which is what makes
+// TermsGate re-prompt every user for acceptance again.
+function TermsEditorCard() {
+  const { show } = useToast();
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({
+    title: '', effectiveDate: '', intro: '', declaration: '', sections: [],
+  });
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    termsApi.getCurrent()
+      .then((t) => {
+        setForm({
+          title: t.title || '',
+          effectiveDate: t.effectiveDate || '',
+          intro: t.intro || '',
+          declaration: t.declaration || '',
+          sections: (t.sections || []).map((s) => ({ heading: s.heading || '', body: s.body || '' })),
+        });
+        setLoaded(true);
+      })
+      .catch((err) => show(apiError(err), 'error'));
+  }, [open, loaded, show]);
+
+  const setSection = (i, field, value) => {
+    setForm((f) => {
+      const sections = [...f.sections];
+      sections[i] = { ...sections[i], [field]: value };
+      return { ...f, sections };
+    });
+  };
+  const addSection = () => setForm((f) => ({ ...f, sections: [...f.sections, { heading: `${f.sections.length + 1}. `, body: '' }] }));
+  const removeSection = (i) => setForm((f) => ({ ...f, sections: f.sections.filter((_, idx) => idx !== i) }));
+  const moveSection = (i, dir) => {
+    setForm((f) => {
+      const j = i + dir;
+      if (j < 0 || j >= f.sections.length) return f;
+      const sections = [...f.sections];
+      [sections[i], sections[j]] = [sections[j], sections[i]];
+      return { ...f, sections };
+    });
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await termsApi.setCurrent(form);
+      show('Terms & Conditions saved — every user will be asked to accept the updated version.', 'success');
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Card className="mb-4">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-bold"
+        style={{ color: 'var(--text-primary)' }}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <FileCheck size={15} />
+        <span className="flex-1">Terms &amp; Conditions</span>
+        {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+      </button>
+
+      {open && (
+        <div className="space-y-3 border-t px-4 py-3.5" style={{ borderColor: 'var(--border-card)' }}>
+          {!loaded ? <Spinner label="Loading…" /> : (
+            <>
+              <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                Shown by the mandatory acceptance popup (every user, on first login and again
+                whenever you save a change here) and by the "Terms &amp; Conditions" link in the
+                app footer (view-only, no acceptance required).
+              </p>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Title">
+                  <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+                </Field>
+                <Field label="Effective Date (optional, free text)">
+                  <Input value={form.effectiveDate} placeholder="e.g. 16 Jul 2026"
+                    onChange={(e) => setForm({ ...form, effectiveDate: e.target.value })} />
+                </Field>
+              </div>
+
+              <Field label="Intro paragraph">
+                <Textarea rows={2} value={form.intro} onChange={(e) => setForm({ ...form, intro: e.target.value })} />
+              </Field>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                    Sections ({form.sections.length})
+                  </span>
+                  <Button variant="outline" size="sm" onClick={addSection}>+ Add Section</Button>
+                </div>
+                <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                  {form.sections.map((sec, i) => (
+                    <div key={i} className="rounded-md border p-2.5" style={{ borderColor: 'var(--border-card)' }}>
+                      <div className="mb-1.5 flex items-center gap-1.5">
+                        <Input
+                          className="flex-1 !text-xs !font-bold"
+                          value={sec.heading}
+                          placeholder="Heading (e.g. 1. Invoice Accuracy)"
+                          onChange={(e) => setSection(i, 'heading', e.target.value)}
+                        />
+                        <button type="button" onClick={() => moveSection(i, -1)} disabled={i === 0}
+                          className="flex h-7 w-7 items-center justify-center rounded hover:bg-black/[0.06] disabled:opacity-30"
+                          style={{ color: 'var(--text-muted)' }} title="Move up">
+                          <ChevronUp size={14} />
+                        </button>
+                        <button type="button" onClick={() => moveSection(i, 1)} disabled={i === form.sections.length - 1}
+                          className="flex h-7 w-7 items-center justify-center rounded hover:bg-black/[0.06] disabled:opacity-30"
+                          style={{ color: 'var(--text-muted)' }} title="Move down">
+                          <ChevronDown size={14} />
+                        </button>
+                        <button type="button" onClick={() => removeSection(i)}
+                          className="flex h-7 w-7 items-center justify-center rounded text-red-500 hover:bg-red-50" title="Remove">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      <Textarea rows={2} value={sec.body} placeholder="Section text"
+                        onChange={(e) => setSection(i, 'body', e.target.value)} />
+                    </div>
+                  ))}
+                  {form.sections.length === 0 && (
+                    <p className="py-4 text-center text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                      No sections yet — click "+ Add Section" above.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <Field label="Declaration (shown next to the acceptance checkbox)">
+                <Textarea rows={3} value={form.declaration} onChange={(e) => setForm({ ...form, declaration: e.target.value })} />
+              </Field>
+
+              <div className="flex justify-end border-t pt-3" style={{ borderColor: 'var(--border-card)' }}>
+                <Button disabled={busy} onClick={save}>
+                  {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save & Publish New Version'}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── Main Developer Page ───────────────────────────────────────────────────────
 export default function Developer() {
   const { show } = useToast();
@@ -994,6 +1150,7 @@ export default function Developer() {
       </PageTitle>
 
       <PlatformEmailCard />
+      <TermsEditorCard />
 
       <Card className="overflow-x-auto">
         {!companies?.length ? (
