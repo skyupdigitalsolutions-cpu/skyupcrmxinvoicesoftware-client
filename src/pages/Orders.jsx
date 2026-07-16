@@ -306,7 +306,7 @@ function PrintOrderForm({ order, branding }) {
       {/* ── Delivery details ───────────────────────────────────────────────── */}
       <div className="pof-delivery">
         {order.delivery && <div><b>Delivery Details:</b> {order.delivery}</div>}
-        {(order.deliveryContact || order.mobile) && <div style={{ marginTop: '1mm' }}><b>Delivery Contact No.:</b> {order.deliveryContact || fmtMobile(order.mobile, order.country)}</div>}
+        <div style={{ marginTop: '1mm' }}><b>Delivery Contact No.:</b> {order.deliveryContact || '—'}</div>
         {order.notes && <div style={{ marginTop: '1mm' }}><b>Notes:</b> {order.notes}</div>}
       </div>
 
@@ -602,7 +602,7 @@ export default function Orders() {
               <div><span className="font-bold text-navy">Salesperson:</span> {viewOrder.salespersonName || '—'}</div>
               <div><span className="font-bold text-navy">Payment:</span> {viewOrder.payTerms}</div>
               <div><span className="font-bold text-navy">Due:</span> {fmtAED(viewOrder.due || 0)}</div>
-              <div><span className="font-bold text-navy">Delivery Contact:</span> {viewOrder.deliveryContact || fmtMobile(viewOrder.mobile, viewOrder.country) || '—'}</div>
+              <div><span className="font-bold text-navy">Delivery Contact:</span> {viewOrder.deliveryContact || '—'}</div>
             </div>
 
             <div className="mt-4 overflow-x-auto rounded-lg border border-gray-100">

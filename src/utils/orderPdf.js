@@ -539,14 +539,17 @@ export async function buildOrderPdfBlob(order, branding = {}) {
   y += termsBoxH + 14;
 
   // ── Delivery + notes ────────────────────────────────────────────────────
-  const deliveryContact = clean(order.deliveryContact) || clean(fmtMobile(order.mobile, order.country));
-  const deliveryLines = [order.delivery, deliveryContact, order.notes].filter(Boolean).length;
+  // No fallback to the customer's mobile — this line always shows exactly
+  // what was manually entered in "Delivery Contact No.", or a dash if that
+  // field was left blank, so it's obvious at a glance whether it was ever set.
+  const deliveryContact = clean(order.deliveryContact);
+  const deliveryLines = 1 + (order.delivery ? 1 : 0) + (order.notes ? 1 : 0); // "Delivery Contact No." line always renders
   y = ensurePageSpace(doc, y, deliveryLines * 14, pageH, M);
   doc.setFont(undefined, 'normal');
   doc.setFontSize(9.5);
   doc.setTextColor(0, 0, 0);
   if (order.delivery) { doc.text(`Delivery Details: ${clean(order.delivery)}`, M, y); y += 14; }
-  if (deliveryContact) { doc.text(`Delivery Contact No.: ${deliveryContact}`, M, y); y += 14; }
+  doc.text(`Delivery Contact No.: ${deliveryContact || '—'}`, M, y); y += 14;
   if (order.notes) { doc.text(`Notes: ${clean(order.notes)}`.slice(0, 180), M, y); y += 14; }
 
   // ── Signatures ──────────────────────────────────────────────────────────
