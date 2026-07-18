@@ -13,7 +13,7 @@ import { orderApi, userApi, leadApi } from '../api/endpoints.js';
 import { apiError } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
-import { fmtAED, todayStr, COUNTRIES, COUNTRY_CODES, ORDER_STATUSES } from '../utils/format.js';
+import { fmtAED, todayStr, dialFor, ORDER_STATUSES } from '../utils/format.js';
 import CountrySelect from '../components/ui/CountrySelect.jsx';
 
 import PageTitle from '../components/layout/PageTitle.jsx';
@@ -234,7 +234,7 @@ function DialCodePrefix({ country }) {
         color:           'var(--text-primary)',
       }}
     >
-      +{COUNTRY_CODES[country] || ''}
+      +{dialFor(country)}
     </span>
   );
 }

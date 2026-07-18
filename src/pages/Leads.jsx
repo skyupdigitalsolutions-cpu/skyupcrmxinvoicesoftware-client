@@ -25,7 +25,7 @@ import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 import {
   formatDate, fmtAED, fmtDateTime, leadStatusClass,
   LEAD_STATUSES, LEAD_SOURCES, ALL_COUNTRY_NAMES, dialFor, cleanPhone, fmtMobile,
-  LEAD_STAGES, leadStageOf, leadStageClass, COUNTRY_CODES,
+  LEAD_STAGES, leadStageOf, leadStageClass, getCountryCodes,
 } from '../utils/format.js';
 
 const emptyLead = () => ({
@@ -113,7 +113,7 @@ const COUNTRY_SET = new Set(ALL_COUNTRY_NAMES);
 const STAGE_SET = new Set(CREATE_STAGES);
 
 // Reverse map: dial code (digits only) → country name, for the "Country Code" column.
-const CODE_TO_COUNTRY = Object.entries(COUNTRY_CODES).reduce((acc, [country, code]) => {
+const CODE_TO_COUNTRY = Object.entries(getCountryCodes()).reduce((acc, [country, code]) => {
   if (code) acc[String(code)] = country;
   return acc;
 }, {});

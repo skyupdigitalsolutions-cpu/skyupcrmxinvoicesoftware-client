@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { Input } from './Field.jsx';
-import { ALL_COUNTRY_NAMES, dialFor } from '../../utils/format.js';
+import { getCountryNames, dialFor, addCustomCountry } from '../../utils/format.js';
 
 // Searchable country picker. Type to filter by country NAME or DIAL CODE
 // (e.g. "971", "ind", "saudi"), click or press Enter to choose. Picking
@@ -10,10 +10,13 @@ import { ALL_COUNTRY_NAMES, dialFor } from '../../utils/format.js';
 // The menu renders in a portal (fixed-positioned to the field) so it floats
 // above cards that clip their overflow. Controlled: `value` + `onChange(value)`.
 export default function CountrySelect({ value, onChange, showCode = true, className = '' }) {
-  const NAMES = useMemo(() => ALL_COUNTRY_NAMES.filter((c) => c !== 'Other'), []);
-  const isCustom = !!value && !ALL_COUNTRY_NAMES.includes(value);
+  // Bump to re-read the (live) country list after a custom country is added.
+  const [countryVersion, setCountryVersion] = useState(0);
+  const NAMES = useMemo(() => getCountryNames().filter((c) => c !== 'Other'), [countryVersion]);
+  const isCustom = !!value && !getCountryNames().includes(value);
 
   const [manual, setManual] = useState(isCustom);
+  const [manualCode, setManualCode] = useState(isCustom ? dialFor(value) : '');
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [hi, setHi] = useState(0);
@@ -74,7 +77,7 @@ export default function CountrySelect({ value, onChange, showCode = true, classN
   useEffect(() => { setHi(0); }, [query]);
 
   const choose = (c) => { setManual(false); onChange(c); setOpen(false); setQuery(''); };
-  const enterManual = () => { setManual(true); onChange(''); setOpen(false); setQuery(''); };
+  const enterManual = () => { setManual(true); onChange(''); setManualCode(''); setOpen(false); setQuery(''); };
 
   const onKeyDown = (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.min(h + 1, itemCount - 1)); }
@@ -88,14 +91,47 @@ export default function CountrySelect({ value, onChange, showCode = true, classN
 
   const fieldStyle = { borderColor: 'var(--border-card)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)' };
 
+  const saveCustom = () => {
+    const added = addCustomCountry(value, manualCode);
+    if (!added) return;
+    setCountryVersion((v) => v + 1); // refresh the dropdown list with the new country
+    setManual(false);
+    onChange(added);
+  };
+
   // ── Manual entry mode ────────────────────────────────────────────────────
   if (manual) {
+    const codeDigits = manualCode.replace(/\D/g, '');
     return (
       <div className={className}>
-        <Input placeholder="Type country name" value={value} onChange={(e) => onChange(e.target.value)} />
+        <Input placeholder="Country name (e.g. Georgia)" value={value} onChange={(e) => onChange(e.target.value)} />
+        <div className="mt-1.5 flex items-center gap-2">
+          <div className="flex items-center rounded-md border px-2" style={{ borderColor: 'var(--border-card)', backgroundColor: 'var(--bg-card)' }}>
+            <span className="text-sm text-ink-3">+</span>
+            <input
+              value={manualCode}
+              onChange={(e) => setManualCode(e.target.value.replace(/\D/g, ''))}
+              placeholder="995"
+              inputMode="numeric"
+              className="w-16 bg-transparent py-2 text-sm outline-none"
+              style={{ color: 'var(--text-primary)' }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={saveCustom}
+            disabled={!(value || '').trim() || !codeDigits}
+            className="rounded-md bg-gold-700 px-3 py-2 text-[12px] font-bold text-white disabled:opacity-50"
+          >
+            Save to list
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-ink-3">
+          Enter the country name and its dial code, then “Save to list” — it’s remembered for next time.
+        </p>
         <button
           type="button"
-          onClick={() => { setManual(false); onChange(''); }}
+          onClick={() => { setManual(false); onChange(''); setManualCode(''); }}
           className="mt-1 text-[11px] font-semibold text-gold-700 hover:underline"
         >
           ← Choose from list instead

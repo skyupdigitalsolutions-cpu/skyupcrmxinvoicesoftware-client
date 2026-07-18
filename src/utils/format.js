@@ -141,13 +141,73 @@ export const COUNTRY_CODES = {
     // Fallback — pick this to type a country not listed above
     Other: '',
 };
-export const COUNTRIES = Object.keys(COUNTRY_CODES);
+// ── Custom countries (user-added, remembered in the browser) ──────────────────
+// Users can add a country + dial code from the CountrySelect picker. We persist
+// them in localStorage and merge them on top of the built-in COUNTRY_CODES, so
+// once added a country stays in the list (with its +code) and works for phone
+// formatting everywhere — no need to re-add it each time.
+const CUSTOM_COUNTRIES_KEY = 'skyup.customCountries.v1';
+
+const readCustomCountries = () => {
+    try {
+        if (typeof localStorage === 'undefined') return {};
+        const raw = localStorage.getItem(CUSTOM_COUNTRIES_KEY);
+        if (!raw) return {};
+        const obj = JSON.parse(raw);
+        return obj && typeof obj === 'object' ? obj : {};
+    } catch (e) {
+        return {};
+    }
+};
+
+// Built-ins first, custom entries extend/override. Rebuilt whenever a country
+// is added/removed so all lookups below see it immediately.
+let CUSTOM_COUNTRIES = readCustomCountries();
+let EFFECTIVE_CODES = { ...COUNTRY_CODES, ...CUSTOM_COUNTRIES };
+
+const persistCustom = () => {
+    try {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(CUSTOM_COUNTRIES_KEY, JSON.stringify(CUSTOM_COUNTRIES));
+        }
+    } catch (e) { /* ignore quota / availability errors */ }
+};
+
+// Merged dial-code map + name list (built-in + custom). Prefer these over the
+// raw COUNTRY_CODES so custom countries always resolve.
+export const getCountryCodes = () => EFFECTIVE_CODES;
+export const getCountryNames = () => Object.keys(EFFECTIVE_CODES);
+export const isCustomCountry = (name) => Object.prototype.hasOwnProperty.call(CUSTOM_COUNTRIES, name);
+
+// Add (or update) a custom country + dial code. Persists and updates the live
+// map. Returns the sanitized country name, or '' if the input was invalid.
+export const addCustomCountry = (name, code) => {
+    const cleanName = String(name || '').trim();
+    const cleanCode = String(code || '').replace(/\D/g, '');
+    if (!cleanName || !cleanCode) return '';
+    CUSTOM_COUNTRIES = { ...CUSTOM_COUNTRIES, [cleanName]: cleanCode };
+    EFFECTIVE_CODES = { ...COUNTRY_CODES, ...CUSTOM_COUNTRIES };
+    persistCustom();
+    return cleanName;
+};
+
+export const removeCustomCountry = (name) => {
+    if (!isCustomCountry(name)) return;
+    const next = { ...CUSTOM_COUNTRIES };
+    delete next[name];
+    CUSTOM_COUNTRIES = next;
+    EFFECTIVE_CODES = { ...COUNTRY_CODES, ...CUSTOM_COUNTRIES };
+    persistCustom();
+};
+
+// Full country name list = built-in + any custom ones (loaded at startup).
+export const COUNTRIES = Object.keys(EFFECTIVE_CODES);
 
 export const cleanPhone = (num, country) => {
     if (!num) return '';
     let p = String(num).replace(/[^0-9]/g, '');
     if (p.startsWith('0')) p = p.slice(1);
-    const code = COUNTRY_CODES[country] || '971';
+    const code = EFFECTIVE_CODES[country] || '971';
     if (!p.startsWith(code)) p = code + p;
     return p;
 };
@@ -174,8 +234,8 @@ export const statusClass = (s) => ({
 // ── Lead helpers ──────────────────────────────────────────────────────────────
 export const LEAD_STATUSES = ['New', 'Contacted', 'Interested', 'Follow-up', 'Won', 'Lost'];
 export const LEAD_SOURCES = ['Walk-in', 'WhatsApp', 'Instagram', 'Facebook', 'Referral', 'market-in', 'Website', 'Call', 'Other'];
-export const ALL_COUNTRY_NAMES = Object.keys(COUNTRY_CODES);
-export const dialFor = (country) => COUNTRY_CODES[country] || '';
+export const ALL_COUNTRY_NAMES = Object.keys(EFFECTIVE_CODES);
+export const dialFor = (country) => EFFECTIVE_CODES[country] || '';
 
 // Display helper: mobile with its country dial code, e.g. "+971 506731305".
 // Strips a leading zero, avoids double-prefixing when the stored number
@@ -186,7 +246,7 @@ export const fmtMobile = (num, country) => {
     let p = String(num).replace(/[^0-9]/g, '');
     if (!p) return String(num);
     if (p.startsWith('0')) p = p.slice(1);
-    const code = COUNTRY_CODES[country] || '';
+    const code = EFFECTIVE_CODES[country] || '';
     if (!code) return String(num);
     if (p.startsWith(code)) return `+${code} ${p.slice(code.length)}`;
     return `+${code} ${p}`;
