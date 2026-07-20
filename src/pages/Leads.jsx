@@ -50,6 +50,9 @@ const leadSchema = Yup.object({
     .matches(/^[0-9+\-\s]*$/, 'Digits only')
     .test('len', 'Enter a valid number', (v) => !v || v.replace(/\D/g, '').length >= 5),
   email: Yup.string().trim().email('Invalid email'),
+  altMobile: Yup.string().trim()
+    .matches(/^[0-9+\-\s]*$/, 'Digits only')
+    .test('len', 'Enter a valid number', (v) => !v || v.replace(/\D/g, '').length >= 5),
   city: Yup.string().trim().required('City is required').max(60, 'Too long'),
   country: Yup.string().required('Country is required'),
   source: Yup.string().required('Source is required'),
@@ -799,8 +802,8 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
   const isEdit = !!lead?._id;
 
   const initial = {
-    name: lead?.name || '', mobile: lead?.mobile || '', email: lead?.email || '',
-    country: lead?.country || 'UAE', city: lead?.city || '',
+    name: lead?.name || '', mobile: lead?.mobile || '', altMobile: lead?.altMobile || '', email: lead?.email || '',
+    country: lead?.country || 'UAE', altCountry: lead?.altCountry || lead?.country || 'UAE', city: lead?.city || '',
     source: lead?.source || 'Walk-in', campaign: lead?.campaign || '',
     interest: lead?.interest || '', remark: lead?.remark || '',
     delivery: lead?.delivery || '',
@@ -815,7 +818,7 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
     if (isEdit && STATUS_TO_STAGE(lead.status) === values.stage) status = lead.status;
 
     const payload = {
-      name: values.name, mobile: values.mobile, email: values.email,
+      name: values.name, mobile: values.mobile, altMobile: values.altMobile, altCountry: values.altMobile ? values.altCountry : '', email: values.email,
       country: values.country, city: values.city, source: values.source,
       campaign: values.campaign, interest: values.interest, remark: values.remark,
       delivery: values.delivery,
@@ -890,6 +893,29 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
                   />
                 </div>
                 {isEdit && <span className="mt-1 block text-[10px]" style={{ color: 'var(--text-muted)' }}>Mobile number can't be edited after creation.</span>}
+              </FieldRow>
+              <FieldRow label="Alternate Number (optional)" name="altMobile" error={touched.altMobile && errors.altMobile}>
+                <div className="flex gap-1.5">
+                  <div className="w-[38%]">
+                    <CountrySelect value={values.altCountry} onChange={(v) => setFieldValue('altCountry', v)} />
+                  </div>
+                  <div className="flex flex-1">
+                    <span
+                      className="flex items-center whitespace-nowrap rounded-l-md border border-r-0 px-2.5 text-[13px] font-bold"
+                      style={{ backgroundColor: 'var(--bg-card-head)', borderColor: 'var(--input-border)', color: 'var(--text-primary)' }}
+                    >
+                      +{dialFor(values.altCountry) || '—'}
+                    </span>
+                    <Input
+                      className="!rounded-l-none"
+                      name="altMobile"
+                      value={values.altMobile}
+                      placeholder="e.g. second contact number"
+                      onChange={handleChange}
+                      onBlur={handleBlur}
+                    />
+                  </div>
+                </div>
               </FieldRow>
               <FieldRow label="Email" name="email" error={touched.email && errors.email}>
                 <Input name="email" value={values.email} placeholder="name@email.com" onChange={handleChange} onBlur={handleBlur} />

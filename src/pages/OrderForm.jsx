@@ -35,6 +35,12 @@ const PAY_TERMS = [
   'Cash',
 ];
 
+// Terms where payment is already received in full at the time of the order —
+// Due Amount auto-resets to 0 when one of these is selected. Every other term
+// implies payment is still outstanding, so Due auto-fills with the full
+// Grand Total (i.e. fully pending) until the amount is edited manually.
+const PAID_TERMS = ['Cash Paid', 'Cash'];
+
 const INITIAL_FORM = {
   date: todayStr(),
   customer: '',
@@ -330,6 +336,7 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState,
           </Field>
         </div>
 
+
         {/* Row 2 – customer fields */}
         <div className="grid gap-3 md:grid-cols-3">
           <Field label="Billed To (Customer) *">
@@ -436,7 +443,16 @@ function OrderItemsCard({ form, set, subTotal, grandTotal }) {
 
 // ─── Section: Discount & Notes card ──────────────────────────────────────────
 
-function DiscountNotesCard({ form, set }) {
+function DiscountNotesCard({ form, set, grandTotal = 0, onDueChange }) {
+  // Auto-derived from Due Amount vs Grand Total — purely informational, shows
+  // how the order's payment currently stands: fully paid, part-paid, or the
+  // full amount still pending.
+  const due = Number(form.due) || 0;
+  const paymentState =
+    due <= 0 ? { label: 'Paid — Complete', cls: 'bg-ok-light text-ok' } :
+    due >= grandTotal && grandTotal > 0 ? { label: 'Due — Pending', cls: 'bg-danger-light text-danger' } :
+    { label: 'Partial — Pending', cls: 'bg-warn-light text-warn' };
+
   return (
     <Card>
       <CardHead title="Discount & Notes" />
@@ -460,8 +476,11 @@ function DiscountNotesCard({ form, set }) {
               type="number"
               min="0"
               value={form.due}
-              onChange={(e) => set('due', Number(e.target.value))}
+              onChange={(e) => onDueChange(Number(e.target.value))}
             />
+            <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${paymentState.cls}`}>
+              {paymentState.label}
+            </span>
           </Field>
 
           <Field label="Status">
@@ -504,6 +523,11 @@ export default function OrderForm() {
   const [sales, setSales]     = useState([]);
   const [form, setForm]       = useState(INITIAL_FORM);
 
+  // Whether Due Amount should keep auto-tracking the Grand Total (true) or has
+  // been manually overridden by the user (false — stops auto-resync so a
+  // custom partial-payment value is never silently clobbered).
+  const dueAutoRef = useRef(true);
+
   // ── Lead lookup ────────────────────────────────────────────────────────────
   const { leadId, leadState, onMobileChange, onCountryChange } = useLeadLookup({
     editing,
@@ -536,6 +560,7 @@ export default function OrderForm() {
       if (editing) {
         try {
           const o = await orderApi.get(id);
+          dueAutoRef.current = false; // an existing order's due amount is authoritative — don't auto-override it
           setForm({
             date:        o.date?.slice(0, 10) || todayStr(),
             customer:    o.customer,
@@ -572,6 +597,33 @@ export default function OrderForm() {
     set('mobile', value);
     onMobileChange(value, form.country);
   };
+
+  // Selecting a payment term auto-fills Due Amount: 0 for terms where payment
+  // is already received in full, otherwise the full Grand Total (pending).
+  // Re-enables auto-tracking so later item/discount changes keep it in sync
+  // until the user manually edits Due Amount themselves.
+  const handlePayTermsChange = (value) => {
+    set('payTerms', value);
+    dueAutoRef.current = true;
+    set('due', PAID_TERMS.includes(value) ? 0 : Math.round(grandTotal * 100) / 100);
+  };
+
+  // A manual edit to Due Amount stops the auto-tracking above — the user's
+  // custom (e.g. partial-payment) value is never silently overwritten again.
+  const handleDueChange = (value) => {
+    dueAutoRef.current = false;
+    set('due', value);
+  };
+
+  // Keep Due Amount synced to the Grand Total whenever items/discount change
+  // — but only while auto-tracking is active (see handlePayTermsChange /
+  // handleDueChange above).
+  useEffect(() => {
+    if (!dueAutoRef.current) return;
+    const target = PAID_TERMS.includes(form.payTerms) ? 0 : Math.round(grandTotal * 100) / 100;
+    if (form.due !== target) set('due', target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grandTotal, form.payTerms]);
 
   const handleCountryChange = (value) => {
     set('country', value);
@@ -678,6 +730,7 @@ export default function OrderForm() {
           if (k === 'mobile')   { handleMobileChange(v);   return; }
           if (k === 'country')  { handleCountryChange(v);  return; }
           if (k === 'customer') { handleCustomerChange(v); return; }
+          if (k === 'payTerms') { handlePayTermsChange(v); return; }
           set(k, v);
         }}
         sales={sales}
@@ -695,7 +748,7 @@ export default function OrderForm() {
         grandTotal={grandTotal}
       />
 
-      <DiscountNotesCard form={form} set={set} />
+      <DiscountNotesCard form={form} set={set} grandTotal={grandTotal} onDueChange={handleDueChange} />
 
       <div className="flex justify-end gap-2.5">
         <Button variant="outline" onClick={() => navigate('/orders')}>

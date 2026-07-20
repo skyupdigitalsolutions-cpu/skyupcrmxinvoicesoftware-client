@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Eye, Pencil, Truck, FileText, Trash2, ClipboardList,
-  MessageCircle, Printer, X, Check, Download, Phone, FolderOpen,
+  MessageCircle, Printer, X, Check, Download, Phone, FolderOpen, RefreshCw,
 } from 'lucide-react';
 import { orderApi, invoiceApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -135,24 +135,34 @@ function PrintOrderForm({ order, branding }) {
           .pof-address-ar { font-size: 10px; color: #000; line-height: 1.5; text-align: right; }
           .pof-title { text-align: center; font-size: 30px; font-weight: 900; letter-spacing: 4px; color: #000; text-transform: uppercase; margin: 2mm 0 4mm; }
 
-          .pof-info { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-bottom: 4mm; border: 1px solid #000; }
-          .pof-info-col { padding: 3.5mm 4mm; border-right: 1px solid #000; }
+          .pof-info { display: grid; grid-template-columns: 1.3fr 1fr 0.9fr; gap: 0; margin-bottom: 4mm; border: 1px solid #000; align-items: stretch; }
+          .pof-info-col { padding: 3.5mm 4mm; border-right: 1px solid #000; display: flex; flex-direction: column; }
           .pof-info-col:last-child { border-right: none; }
           .pof-info-col-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #000; border-bottom: 1px solid #000; margin-bottom: 2.5mm; padding-bottom: 1mm; letter-spacing: 0.5px; }
-          .pof-billed-name { font-size: 16px; font-weight: 900; color: #000; }
-          .pof-billed-city { font-size: 12px; color: #000; margin-top: 1mm; }
-          .pof-info-row { display: flex; justify-content: space-between; margin-bottom: 1.5mm; font-size: 11.5px; }
-          .pof-info-key { color: #333; }
-          .pof-info-val { font-weight: 700; color: #000; }
+          .pof-billed-name { font-size: 14px; font-weight: 900; color: #000; line-height: 1.3; text-align: left; }
+          .pof-billed-city { font-size: 11.5px; color: #000; margin-top: 1mm; line-height: 1.4; text-align: left; }
+          .pof-info-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1.5mm; font-size: 11px; }
+          .pof-info-key { color: #333; text-align: left; }
+          .pof-info-val { font-weight: 700; color: #000; text-align: right; }
           .pof-info-val.accent, .pof-info-val.blue { color: #000; }
 
-          .pof-table { width: 100%; border-collapse: collapse; margin-bottom: 4mm; }
+          .pof-table { width: 100%; border-collapse: collapse; margin-bottom: 4mm; table-layout: fixed; }
           .pof-table thead tr { background: #000; color: #fff; }
-          .pof-table thead th { padding: 2.5mm; text-align: left; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; border: 1px solid #000; }
+          .pof-table thead th { padding: 1.6mm 1.8mm; text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.2px; border: 1px solid #000; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .pof-table thead th:last-child, .pof-table thead th:nth-last-child(2) { text-align: right; }
-          .pof-table tbody td { padding: 2.5mm; font-size: 12px; border: 1px solid #000; }
+          .pof-table tbody td { padding: 1.6mm 1.8mm; font-size: 10px; border: 1px solid #000; overflow: hidden; text-overflow: ellipsis; word-break: break-word; }
           .pof-table tbody td:last-child, .pof-table tbody td:nth-last-child(2) { text-align: right; }
           .pof-table tbody td.bold { font-weight: 700; }
+          /* Narrow columns get a fixed share so Description/Art No keep most of the
+             width — and there's still headroom to add more columns later. */
+          .pof-col-sno   { width: 6%; }
+          .pof-col-art   { width: 13%; }
+          .pof-col-desc  { width: 27%; }
+          .pof-col-size  { width: 10%; }
+          .pof-col-pcs   { width: 8%; }
+          .pof-col-qty   { width: 8%; }
+          .pof-col-price { width: 13%; }
+          .pof-col-amt   { width: 15%; }
 
           /* Words (left) + totals (right) sit in ONE row so there's no big empty
              gap to the left of the totals box. */
@@ -243,22 +253,26 @@ function PrintOrderForm({ order, branding }) {
       <table className="pof-table">
         <thead>
           <tr>
-            {['S.No.', 'Art No.', 'Description', 'Size', 'Pcs', 'Qty', 'Price', 'Amount'].map((h) => (
-              <th key={h}>{h}</th>
+            {[
+              ['S.No.', 'pof-col-sno'], ['Art No.', 'pof-col-art'], ['Description', 'pof-col-desc'],
+              ['Size', 'pof-col-size'], ['Pcs', 'pof-col-pcs'], ['Qty', 'pof-col-qty'],
+              ['Price', 'pof-col-price'], ['Amount', 'pof-col-amt'],
+            ].map(([h, cls]) => (
+              <th key={h} className={cls}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {order.items.filter((it) => (it.modelCode || '').trim()).map((it, i) => (
             <tr key={i}>
-              <td>{i + 1}</td>
-              <td className="bold">{it.modelCode}</td>
-              <td>{it.description || '—'}</td>
-              <td>{it.size || '—'}</td>
-              <td>{it.pieces || 0}</td>
-              <td>{it.qty}</td>
-              <td>{fmtN(it.price)}</td>
-              <td className="bold">{fmtN((it.qty || 0) * (it.price || 0))}</td>
+              <td className="pof-col-sno">{i + 1}</td>
+              <td className="pof-col-art bold">{it.modelCode}</td>
+              <td className="pof-col-desc">{it.description || '—'}</td>
+              <td className="pof-col-size">{it.size || '—'}</td>
+              <td className="pof-col-pcs">{it.pieces || 0}</td>
+              <td className="pof-col-qty">{it.qty}</td>
+              <td className="pof-col-price">{fmtN(it.price)}</td>
+              <td className="pof-col-amt bold">{fmtN((it.qty || 0) * (it.price || 0))}</td>
             </tr>
           ))}
         </tbody>
@@ -326,7 +340,7 @@ export default function Orders() {
   const { isAdmin, branding } = useAuth();
   const { show } = useToast();
   const [params] = useSearchParams();
-  const { data: orders, loading, refetch } = useFetch(() => orderApi.list(), []);
+  const { data: orders, loading, error, refetch } = useFetch(() => orderApi.list(), []);
   const { data: users } = useFetch(() => (isAdmin ? userApi.list() : Promise.resolve([])), [isAdmin]);
 
   const [f, setF] = useState({ search: '', phone: '', status: params.get('status') || '', country: '', employee: '', from: '', to: '' });
@@ -336,6 +350,7 @@ export default function Orders() {
   const [printOrder, setPrintOrder] = useState(null);
 
   useEffect(() => { const s = params.get('status'); if (s) setF((p) => ({ ...p, status: s })); }, [params]);
+  useEffect(() => { if (error) show(error, 'error'); }, [error]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const countries = useMemo(() => [...new Set((orders || []).map((o) => o.country))].sort(), [orders]);
 
@@ -548,7 +563,10 @@ export default function Orders() {
       </div>
 
       <Card className="overflow-x-auto">
-        {filtered.length === 0 ? (
+        {error ? (
+          <EmptyState title="Couldn't load orders" hint={error}
+            action={<IconBtn icon={RefreshCw} label="Retry" onClick={refetch} />} />
+        ) : filtered.length === 0 ? (
           <EmptyState title="No orders match" hint="Try clearing filters or create a new order."
             action={<IconBtn icon={Plus} label="New Order" onClick={() => navigate('/orders/new')} />} />
         ) : (

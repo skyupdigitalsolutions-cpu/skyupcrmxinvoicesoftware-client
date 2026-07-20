@@ -18,6 +18,15 @@ export const orderApi = {
     remove: (id) => api.delete(`/orders/${id}`).then((r) => r.data),
 };
 
+export const chequeApi = {
+    list: (params) => api.get('/cheques', { params }).then((r) => r.data.cheques),
+    get: (id) => api.get(`/cheques/${id}`).then((r) => r.data.cheque),
+    create: (body) => api.post('/cheques', body).then((r) => r.data.cheque),
+    update: (id, body) => api.put(`/cheques/${id}`, body).then((r) => r.data.cheque),
+    setStatus: (id, status) => api.patch(`/cheques/${id}/status`, { status }).then((r) => r.data.cheque),
+    remove: (id) => api.delete(`/cheques/${id}`).then((r) => r.data),
+};
+
 export const invoiceApi = {
     list: (params) => api.get('/invoices', { params }).then((r) => r.data.invoices),
     setPayment: (id, paymentStatus) => api.patch(`/invoices/${id}/payment`, { paymentStatus }).then((r) => r.data.invoice),

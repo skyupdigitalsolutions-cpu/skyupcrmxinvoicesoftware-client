@@ -7,6 +7,7 @@ import ResetPassword from './pages/ResetPassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Orders from './pages/Orders.jsx';
 import OrderForm from './pages/OrderForm.jsx';
+import ChequeCalendar from './pages/ChequeCalendar.jsx';
 import Invoices from './pages/Invoices.jsx';
 import Tracker from './pages/Tracker.jsx';
 import Reports from './pages/Reports.jsx';
@@ -46,6 +47,7 @@ export default function App() {
       {/* ── Company app ────────────────────────────────────────────────────── */}
       <Route path="/dashboard"        element={<Shell><Dashboard /></Shell>} />
       <Route path="/orders"           element={<Shell><Orders /></Shell>} />
+      <Route path="/cheques"          element={<Shell><ChequeCalendar /></Shell>} />
       <Route path="/orders/new"       element={<Shell><OrderForm /></Shell>} />
       <Route path="/orders/:id/edit"  element={<Shell><OrderForm /></Shell>} />
       <Route path="/invoices"         element={<Shell><Invoices /></Shell>} />

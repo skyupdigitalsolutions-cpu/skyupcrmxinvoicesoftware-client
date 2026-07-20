@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Target, ClipboardList, FilePlus,
   Receipt, Truck, BarChart2, CalendarDays, Users, Clock,
   LogOut, Sun, Moon, Menu, X, Building2, Bell, Check, CheckCheck, MessageSquare,
-  Trash2, AlertCircle, ArrowRight,
+  Trash2, AlertCircle, ArrowRight, Banknote,
 } from 'lucide-react';
 import { notificationApi, chatApi } from '../../api/endpoints.js';
 import TermsViewerModal from '../TermsViewerModal.jsx';
@@ -20,6 +20,7 @@ const NAV = [
   { to: '/orders',      label: 'Orders',            icon: ClipboardList },
   { to: '/orders/new',  label: 'Order Form',        icon: FilePlus },
   { to: '/invoices',    label: 'Invoices',          icon: Receipt },
+  { to: '/cheques',     label: 'Cheque Calendar',   icon: Banknote },
   { to: '/tracker',     label: 'Delivery Tracker',  icon: Truck },
   { to: '/reports',     label: 'Reports',           icon: BarChart2,   admin: true },
   { to: '/daily-report',label: 'Daily Report',      icon: CalendarDays },
