@@ -894,27 +894,25 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
                 </div>
                 {isEdit && <span className="mt-1 block text-[10px]" style={{ color: 'var(--text-muted)' }}>Mobile number can't be edited after creation.</span>}
               </FieldRow>
+              <FieldRow label="Alternate Country (optional)" name="altCountry" error={touched.altCountry && errors.altCountry}>
+                <CountrySelect value={values.altCountry} onChange={(v) => setFieldValue('altCountry', v)} />
+              </FieldRow>
               <FieldRow label="Alternate Number (optional)" name="altMobile" error={touched.altMobile && errors.altMobile}>
-                <div className="flex gap-1.5">
-                  <div className="w-[38%]">
-                    <CountrySelect value={values.altCountry} onChange={(v) => setFieldValue('altCountry', v)} />
-                  </div>
-                  <div className="flex flex-1">
-                    <span
-                      className="flex items-center whitespace-nowrap rounded-l-md border border-r-0 px-2.5 text-[13px] font-bold"
-                      style={{ backgroundColor: 'var(--bg-card-head)', borderColor: 'var(--input-border)', color: 'var(--text-primary)' }}
-                    >
-                      +{dialFor(values.altCountry) || '—'}
-                    </span>
-                    <Input
-                      className="!rounded-l-none"
-                      name="altMobile"
-                      value={values.altMobile}
-                      placeholder="e.g. second contact number"
-                      onChange={handleChange}
-                      onBlur={handleBlur}
-                    />
-                  </div>
+                <div className="flex">
+                  <span
+                    className="flex items-center whitespace-nowrap rounded-l-md border border-r-0 px-2.5 text-[13px] font-bold"
+                    style={{ backgroundColor: 'var(--bg-card-head)', borderColor: 'var(--input-border)', color: 'var(--text-primary)' }}
+                  >
+                    +{dialFor(values.altCountry) || '—'}
+                  </span>
+                  <Input
+                    className="!rounded-l-none"
+                    name="altMobile"
+                    value={values.altMobile}
+                    placeholder="e.g. second contact number"
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                  />
                 </div>
               </FieldRow>
               <FieldRow label="Email" name="email" error={touched.email && errors.email}>
