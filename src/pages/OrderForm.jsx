@@ -553,7 +553,7 @@ export default function OrderForm() {
       if (isAdmin) {
         try {
           const allUsers = await userApi.list();
-          setSales(allUsers.filter((u) => u.role === 'sales' && u.active));
+          setSales(allUsers.filter((u) => (u.role === 'sales' || u.role === 'admin') && u.active));
         } catch { /* non-fatal */ }
       }
 
