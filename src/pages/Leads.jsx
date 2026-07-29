@@ -465,15 +465,7 @@ export default function Leads() {
         badge={filtered.length}
         actions={
           <div className="flex gap-2">
-            {isAdmin && (
-              <Button variant="outline" onClick={toggleDuplicates}>
-                <GitMerge size={14} className="mr-1.5" />
-                {dupOpen ? 'Back to Leads' : 'Duplicates'}
-                {dupGroups !== null && dupGroups.length > 0 && !dupOpen && (
-                  <span className="ml-1.5 rounded-full bg-danger px-1.5 py-0.5 text-[10px] font-bold text-white">{dupGroups.length}</span>
-                )}
-              </Button>
-            )}
+          
             <Button variant="outline" onClick={openImport}>
               <Upload size={14} className="mr-1.5" />Import CSV
             </Button>
