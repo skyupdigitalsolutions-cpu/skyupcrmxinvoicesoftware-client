@@ -5,7 +5,7 @@ import * as Yup from 'yup';
 import {
   Plus, Upload, Download, Eye, ShoppingCart, Pencil, Trash2,
   Target, Users, Percent, AlertTriangle, Phone, MessageCircle,
-  FileText, ArrowRight, Loader2, CheckCircle,
+  FileText, ArrowRight, Loader2, CheckCircle, GitMerge, StickyNote, RefreshCw,
 } from 'lucide-react';
 import { leadApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -203,6 +203,70 @@ function WhatsAppButton({ mobile, country }) {
   );
 }
 
+// ── Inline duplicate-lead group (used by the "Duplicates" panel below) ───────
+// One group = leads that share the exact same phone number. Pick which one to
+// keep; merging combines call logs/notes/edit history into it, reassigns any
+// cheques or WhatsApp messages that pointed at the removed lead(s), archives
+// the removed lead(s) to Deleted Contacts, and deletes them.
+function DuplicateGroup({ group, onMerged }) {
+  const { show } = useToast();
+  const [keepId, setKeepId] = useState(group.leads[0].id);
+  const [busy, setBusy] = useState(false);
+
+  const merge = async () => {
+    const mergeIds = group.leads.map((l) => l.id).filter((id) => id !== keepId);
+    if (!mergeIds.length) return;
+    if (!confirm(`Merge ${mergeIds.length} duplicate lead(s) into the selected one? This can't be undone.`)) return;
+    setBusy(true);
+    try {
+      const res = await leadApi.merge({ keepId, mergeIds });
+      show(res.message || 'Leads merged.', 'success');
+      onMerged();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Card className="mb-3">
+      <div className="card-head flex items-center justify-between">
+        <h2>{fmtMobile(group.leads[0].mobile, group.leads[0].country) || group.mobileKey}</h2>
+        <span className="text-[10px] font-normal text-ink-3">{group.leads.length} leads share this number</span>
+      </div>
+      <div className="card-body space-y-2">
+        {group.leads.map((l) => (
+          <label
+            key={l.id}
+            className="flex cursor-pointer items-center gap-3 rounded-md border p-2.5"
+            style={{ borderColor: keepId === l.id ? 'var(--gold-700, #a16207)' : 'var(--border-card)', backgroundColor: keepId === l.id ? 'var(--bg-card-head)' : 'transparent' }}
+          >
+            <input type="radio" name={`keep-${group.mobileKey}`} className="h-4 w-4 accent-purple-500" checked={keepId === l.id} onChange={() => setKeepId(l.id)} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+                {l.name}
+                {keepId === l.id && <span className="rounded-full bg-ok-light px-2 py-0.5 text-[10px] font-bold text-ok">Keep this one</span>}
+                {l.converted && <span className="rounded-full bg-gold-light px-2 py-0.5 text-[10px] font-bold text-navy-700">Converted — Order #{l.orderNo}</span>}
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                <span>Owner: <strong>{l.ownerName || '—'}</strong></span>
+                <span>Status: {l.status}</span>
+                <span>City: {l.city || '—'}</span>
+                <span className="flex items-center gap-1"><MessageCircle size={11} />{l.callLogCount} calls</span>
+                <span className="flex items-center gap-1"><StickyNote size={11} />{l.noteCount} notes</span>
+                <span>Added {fmtDateTime(l.createdAt)}</span>
+              </div>
+            </div>
+          </label>
+        ))}
+        <div className="flex justify-end pt-1">
+          <Button disabled={busy} onClick={merge}>
+            {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Merging…</> : <><GitMerge size={13} className="mr-1.5" />Merge into selected</>}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function Leads() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -229,6 +293,132 @@ export default function Leads() {
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [exporting, setExporting] = useState(false);
+
+  // ── Inline "Duplicates" panel (admin only) ──────────────────────────────────
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupGroups, setDupGroups] = useState(null);
+  const [dupLoading, setDupLoading] = useState(false);
+
+  const loadDuplicates = async () => {
+    setDupLoading(true);
+    try { setDupGroups(await leadApi.listDuplicates()); }
+    catch (e) { show(apiError(e), 'error'); }
+    finally { setDupLoading(false); }
+  };
+
+  const toggleDuplicates = () => {
+    const next = !dupOpen;
+    setDupOpen(next);
+    if (next && dupGroups === null) loadDuplicates();
+  };
+
+  useEffect(() => {
+    if (isAdmin) userApi.list()
+      .then((u) => setSales(u.filter((x) => x.role === 'sales' && x.active)))
+      .catch(() => {});
+  }, [isAdmin]);
+
+  const filtered = useMemo(() => {
+    if (!leads) return [];
+    return leads.filter((l) => {
+      if (f.status && l.status !== f.status) return false;
+      if (f.source && l.source !== f.source) return false;
+      if (f.stage && leadStageOf(l) !== f.stage) return false;
+      if (f.country && l.country !== f.country) return false;
+      if (f.campaign && (l.campaign || '') !== f.campaign) return false;
+      if (f.employee && String(l.owner) !== String(f.employee)) return false;
+      if (f.search) {
+        const q = f.search.toLowerCase();
+        if (!([l.name, l.mobile, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q)))) return false;
+      }
+      return true;
+    });
+  }, [leads, f]);
+
+  // Derive sorted unique country list from actual leads data
+  const countryOptions = useMemo(() => {
+    if (!leads) return [];
+    return [...new Set(leads.map((l) => l.country).filter(Boolean))].sort();
+  }, [leads]);
+
+  // Campaign filter is optional — only leads that were actually tagged with
+  // a campaign show up here, so the dropdown only lists campaigns that exist.
+  const campaignOptions = useMemo(() => {
+    if (!leads) return [];
+    return [...new Set(leads.map((l) => (l.campaign || '').trim()).filter(Boolean))].sort();
+  }, [leads]);
+
+  // Employee filter options. Start from active sales users, then fold in EVERY
+  // owner that actually appears on a lead — including the admin/owner and any
+  // deactivated staff — so contacts entered by the owner are filterable too.
+  const employeeOptions = useMemo(() => {
+    const byId = new Map();
+    (sales || []).forEach((u) => {
+      const id = String(u.id || u._id);
+      if (id) byId.set(id, u.name);
+    });
+    (leads || []).forEach((l) => {
+      if (!l.owner) return;
+      const id = String(l.owner);
+      if (!byId.has(id)) byId.set(id, l.ownerName || 'Owner');
+    });
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [sales, leads]);
+
+  const buildExport = () => {
+    const empName = f.employee ? employeeOptions.find((u) => String(u.id) === String(f.employee))?.name : 'All';
+    return {
+      title: 'Leads Report',
+      columns: ['Sl. No', 'Name', 'Mobile', 'Source', 'Interest', 'Owner', 'Country', 'Stage', 'Status', 'Order #'],
+      rows: filtered.map((l, idx) => [
+        idx + 1,
+        l.name, fmtMobile(l.mobile, l.country) || '—', l.source || '—', l.interest || '—', l.ownerName || '—',
+        l.country || '—', leadStageOf(l), l.status, l.orderNo ? `#${l.orderNo}` : '—',
+      ]),
+      meta: { Employee: empName || 'All', Records: filtered.length },
+    };
+  };
+  const exportPdf = async () => {
+    setExporting(true);
+    try {
+      await exportTablePdf(buildExport());
+    } catch (e) { show(e.message || 'Export failed. Check your connection.', 'error'); }
+    finally { setExporting(false); }
+  };
+  const exportCsv = () => {
+    try { exportTableCsv(buildExport()); }
+    catch (e) { show(e.message || 'CSV export failed.', 'error'); }
+  };
+
+  const stats = useMemo(() => {
+    const list = leads || [];
+    return {
+      total: list.length,
+      enquiry: list.filter((l) => leadStageOf(l) === 'Enquiry').length,
+      converted: list.filter((l) => l.status === 'Won' || l.converted).length,
+      rate: list.length ? Math.round((list.filter((l) => l.status === 'Won' || l.converted).length / list.length) * 100) : 0,
+    };
+  }, [leads]);
+
+  const doConvert = async () => {
+    const valid = items.filter((it) => it.modelCode.trim());
+    if (!valid.length) return show('Add at least one item to create the order.', 'error');
+    setBusy(true);
+    try {
+      const { order } = await leadApi.convert(convert._id, { items: valid, discount: 0 });
+      show(`Converted — Order #${order.orderNo} created.`, 'success');
+      setConvert(null); setItems([blankItem()]); refetch();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  const del = async (lead) => {
+    if (!confirm(`Delete lead "${lead.name}"?`)) return;
+    try { await leadApi.remove(lead._id); show('Lead deleted.'); refetch(); }
+    catch (e) { show(apiError(e), 'error'); }
+  };
 
   const openImport = () => { setImportRows(null); setImportResult(null); setImportOpen(true); };
 
@@ -275,6 +465,15 @@ export default function Leads() {
         badge={filtered.length}
         actions={
           <div className="flex gap-2">
+            {isAdmin && (
+              <Button variant="outline" onClick={toggleDuplicates}>
+                <GitMerge size={14} className="mr-1.5" />
+                {dupOpen ? 'Back to Leads' : 'Duplicates'}
+                {dupGroups !== null && dupGroups.length > 0 && !dupOpen && (
+                  <span className="ml-1.5 rounded-full bg-danger px-1.5 py-0.5 text-[10px] font-bold text-white">{dupGroups.length}</span>
+                )}
+              </Button>
+            )}
             <Button variant="outline" onClick={openImport}>
               <Upload size={14} className="mr-1.5" />Import CSV
             </Button>
@@ -287,6 +486,33 @@ export default function Leads() {
         Leads
       </PageTitle>
 
+      {dupOpen && (
+        <>
+          <p className="mb-3 text-[12px] text-ink-2">
+            Leads that share the exact same phone number are grouped below — e.g. the same customer
+            auto-created twice from the Order Form under two different salespeople. Pick which one to keep,
+            then merge: call logs, notes, and edit history are combined, and any cheques or WhatsApp messages
+            linked to the removed lead(s) move to the kept one. Removed leads are archived to Deleted Contacts.
+          </p>
+          {dupLoading ? (
+            <Spinner label="Scanning for duplicate leads…" />
+          ) : !dupGroups || !dupGroups.length ? (
+            <Card><div className="card-body"><EmptyState title="No duplicates found" hint="Every lead in this company has a unique phone number." /></div></Card>
+          ) : (
+            <>
+              <div className="mb-2 flex justify-end">
+                <Button variant="outline" size="sm" onClick={loadDuplicates}><RefreshCw size={13} className="mr-1.5" />Rescan</Button>
+              </div>
+              {dupGroups.map((g) => (
+                <DuplicateGroup key={g.mobileKey} group={g} onMerged={loadDuplicates} />
+              ))}
+            </>
+          )}
+        </>
+      )}
+
+      {!dupOpen && (
+      <>
       {/* ── Stats strip ─────────────────────────────────────────────────────── */}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 flex-shrink-0">
         {[
@@ -467,6 +693,8 @@ export default function Leads() {
           </div>
         )}
       </Card>
+      </>
+      )}
 
       {/* ── Add / Edit modal ─────────────────────────────────────────────────── */}
       <LeadFormModal
