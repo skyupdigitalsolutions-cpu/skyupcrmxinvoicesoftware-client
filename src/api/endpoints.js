@@ -80,6 +80,8 @@ export const leadApi = {
     remove: (id) => api.delete(`/leads/${id}`).then((r) => r.data),
     lookup: (mobile, country) => api.get('/leads/lookup', { params: { mobile, country } }).then((r) => r.data),
     deletedContacts: (params) => api.get('/leads/deleted/report', { params }).then((r) => r.data.contacts),
+    listDuplicates: () => api.get('/leads/duplicates').then((r) => r.data.groups),
+    merge: (body) => api.post('/leads/merge', body).then((r) => r.data),
 };
 
 export const attendanceApi = {
