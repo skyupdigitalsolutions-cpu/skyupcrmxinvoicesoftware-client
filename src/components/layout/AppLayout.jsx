@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { notificationApi, chatApi } from '../../api/endpoints.js';
 import TermsViewerModal from '../TermsViewerModal.jsx';
-
+ 
 const NAV = [
   { to: '/dashboard',   label: 'Dashboard',        icon: LayoutDashboard },
   { to: '/leads',       label: 'Leads',             icon: Target },
@@ -21,6 +21,7 @@ const NAV = [
   { to: '/orders/new',  label: 'Order Form',        icon: FilePlus },
   { to: '/invoices',    label: 'Invoices',          icon: Receipt },
   { to: '/cheques',     label: 'Cheque Calendar',   icon: Banknote },
+  // { to: '/communication', label: 'Communication',   icon: MessageSquare },
   { to: '/tracker',     label: 'Delivery Tracker',  icon: Truck },
   { to: '/reports',     label: 'Reports',           icon: BarChart2,   admin: true },
   { to: '/daily-report',label: 'Daily Report',      icon: CalendarDays },
@@ -28,14 +29,14 @@ const NAV = [
   { to: '/attendance',  label: 'Attendance',        icon: Clock },
   { to: '/chat',        label: 'Chat',              icon: MessageSquare },
 ];
-
+ 
 // Developers only manage tenants — they get their own minimal nav.
 const DEV_NAV = [
   { to: '/developer', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/developer/companies', label: 'Companies', icon: Building2 },
   { to: '/developer/subscriptions', label: 'Subscription', icon: Receipt },
 ];
-
+ 
 // Company-wise brand mark: fixed logo (if set) + header name + optional tagline.
 // Used ONLY in the top header so each company sees its own logo + name.
 function BrandMark({ branding, size = 'sm' }) {
@@ -47,7 +48,7 @@ function BrandMark({ branding, size = 'sm' }) {
   const tagline = branding?.headerTagline || '';
   const logo    = branding?.logoUrl || platform.logo || '';
   const nameCls = size === 'lg' ? 'text-base' : 'text-sm';
-
+ 
   return (
     <div className="flex min-w-0 items-center gap-2">
       {logo ? (
@@ -64,13 +65,13 @@ function BrandMark({ branding, size = 'sm' }) {
     </div>
   );
 }
-
+ 
 // "Developed by" credit shown at the BOTTOM of the sidebar. Links to the
 // developer's website. Replaces the fixed product brand that used to sit at the
 // top of the sidebar.
 const DEVELOPER_NAME = 'SkyUp Digital Solutions';
 const DEVELOPER_URL  = 'https://www.skyupdigitalsolutions.com';
-
+ 
 function DevCredit() {
   const year = new Date().getFullYear();
   return (
@@ -91,7 +92,7 @@ function DevCredit() {
     </div>
   );
 }
-
+ 
 // Notification bell: polls unread count, opens a dropdown with the latest
 // notifications, lets the user mark one / all read, and deep-links to the lead.
 // Hidden for developers (who have no company-scoped notifications).
@@ -106,14 +107,14 @@ function NotificationBell() {
   // only plays when the count goes up (never on first load or mark-as-read).
   const prevUnread = useRef(null);
   const audioCtxRef = useRef(null);
-
+ 
   const getAudioCtx = () => {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return null;
     if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
     return audioCtxRef.current;
   };
-
+ 
   // Browsers block audio until the user interacts with the page once.
   // "Unlock" the AudioContext on the first click / key press / touch so the
   // chime is ready the moment a notification arrives.
@@ -134,7 +135,7 @@ function NotificationBell() {
       window.removeEventListener('touchstart', unlock);
     };
   }, []);
-
+ 
   // Two-tone "ding-dong" bell chime via Web Audio (no asset file needed).
   const playChime = () => {
     try {
@@ -161,7 +162,7 @@ function NotificationBell() {
       });
     } catch { /* audio unavailable/blocked — ignore */ }
   };
-
+ 
   const loadCount = async () => {
     try {
       const n = await notificationApi.unreadCount();
@@ -170,7 +171,7 @@ function NotificationBell() {
       prevUnread.current = n;
     } catch { /* ignore */ }
   };
-
+ 
   const loadList = async () => {
     setLoading(true);
     try {
@@ -181,14 +182,14 @@ function NotificationBell() {
     } catch { /* ignore */ }
     finally { setLoading(false); }
   };
-
+ 
   // Poll unread count every 15s (also drives the bell sound on new items).
   useEffect(() => {
     loadCount();
     const t = setInterval(loadCount, 15000);
     return () => clearInterval(t);
   }, []);
-
+ 
   // Close on outside click.
   useEffect(() => {
     if (!open) return;
@@ -196,33 +197,33 @@ function NotificationBell() {
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, [open]);
-
+ 
   const toggle = () => {
     const next = !open;
     setOpen(next);
     if (next) loadList();
   };
-
+ 
   const openItem = async (n) => {
     try { if (!n.read) { await notificationApi.markRead(n._id); } } catch { /* ignore */ }
     setOpen(false);
     loadCount();
     if (n.link) navigate(n.link);
   };
-
+ 
   const markAll = async () => {
     try { await notificationApi.markAllRead(); } catch { /* ignore */ }
     setItems((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnread(0);
     prevUnread.current = 0;
   };
-
+ 
   const fmt = (d) => {
     if (!d) return '';
     const dt = new Date(d);
     return dt.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   };
-
+ 
   return (
     <div className="relative" ref={wrapRef}>
       <button
@@ -241,7 +242,7 @@ function NotificationBell() {
           </span>
         )}
       </button>
-
+ 
       {open && (
         <div
           className="absolute right-0 z-[300] mt-2 w-[330px] max-w-[88vw] overflow-hidden rounded-lg border shadow-xl"
@@ -255,7 +256,7 @@ function NotificationBell() {
               </button>
             )}
           </div>
-
+ 
           <div className="max-h-[360px] overflow-y-auto">
             {loading ? (
               <div className="px-3 py-6 text-center text-xs" style={{ color: 'var(--text-muted)' }}>Loading…</div>
@@ -288,20 +289,20 @@ function NotificationBell() {
     </div>
   );
 }
-
+ 
 // Automatic reminder pop-up (#8). On a fixed interval it checks for unread
 // follow-up reminders (created server-side when a scheduled follow-up falls
 // due) and, if any are still unattended, surfaces a pop-up card so pending
 // follow-ups aren't missed. Dismissing hides the current batch; newly-due
 // reminders re-trigger it on the next check.
 const REMINDER_INTERVAL_MS = 60000; // predefined check period
-
+ 
 function FollowUpReminderPopup() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [visible, setVisible] = useState(false);
   const dismissedRef = useRef(new Set());
-
+ 
   const check = async () => {
     try {
       const { notifications } = await notificationApi.list({ unread: 1, limit: 50 });
@@ -313,28 +314,28 @@ function FollowUpReminderPopup() {
       if (fresh.length > 0) setVisible(true);
     } catch { /* ignore */ }
   };
-
+ 
   useEffect(() => {
     check();
     const t = setInterval(check, REMINDER_INTERVAL_MS);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
+ 
   const dismiss = () => {
     items.forEach((n) => dismissedRef.current.add(n._id));
     setVisible(false);
   };
-
+ 
   const openItem = async (n) => {
     try { if (!n.read) await notificationApi.markRead(n._id); } catch { /* ignore */ }
     dismissedRef.current.add(n._id);
     setVisible(false);
     if (n.link) navigate(n.link);
   };
-
+ 
   if (!visible || !items.length) return null;
-
+ 
   return (
     <div className="fixed bottom-4 right-4 z-[400] w-[320px] max-w-[90vw] overflow-hidden rounded-lg border shadow-2xl"
       style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-card)' }}>
@@ -347,7 +348,7 @@ function FollowUpReminderPopup() {
           <X size={14} />
         </button>
       </div>
-
+ 
       <div className="max-h-[280px] overflow-y-auto">
         {items.slice(0, 5).map((n) => (
           <button
@@ -369,7 +370,7 @@ function FollowUpReminderPopup() {
           </div>
         )}
       </div>
-
+ 
       <div className="flex justify-end gap-2 px-3 py-2 border-t" style={{ borderColor: 'var(--border-card)' }}>
         <button onClick={dismiss} className="text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>Dismiss</button>
         <button onClick={() => { setVisible(false); navigate('/daily-report'); }} className="text-[11px] font-bold" style={{ color: 'var(--primary)' }}>
@@ -379,7 +380,7 @@ function FollowUpReminderPopup() {
     </div>
   );
 }
-
+ 
 function ThemeToggle() {
   const { dark, toggle } = useTheme();
   return (
@@ -398,7 +399,7 @@ function ThemeToggle() {
     </button>
   );
 }
-
+ 
 function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout, chatUnread = 0 }) {
   const items = isDeveloper ? DEV_NAV : NAV.filter((n) => !n.admin || isAdmin);
   return (
@@ -436,7 +437,7 @@ function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout, chatUnread
           </NavLink>
         );
       })}
-
+ 
       <div className="mt-6 border-t pt-4 px-5" style={{ borderColor: 'var(--header-border)' }}>
         <button
           onClick={handleLogout}
@@ -449,7 +450,7 @@ function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout, chatUnread
     </>
   );
 }
-
+ 
 export default function AppLayout({ children }) {
   const { user, isAdmin, isDeveloper, logout, branding } = useAuth();
   const navigate = useNavigate();
@@ -457,7 +458,7 @@ export default function AppLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [chatUnread, setChatUnread] = useState(0);
   const [showTerms, setShowTerms] = useState(false);
-
+ 
   // Poll chat unread total for the sidebar badge (skipped for developers, who
   // have no company-scoped chat). Refreshes on every route change too.
   useEffect(() => {
@@ -471,18 +472,18 @@ export default function AppLayout({ children }) {
     const t = setInterval(load, 30000);
     return () => { alive = false; clearInterval(t); };
   }, [isDeveloper, location.pathname]);
-
+ 
   // Close the mobile drawer whenever the route changes
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
-
+ 
   // Lock body scroll while the drawer is open
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
-
+ 
   const handleLogout = async () => { await logout(); navigate('/login'); };
-
+ 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-base)' }}>
       <LiveLocationTracker />
@@ -504,7 +505,7 @@ export default function AppLayout({ children }) {
           </button>
           <BrandMark branding={branding} />
         </div>
-
+ 
         <div className="flex items-center gap-2 sm:gap-3">
           {!isAdmin && !isDeveloper && <AttendanceWidget />}
           {!isDeveloper && <NotificationBell />}
@@ -516,7 +517,7 @@ export default function AppLayout({ children }) {
           </div>
         </div>
       </header>
-
+ 
       <div className="flex min-h-[calc(100vh-52px)] items-stretch">
         {/* ── Desktop sidebar ────────────────────────────────────────────── */}
         <aside
@@ -530,7 +531,7 @@ export default function AppLayout({ children }) {
             <DevCredit />
           </div>
         </aside>
-
+ 
         {/* ── Mobile drawer ──────────────────────────────────────────────── */}
         {mobileOpen && (
           <div className="fixed inset-0 z-[200] lg:hidden">
@@ -565,7 +566,7 @@ export default function AppLayout({ children }) {
             </aside>
           </div>
         )}
-
+ 
         <main className="min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5">
           {children}
           <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-3 pb-1 text-[11px]" style={{ borderColor: 'var(--header-border)', color: 'var(--text-muted)' }}>

@@ -18,6 +18,20 @@ export const orderApi = {
     remove: (id) => api.delete(`/orders/${id}`).then((r) => r.data),
 };
 
+export const whatsappApi = {
+    getSettings: () => api.get('/whatsapp/settings').then((r) => r.data.msg91),
+    setSettings: (body) => api.put('/whatsapp/settings', body).then((r) => r.data.msg91),
+    listTemplates: () => api.get('/whatsapp/templates').then((r) => r.data.templates),
+    createTemplate: (body) => api.post('/whatsapp/templates', body).then((r) => r.data.template),
+    updateTemplate: (id, body) => api.put(`/whatsapp/templates/${id}`, body).then((r) => r.data.template),
+    deleteTemplate: (id) => api.delete(`/whatsapp/templates/${id}`).then((r) => r.data),
+    sendTemplate: (body) => api.post('/whatsapp/send-template', body).then((r) => r.data.results),
+    sendReply: (body) => api.post('/whatsapp/reply', body).then((r) => r.data),
+    sendMedia: (body) => api.post('/whatsapp/send-media', body).then((r) => r.data),
+    listConversations: () => api.get('/whatsapp/conversations').then((r) => r.data.conversations),
+    getThread: (leadId) => api.get(`/whatsapp/thread/${leadId}`).then((r) => r.data),
+};
+
 export const chequeApi = {
     list: (params) => api.get('/cheques', { params }).then((r) => r.data.cheques),
     get: (id) => api.get(`/cheques/${id}`).then((r) => r.data.cheque),

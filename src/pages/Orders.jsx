@@ -72,6 +72,8 @@ function PrintOrderForm({ order, branding }) {
   const addr = [b.addressLine1, b.addressLine2, b.city].filter(Boolean).join(', ');
   const subTotal = order.items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0);
   const grandTotal = order.grandTotal === undefined || order.grandTotal === null ? subTotal : order.grandTotal;
+  const totalQty = order.items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
+  const totalPcs = order.items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.pieces) || 0), 0);
 
   return createPortal(
     <div id="print-order-form" style={{ display: 'none' }}>
@@ -153,6 +155,9 @@ function PrintOrderForm({ order, branding }) {
           .pof-table tbody td { padding: 1.6mm 1.8mm; font-size: 10px; border: 1px solid #000; overflow: hidden; text-overflow: ellipsis; word-break: break-word; }
           .pof-table tbody td:last-child, .pof-table tbody td:nth-last-child(2) { text-align: right; }
           .pof-table tbody td.bold { font-weight: 700; }
+          .pof-table tfoot td { padding: 1.6mm 1.8mm; font-size: 10px; font-weight: 700; border: 1px solid #000; background: #ececec; }
+          .pof-table tfoot td.bold { font-weight: 700; }
+          .pof-col-total-label { text-align: right; text-transform: uppercase; letter-spacing: 0.3px; }
           /* Narrow columns get a fixed share so Description/Art No keep most of the
              width — and there's still headroom to add more columns later. */
           .pof-col-sno   { width: 6%; }
@@ -276,6 +281,15 @@ function PrintOrderForm({ order, branding }) {
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr>
+            <td className="pof-col-total-label" colSpan={4}>TOTAL</td>
+            <td className="pof-col-pcs bold">{totalPcs}</td>
+            <td className="pof-col-qty bold">{totalQty}</td>
+            <td className="pof-col-price" />
+            <td className="pof-col-amt" />
+          </tr>
+        </tfoot>
       </table>
 
       {/* ── Amount in words (left) + totals (right) in ONE row ─────────────── */}

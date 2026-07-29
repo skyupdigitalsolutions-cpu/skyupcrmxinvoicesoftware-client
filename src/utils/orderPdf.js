@@ -430,14 +430,27 @@ export async function buildOrderPdfBlob(order, branding = {}) {
     fmtNum(it.price || 0),
     fmtNum((it.qty || 0) * (it.price || 0)),
   ]);
+  const totalQty = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
+  const totalPcs = items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.pieces) || 0), 0);
   doc.autoTable({
     startY: y,
     margin: { left: M, right: M, bottom: 50, top: M },
     head: [['S.No.', 'Art No.', 'Description', 'Size', 'Pcs', 'Qty', 'Price', 'Amount']],
     body: rows,
+    // Total Qty / Total Pcs sit right under their own columns via the foot
+    // row — this is what keeps them exactly aligned with the item rows
+    // above, rather than a separate line of text that could drift out of
+    // column alignment as descriptions/prices vary in width.
+    foot: [[
+      { content: 'TOTAL', colSpan: 4, styles: { halign: 'right' } },
+      { content: fmtNum(totalPcs), styles: { halign: 'right' } },
+      { content: fmtNum(totalQty), styles: { halign: 'right' } },
+      '', '',
+    ]],
     theme: 'grid',
     styles: { fontSize: 9, textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.4, cellPadding: 4.5 },
     headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.6 },
+    footStyles: { fillColor: [235, 235, 235], textColor: [0, 0, 0], fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.6 },
     columnStyles: { 0: { cellWidth: 26, halign: 'center' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' } },
     // Repeat the column header at the top of every continued page — items
     // that don't fit on page 1 flow onto page 2+ automatically (this is
@@ -445,6 +458,7 @@ export async function buildOrderPdfBlob(order, branding = {}) {
     // missing explicit bottom margin above could make it misjudge how much
     // room was left on a page).
     showHead: 'everyPage',
+    showFoot: 'lastPage',
   });
   y = doc.lastAutoTable.finalY + 14;
   // autoTable manipulates fill/text/draw colors extensively while rendering;
