@@ -5,7 +5,7 @@ import * as Yup from 'yup';
 import {
   Plus, Upload, Download, Eye, ShoppingCart, Pencil, Trash2,
   Target, Users, Percent, AlertTriangle, Phone, MessageCircle,
-  FileText, ArrowRight, Loader2, CheckCircle,
+  FileText, ArrowRight, Loader2, CheckCircle, GitMerge, StickyNote, RefreshCw,
 } from 'lucide-react';
 import { leadApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -203,6 +203,70 @@ function WhatsAppButton({ mobile, country }) {
   );
 }
 
+// ── Inline duplicate-lead group (used by the "Duplicates" panel below) ───────
+// One group = leads that share the exact same phone number. Pick which one to
+// keep; merging combines call logs/notes/edit history into it, reassigns any
+// cheques or WhatsApp messages that pointed at the removed lead(s), archives
+// the removed lead(s) to Deleted Contacts, and deletes them.
+function DuplicateGroup({ group, onMerged }) {
+  const { show } = useToast();
+  const [keepId, setKeepId] = useState(group.leads[0].id);
+  const [busy, setBusy] = useState(false);
+
+  const merge = async () => {
+    const mergeIds = group.leads.map((l) => l.id).filter((id) => id !== keepId);
+    if (!mergeIds.length) return;
+    if (!confirm(`Merge ${mergeIds.length} duplicate lead(s) into the selected one? This can't be undone.`)) return;
+    setBusy(true);
+    try {
+      const res = await leadApi.merge({ keepId, mergeIds });
+      show(res.message || 'Leads merged.', 'success');
+      onMerged();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Card className="mb-3">
+      <div className="card-head flex items-center justify-between">
+        <h2>{fmtMobile(group.leads[0].mobile, group.leads[0].country) || group.mobileKey}</h2>
+        <span className="text-[10px] font-normal text-ink-3">{group.leads.length} leads share this number</span>
+      </div>
+      <div className="card-body space-y-2">
+        {group.leads.map((l) => (
+          <label
+            key={l.id}
+            className="flex cursor-pointer items-center gap-3 rounded-md border p-2.5"
+            style={{ borderColor: keepId === l.id ? 'var(--gold-700, #a16207)' : 'var(--border-card)', backgroundColor: keepId === l.id ? 'var(--bg-card-head)' : 'transparent' }}
+          >
+            <input type="radio" name={`keep-${group.mobileKey}`} className="h-4 w-4 accent-purple-500" checked={keepId === l.id} onChange={() => setKeepId(l.id)} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+                {l.name}
+                {keepId === l.id && <span className="rounded-full bg-ok-light px-2 py-0.5 text-[10px] font-bold text-ok">Keep this one</span>}
+                {l.converted && <span className="rounded-full bg-gold-light px-2 py-0.5 text-[10px] font-bold text-navy-700">Converted — Order #{l.orderNo}</span>}
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                <span>Owner: <strong>{l.ownerName || '—'}</strong></span>
+                <span>Status: {l.status}</span>
+                <span>City: {l.city || '—'}</span>
+                <span className="flex items-center gap-1"><MessageCircle size={11} />{l.callLogCount} calls</span>
+                <span className="flex items-center gap-1"><StickyNote size={11} />{l.noteCount} notes</span>
+                <span>Added {fmtDateTime(l.createdAt)}</span>
+              </div>
+            </div>
+          </label>
+        ))}
+        <div className="flex justify-end pt-1">
+          <Button disabled={busy} onClick={merge}>
+            {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Merging…</> : <><GitMerge size={13} className="mr-1.5" />Merge into selected</>}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function Leads() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -229,6 +293,24 @@ export default function Leads() {
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [exporting, setExporting] = useState(false);
+
+  // ── Inline "Duplicates" panel (admin only) ──────────────────────────────────
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupGroups, setDupGroups] = useState(null);
+  const [dupLoading, setDupLoading] = useState(false);
+
+  const loadDuplicates = async () => {
+    setDupLoading(true);
+    try { setDupGroups(await leadApi.listDuplicates()); }
+    catch (e) { show(apiError(e), 'error'); }
+    finally { setDupLoading(false); }
+  };
+
+  const toggleDuplicates = () => {
+    const next = !dupOpen;
+    setDupOpen(next);
+    if (next && dupGroups === null) loadDuplicates();
+  };
 
   useEffect(() => {
     if (isAdmin) userApi.list()
@@ -383,6 +465,15 @@ export default function Leads() {
         badge={filtered.length}
         actions={
           <div className="flex gap-2">
+            {isAdmin && (
+              <Button variant="outline" onClick={toggleDuplicates}>
+                <GitMerge size={14} className="mr-1.5" />
+                {dupOpen ? 'Back to Leads' : 'Duplicates'}
+                {dupGroups !== null && dupGroups.length > 0 && !dupOpen && (
+                  <span className="ml-1.5 rounded-full bg-danger px-1.5 py-0.5 text-[10px] font-bold text-white">{dupGroups.length}</span>
+                )}
+              </Button>
+            )}
             <Button variant="outline" onClick={openImport}>
               <Upload size={14} className="mr-1.5" />Import CSV
             </Button>
@@ -395,6 +486,33 @@ export default function Leads() {
         Leads
       </PageTitle>
 
+      {dupOpen && (
+        <>
+          <p className="mb-3 text-[12px] text-ink-2">
+            Leads that share the exact same phone number are grouped below — e.g. the same customer
+            auto-created twice from the Order Form under two different salespeople. Pick which one to keep,
+            then merge: call logs, notes, and edit history are combined, and any cheques or WhatsApp messages
+            linked to the removed lead(s) move to the kept one. Removed leads are archived to Deleted Contacts.
+          </p>
+          {dupLoading ? (
+            <Spinner label="Scanning for duplicate leads…" />
+          ) : !dupGroups || !dupGroups.length ? (
+            <Card><div className="card-body"><EmptyState title="No duplicates found" hint="Every lead in this company has a unique phone number." /></div></Card>
+          ) : (
+            <>
+              <div className="mb-2 flex justify-end">
+                <Button variant="outline" size="sm" onClick={loadDuplicates}><RefreshCw size={13} className="mr-1.5" />Rescan</Button>
+              </div>
+              {dupGroups.map((g) => (
+                <DuplicateGroup key={g.mobileKey} group={g} onMerged={loadDuplicates} />
+              ))}
+            </>
+          )}
+        </>
+      )}
+
+      {!dupOpen && (
+      <>
       {/* ── Stats strip ─────────────────────────────────────────────────────── */}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 flex-shrink-0">
         {[
@@ -575,6 +693,8 @@ export default function Leads() {
           </div>
         )}
       </Card>
+      </>
+      )}
 
       {/* ── Add / Edit modal ─────────────────────────────────────────────────── */}
       <LeadFormModal

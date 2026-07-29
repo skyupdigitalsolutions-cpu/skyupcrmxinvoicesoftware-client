@@ -16,7 +16,6 @@ import DailyReport from './pages/DailyReport.jsx';
 import Users from './pages/Users.jsx';
 import Leads from './pages/Leads.jsx';
 import DeletedContacts from './pages/DeletedContacts.jsx';
-import DuplicateLeads from './pages/DuplicateLeads.jsx';
 import Chat from './pages/Chat.jsx';
 import LeadDetail from './pages/LeadDetail.jsx';
 import Attendance from './pages/Attendance.jsx';
@@ -57,7 +56,6 @@ export default function App() {
       <Route path="/tracker"          element={<Shell><Tracker /></Shell>} />
       <Route path="/leads"            element={<Shell><Leads /></Shell>} />
       <Route path="/deleted-contacts" element={<Shell admin><DeletedContacts /></Shell>} />
-      <Route path="/duplicate-leads" element={<Shell admin><DuplicateLeads /></Shell>} />
       <Route path="/leads/:id"        element={<Shell><LeadDetail /></Shell>} />
       <Route path="/reports"          element={<Shell admin><Reports /></Shell>} />
       <Route path="/daily-report"     element={<Shell><DailyReport /></Shell>} />
