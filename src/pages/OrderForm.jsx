@@ -671,17 +671,48 @@ export default function OrderForm() {
     setBusy(true);
     try {
       // If this is a new order with an unmatched mobile, create a CRM lead first.
-      const isNewMobile =
-        !editing &&
-        !leadId &&
-        form.mobile &&
-        form.mobile.replace(/\D/g, '').length >= MIN_MOBILE_DIGITS;
+      //
+      // leadId (from the debounced background lookup) is NOT trusted here on
+      // its own — if the user fills in a known customer's number and hits
+      // Save quickly, the background lookup may not have resolved yet, so
+      // leadId would still be null even though a lead genuinely exists. A
+      // fresh, synchronous lookup right before deciding is what actually
+      // prevents creating a duplicate lead for an existing customer —
+      // cross-employee: this matches on phone number company-wide, not just
+      // leads owned by the current user.
+      const mobileDigits = (form.mobile || '').replace(/\D/g, '');
+      let confirmedLeadId = leadId;
+      if (!editing && !confirmedLeadId && mobileDigits.length >= MIN_MOBILE_DIGITS) {
+        try {
+          const freshLookup = await leadApi.lookup(mobileDigits, form.country);
+          if (freshLookup && freshLookup.exists && freshLookup.lead) {
+            confirmedLeadId = freshLookup.lead._id;
+            // Fetch the existing customer's data — fill in whatever this
+            // order's form still has blank (never overwrite what was
+            // already typed for THIS order), and let the salesperson know
+            // this is a returning customer rather than silently proceeding.
+            const found = freshLookup.lead;
+            setForm((prev) => ({
+              ...prev,
+              customer: prev.customer || found.name || prev.customer,
+              city:     prev.city     || found.city || prev.city,
+              delivery: prev.delivery || found.delivery || prev.delivery,
+            }));
+            show(
+              `Existing customer found${found.ownerName ? ` (owned by ${found.ownerName})` : ''} — using their saved details instead of creating a new lead.`,
+              'success'
+            );
+          }
+        } catch { /* lookup failure — fall through and let the server's own duplicate check decide */ }
+      }
+
+      const isNewMobile = !editing && !confirmedLeadId && mobileDigits.length >= MIN_MOBILE_DIGITS;
 
       if (isNewMobile) {
         try {
           await leadApi.create({
             name:    form.customer.trim(),
-            mobile:  form.mobile.replace(/\D/g, ''),
+            mobile:  mobileDigits,
             country: form.country,
             city:    form.city || '',
             delivery: form.delivery || '',
@@ -689,7 +720,17 @@ export default function OrderForm() {
             status:  'New',
             remark:  'Auto-created from Order Form',
           });
-        } catch { /* duplicate or validation — non-fatal; proceed with order save */ }
+        } catch (leadErr) {
+          // A duplicate-phone conflict from the server is expected here and
+          // is fine — it means the lead already exists, so the order simply
+          // proceeds without creating a second one. Anything else (a real
+          // validation error) is surfaced instead of silently disappearing,
+          // so a genuine problem doesn't go unnoticed.
+          const status = leadErr && leadErr.response && leadErr.response.status;
+          if (status !== 409) {
+            show(`Note: could not create a CRM lead for this customer (${apiError(leadErr)}). The order will still be saved.`, 'error');
+          }
+        }
       }
 
       const payload = {
