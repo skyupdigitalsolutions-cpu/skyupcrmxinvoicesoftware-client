@@ -586,7 +586,7 @@ export default function Orders() {
         ) : (
           <table className="w-full min-w-[820px] border-collapse">
             <thead><tr className="bg-navy-800 text-white">
-              {['Sl. No', 'Order #', 'Date', 'Customer', 'Country', 'Salesperson', 'Items', 'Amount (AED)', 'Status', 'Actions'].map((h) => (
+              {['Sl. No', 'Order #', 'Date', 'Customer', 'Country', 'Salesperson', 'Items / Qty', 'Amount (AED)', 'Status', 'Actions'].map((h) => (
                 <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">{h}</th>
               ))}
             </tr></thead>
@@ -599,7 +599,10 @@ export default function Orders() {
                   <td className="px-2.5 py-2 text-xs">{o.customer}<div className="text-[10px] text-ink-3">{o.city}</div></td>
                   <td className="px-2.5 py-2 text-xs">{o.country}</td>
                   <td className="px-2.5 py-2 text-xs">{o.salespersonName || '—'}</td>
-                  <td className="px-2.5 py-2 text-xs">{o.items.length}</td>
+                  <td className="px-2.5 py-2 text-xs">
+                    {o.items.length}
+                    <div className="text-[10px] text-ink-3">Qty: {o.items.reduce((s, it) => s + (Number(it.qty) || 0), 0)}</div>
+                  </td>
                   <td className="px-2.5 py-2 text-xs font-bold text-navy-700">{fmtAED(o.grandTotal)}</td>
                   <td className="px-2.5 py-2"><StatusBadge status={o.status} /></td>
                   <td className="px-2.5 py-2">
