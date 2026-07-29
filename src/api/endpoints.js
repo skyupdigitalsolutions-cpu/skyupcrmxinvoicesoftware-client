@@ -30,6 +30,8 @@ export const whatsappApi = {
     sendMedia: (body) => api.post('/whatsapp/send-media', body).then((r) => r.data),
     listConversations: () => api.get('/whatsapp/conversations').then((r) => r.data.conversations),
     getThread: (leadId) => api.get(`/whatsapp/thread/${leadId}`).then((r) => r.data),
+    getThreadByNumber: (contactNumber) => api.get(`/whatsapp/thread-by-number/${encodeURIComponent(contactNumber)}`).then((r) => r.data),
+    relinkContact: (body) => api.post('/whatsapp/relink-contact', body).then((r) => r.data),
 };
 
 export const chequeApi = {

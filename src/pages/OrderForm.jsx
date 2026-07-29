@@ -5,7 +5,7 @@
 // save.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { Pencil, Plus, Save, UserCheck, UserPlus, Loader2 } from 'lucide-react';
+import { Pencil, Plus, Save, UserCheck, UserPlus, Loader2, AlertCircle } from 'lucide-react';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -21,6 +21,7 @@ import { Card, CardHead, CardBody } from '../components/ui/Card.jsx';
 import { Field, Input, Select, Textarea } from '../components/ui/Field.jsx';
 import Button from '../components/ui/Button.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
+import Modal from '../components/ui/Modal.jsx';
 import OrderItemsEditor, { blankItem } from '../components/OrderItemsEditor.jsx';
 
 
@@ -528,6 +529,13 @@ export default function OrderForm() {
   // custom partial-payment value is never silently clobbered).
   const dueAutoRef = useRef(true);
 
+  // Existing-lead confirmation popup — shown when saving a new order and the
+  // mobile number matches a customer already in the CRM (possibly owned by
+  // someone else). Holds everything needed to resume the save once
+  // acknowledged: { lead, items, isEdit } (isEdit unused here but keeps shape
+  // consistent with how the save flow already branches).
+  const [existingLeadPopup, setExistingLeadPopup] = useState(null);
+
   // ── Lead lookup ────────────────────────────────────────────────────────────
   const { leadId, leadState, onMobileChange, onCountryChange } = useLeadLookup({
     editing,
@@ -670,43 +678,61 @@ export default function OrderForm() {
 
     setBusy(true);
     try {
-      // If this is a new order with an unmatched mobile, create a CRM lead first.
-      //
-      // leadId (from the debounced background lookup) is NOT trusted here on
-      // its own — if the user fills in a known customer's number and hits
-      // Save quickly, the background lookup may not have resolved yet, so
-      // leadId would still be null even though a lead genuinely exists. A
-      // fresh, synchronous lookup right before deciding is what actually
-      // prevents creating a duplicate lead for an existing customer —
-      // cross-employee: this matches on phone number company-wide, not just
-      // leads owned by the current user.
+      // If this is a new order with an unmatched mobile, we may need to
+      // create a CRM lead first. leadId (from the debounced background
+      // lookup) is NOT trusted here on its own — if the user fills in a
+      // known customer's number and hits Save quickly, the background
+      // lookup may not have resolved yet, so leadId would still be null
+      // even though a lead genuinely exists. A fresh, synchronous lookup
+      // right before deciding is what actually prevents creating a
+      // duplicate lead — cross-employee: this matches on phone number
+      // company-wide, not just leads owned by the current user.
       const mobileDigits = (form.mobile || '').replace(/\D/g, '');
-      let confirmedLeadId = leadId;
-      if (!editing && !confirmedLeadId && mobileDigits.length >= MIN_MOBILE_DIGITS) {
+      let confirmedLead = null;
+      if (!editing && !leadId && mobileDigits.length >= MIN_MOBILE_DIGITS) {
         try {
           const freshLookup = await leadApi.lookup(mobileDigits, form.country);
-          if (freshLookup && freshLookup.exists && freshLookup.lead) {
-            confirmedLeadId = freshLookup.lead._id;
-            // Fetch the existing customer's data — fill in whatever this
-            // order's form still has blank (never overwrite what was
-            // already typed for THIS order), and let the salesperson know
-            // this is a returning customer rather than silently proceeding.
-            const found = freshLookup.lead;
-            setForm((prev) => ({
-              ...prev,
-              customer: prev.customer || found.name || prev.customer,
-              city:     prev.city     || found.city || prev.city,
-              delivery: prev.delivery || found.delivery || prev.delivery,
-            }));
-            show(
-              `Existing customer found${found.ownerName ? ` (owned by ${found.ownerName})` : ''} — using their saved details instead of creating a new lead.`,
-              'success'
-            );
-          }
+          if (freshLookup && freshLookup.exists && freshLookup.lead) confirmedLead = freshLookup.lead;
         } catch { /* lookup failure — fall through and let the server's own duplicate check decide */ }
       }
 
-      const isNewMobile = !editing && !confirmedLeadId && mobileDigits.length >= MIN_MOBILE_DIGITS;
+      if (confirmedLead) {
+        // Fetch the existing customer's data into any still-blank fields —
+        // never overwrite what was already typed for THIS order.
+        setForm((prev) => ({
+          ...prev,
+          customer: prev.customer || confirmedLead.name || prev.customer,
+          city:     prev.city     || confirmedLead.city || prev.city,
+          delivery: prev.delivery || confirmedLead.delivery || prev.delivery,
+        }));
+        // Pause here and let the salesperson see exactly who this is before
+        // the order actually saves — a toast is too easy to miss for
+        // something this important (it's the whole point of not creating a
+        // duplicate lead).
+        setBusy(false);
+        setExistingLeadPopup({ lead: confirmedLead, items });
+        return;
+      }
+
+      await finishSave(items, false);
+    } catch (e) {
+      show(apiError(e), 'error');
+      setBusy(false);
+    }
+  };
+
+  // Actually creates/updates the order (and a new CRM lead, if this really is
+  // a brand-new customer with no existing match). Split out from save() so
+  // the existing-lead popup can pause the flow and resume here once
+  // acknowledged, without duplicating the validation/lookup logic above.
+  // `hasExistingMatch` is passed explicitly rather than read from state,
+  // since by the time this runs from the popup's "Continue" button the
+  // popup state has already been cleared.
+  const finishSave = async (items, hasExistingMatch) => {
+    setBusy(true);
+    try {
+      const mobileDigits = (form.mobile || '').replace(/\D/g, '');
+      const isNewMobile = !editing && !hasExistingMatch && !leadId && mobileDigits.length >= MIN_MOBILE_DIGITS;
 
       if (isNewMobile) {
         try {
@@ -755,6 +781,15 @@ export default function OrderForm() {
     }
   };
 
+  // Called when the salesperson acknowledges the existing-lead popup —
+  // resumes the save using the confirmed match.
+  const confirmExistingLeadAndSave = async () => {
+    if (!existingLeadPopup) return;
+    const { items } = existingLeadPopup;
+    setExistingLeadPopup(null);
+    await finishSave(items, true);
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (loading) return <Spinner label="Loading order…" />;
@@ -800,6 +835,41 @@ export default function OrderForm() {
           {busy ? 'Saving…' : 'Save Order'}
         </Button>
       </div>
+
+      {existingLeadPopup && (
+        <Modal open onClose={() => setExistingLeadPopup(null)} title="Existing Customer Found" width="sm:max-w-[440px]">
+          <div className="mb-3 flex items-start gap-2.5 rounded-md border p-3" style={{ borderColor: 'var(--border-card)', backgroundColor: 'var(--bg-card-head)' }}>
+            <UserCheck size={18} className="mt-0.5 flex-shrink-0 text-ok" />
+            <div className="text-xs">
+              <p className="font-bold" style={{ color: 'var(--text-primary)' }}>{existingLeadPopup.lead.name}</p>
+              <p className="mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                {existingLeadPopup.lead.city ? `${existingLeadPopup.lead.city}, ` : ''}{existingLeadPopup.lead.country || ''}
+              </p>
+              {existingLeadPopup.lead.ownerName && (
+                <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>
+                  Owned by <strong>{existingLeadPopup.lead.ownerName}</strong>
+                </p>
+              )}
+              {existingLeadPopup.lead.status && (
+                <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>
+                  Status: <strong>{existingLeadPopup.lead.status}</strong>
+                  {existingLeadPopup.lead.orderNo ? ` · previously ordered #${existingLeadPopup.lead.orderNo}` : ''}
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="mb-3 flex items-start gap-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+            This number already exists as a lead in your CRM. Continuing will use their saved details for this order — no new (duplicate) lead will be created.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setExistingLeadPopup(null)}>Cancel</Button>
+            <Button disabled={busy} onClick={confirmExistingLeadAndSave}>
+              {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Continue & Save Order'}
+            </Button>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }
