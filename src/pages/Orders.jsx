@@ -518,7 +518,9 @@ export default function Orders() {
       {printOrder && <PrintOrderForm order={printOrder} branding={branding} />}
 
       <PageTitle icon={<ClipboardList size={18} />} badge={filtered.length}
-        actions={<IconBtn icon={Plus} label="New Order" onClick={() => navigate('/orders/new')} />}>All Orders</PageTitle>
+        actions={<IconBtn icon={Plus} label="New Order" onClick={() => navigate('/orders/new')} />}>
+        {f.status ? `${f.status} Orders` : 'All Orders'}
+      </PageTitle>
 
       <div
         className="mb-3.5 flex flex-wrap items-center gap-2 rounded-lg border p-2.5"
@@ -574,6 +576,16 @@ export default function Orders() {
             <span className="flex items-center gap-1.5"><Download size={13} />{exporting ? 'Exporting…' : 'Export PDF'}</span>
           </Button>
         )}
+      </div>
+
+      <div className="mb-3.5 flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+        <span>
+          Total {f.status || 'Orders'}: <strong style={{ color: 'var(--text-primary)' }}>{filtered.length}</strong>
+        </span>
+        <span>·</span>
+        <span>
+          Value: <strong style={{ color: 'var(--text-primary)' }}>{fmtAED(filtered.reduce((s, o) => s + (o.grandTotal || 0), 0))}</strong>
+        </span>
       </div>
 
       <Card className="overflow-x-auto">
