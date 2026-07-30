@@ -212,6 +212,55 @@ export const cleanPhone = (num, country) => {
     return p;
 };
 
+// ── Phone-aware free-text search ─────────────────────────────────────────────
+// A plain `mobile.includes(searchText)` breaks the moment either side has a
+// country code, a leading trunk zero, or different punctuation (+, spaces,
+// dashes) than the other — e.g. typing "+971 554252850" would never match a
+// stored "0554252850". These mirror the server's phoneSearchCandidates
+// (server/src/utils/phone.js) so every search box behaves consistently.
+//
+// phoneSearchDigits(raw) reduces free-typed text to every plausible digit
+// variant: as typed, with a leading "00"/"0" stripped, and with any known
+// country dial code stripped — repeated until nothing new turns up, so
+// combinations (e.g. "00" + a country code together) reduce fully too.
+export function phoneSearchDigits(raw) {
+    const digits = String(raw || '').replace(/\D/g, '');
+    if (!digits) return [];
+    const variants = new Set([digits]);
+    let grew = true;
+    while (grew) {
+        grew = false;
+        for (const v of [...variants]) {
+            const candidates = [];
+            if (v.startsWith('00')) candidates.push(v.slice(2));
+            if (v.startsWith('0')) candidates.push(v.slice(1));
+            Object.values(EFFECTIVE_CODES).forEach((code) => {
+                if (code && v.startsWith(code) && v.length > code.length) candidates.push(v.slice(code.length));
+            });
+            for (const c of candidates) {
+                if (c && !variants.has(c)) { variants.add(c); grew = true; }
+            }
+        }
+    }
+    return [...variants];
+}
+
+// True if `mobile` (a stored number, possibly with punctuation and/or a
+// country code) matches free-typed `rawSearch` — regardless of which side
+// has the country code, the leading zero, or how it's punctuated. Returns
+// false for very short search text (<3 digits) so a plain name/city search
+// that happens to contain a stray digit never gets mis-treated as a phone
+// search.
+export function phoneSearchMatches(mobile, rawSearch) {
+    const searchDigits = String(rawSearch || '').replace(/\D/g, '');
+    if (searchDigits.length < 3) return false;
+    const mobileDigits = String(mobile || '').replace(/\D/g, '');
+    if (!mobileDigits) return false;
+    const searchVariants = phoneSearchDigits(rawSearch);
+    const mobileVariants = phoneSearchDigits(mobile);
+    return searchVariants.some((sv) => mobileVariants.some((mv) => mv.includes(sv) || sv.includes(mv)));
+}
+
 export const ORDER_STATUSES = ['Pending', 'Confirmed', 'Packed', 'Market Delay', 'Out for Delivery', 'Delivered', 'Cancelled'];
 export const ALL_STATUSES = [...ORDER_STATUSES.slice(0, 1), 'Confirmed', 'Packed', 'Market Delay', 'Out for Delivery', 'Delivered', 'Invoiced', 'Cancelled'];
 // Delivery stages selectable on an already-Invoiced order — its `status`

@@ -16,7 +16,7 @@ import { whatsappApi, leadApi } from '../api/endpoints.js';
 import { apiError } from '../api/client.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import { formatDate, LEAD_STAGES, leadStageOf, getCountryCodes } from '../utils/format.js';
+import { formatDate, LEAD_STAGES, leadStageOf, getCountryCodes, phoneSearchMatches } from '../utils/format.js';
 import PageTitle from '../components/layout/PageTitle.jsx';
 import { Card, CardHead, CardBody } from '../components/ui/Card.jsx';
 import { Field, Input, Textarea } from '../components/ui/Field.jsx';
@@ -298,7 +298,7 @@ function SendPanel({ templates, onSent }) {
   const setVariableAt = (i, value) => setVariableValues((vals) => vals.map((v, idx) => (idx === i ? value : v)));
 
   const filteredLeads = leads.filter((l) => {
-    const matchesSearch = !search.trim() || (l.name || '').toLowerCase().includes(search.toLowerCase()) || (l.mobile || '').includes(search);
+    const matchesSearch = !search.trim() || (l.name || '').toLowerCase().includes(search.toLowerCase()) || phoneSearchMatches(l.mobile, search);
     const matchesStage = !stageFilter || leadStageOf(l) === stageFilter;
     return matchesSearch && matchesStage;
   });

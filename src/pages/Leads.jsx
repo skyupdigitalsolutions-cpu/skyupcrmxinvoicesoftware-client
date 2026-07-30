@@ -25,7 +25,7 @@ import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 import {
   formatDate, fmtAED, fmtDateTime, leadStatusClass,
   LEAD_STATUSES, LEAD_SOURCES, ALL_COUNTRY_NAMES, dialFor, cleanPhone, fmtMobile,
-  LEAD_STAGES, leadStageOf, leadStageClass, getCountryCodes,
+  LEAD_STAGES, leadStageOf, leadStageClass, getCountryCodes, phoneSearchMatches,
 } from '../utils/format.js';
 
 const emptyLead = () => ({
@@ -329,7 +329,8 @@ export default function Leads() {
       if (f.employee && String(l.owner) !== String(f.employee)) return false;
       if (f.search) {
         const q = f.search.toLowerCase();
-        if (!([l.name, l.mobile, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q)))) return false;
+        const textMatch = [l.name, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q));
+        if (!textMatch && !phoneSearchMatches(l.mobile, f.search) && !phoneSearchMatches(l.altMobile, f.search)) return false;
       }
       return true;
     });

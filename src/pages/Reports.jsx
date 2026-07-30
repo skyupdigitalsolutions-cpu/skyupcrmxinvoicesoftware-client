@@ -19,7 +19,7 @@ import { exportSectionsPdf, exportSectionsCsv } from '../utils/exportPdf.js';
 import {
   fmtDHS, fmtAED, formatDate, fmtNum, curCode,
   LEAD_STATUSES, LEAD_SOURCES, leadStatusClass,
-  LEAD_STAGES, leadStageOf, leadStageClass, fmtMobile,
+  LEAD_STAGES, leadStageOf, leadStageClass, fmtMobile, phoneSearchMatches,
 } from '../utils/format.js';
 
 const SOURCE_COLORS = ['#2563EB', '#7C3AED', '#0891B2', '#059669', '#D97706', '#DC2626', '#0D9488', '#9333EA'];
@@ -121,7 +121,7 @@ export default function Reports() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return sharedFiltered.filter((l) =>
-      (!q || l.name?.toLowerCase().includes(q) || (l.mobile || '').includes(q) || l.campaign?.toLowerCase().includes(q)) &&
+      (!q || l.name?.toLowerCase().includes(q) || phoneSearchMatches(l.mobile, search) || l.campaign?.toLowerCase().includes(q)) &&
       (statusFilter === 'All' || l.status === statusFilter) &&
       (sourceFilter === 'All' || l.source === sourceFilter) &&
       (stageFilter === 'All' || leadStageOf(l) === stageFilter)
