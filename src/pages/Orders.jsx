@@ -598,36 +598,46 @@ export default function Orders() {
         ) : (
           <table className="w-full min-w-[820px] border-collapse">
             <thead><tr className="bg-navy-800 text-white">
-              {['Sl. No', 'Order #', 'Date', 'Customer', 'Country', 'Salesperson', 'Items / Qty', 'Amount (AED)', 'Status', 'Actions'].map((h) => (
-                <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">{h}</th>
-              ))}
+              <th className="px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide">Sl. No</th>
+              <th className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">Order #</th>
+              <th className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">Date</th>
+              <th className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">Customer</th>
+              <th className="px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide">Country</th>
+              <th className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">Salesperson</th>
+              <th className="px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide">Items / Qty</th>
+              <th className="px-2.5 py-2 text-right text-[11px] font-bold uppercase tracking-wide">Amount (AED)</th>
+              <th className="px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide">Status</th>
+              <th className="px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide">Actions</th>
             </tr></thead>
             <tbody>
               {filtered.map((o, idx) => (
-                <tr key={o._id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale">
-                  <td className="px-2.5 py-2 text-xs text-ink-3">{idx + 1}</td>
-                  <td className="px-2.5 py-2 text-xs font-bold">#{o.orderNo}</td>
-                  <td className="px-2.5 py-2 text-xs">{formatDate(o.date)}</td>
-                  <td className="px-2.5 py-2 text-xs">{o.customer}<div className="text-[10px] text-ink-3">{o.city}</div></td>
-                  <td className="px-2.5 py-2 text-xs">{o.country}</td>
-                  <td className="px-2.5 py-2 text-xs">{o.salespersonName || '—'}</td>
+                <tr key={o._id} className="border-b border-gray-100 align-middle last:border-0 hover:bg-gold-pale">
+                  <td className="px-2.5 py-2 text-center text-xs tabular-nums text-ink-3">{idx + 1}</td>
+                  <td className="px-2.5 py-2 text-xs font-bold tabular-nums">#{o.orderNo}</td>
+                  <td className="px-2.5 py-2 text-xs whitespace-nowrap">{formatDate(o.date)}</td>
                   <td className="px-2.5 py-2 text-xs">
+                    <div className="font-medium">{o.customer}</div>
+                    <div className="text-[10px] text-ink-3">{o.city}</div>
+                  </td>
+                  <td className="px-2.5 py-2 text-center text-xs">{o.country}</td>
+                  <td className="px-2.5 py-2 text-xs">{o.salespersonName || '—'}</td>
+                  <td className="px-2.5 py-2 text-center text-xs tabular-nums">
                     {o.items.length}
                     <div className="text-[10px] text-ink-3">Qty: {o.items.reduce((s, it) => s + (Number(it.qty) || 0), 0)}</div>
                   </td>
-                  <td className="px-2.5 py-2 text-xs font-bold text-navy-700">{fmtAED(o.grandTotal)}</td>
-                  <td className="px-2.5 py-2"><StatusBadge status={o.status} /></td>
+                  <td className="px-2.5 py-2 text-right text-xs font-bold tabular-nums text-navy-700 whitespace-nowrap">{fmtAED(o.grandTotal)}</td>
+                  <td className="px-2.5 py-2 text-center"><StatusBadge status={o.status} /></td>
                   <td className="px-2.5 py-2">
-                    <div className="flex flex-wrap gap-1">
-                      <IconBtn icon={Eye}      label="View"    size="sm" variant="outline" onClick={() => setViewOrder(o)} />
-                      <IconBtn icon={Pencil}   label="Edit"    size="sm" variant="gold"    onClick={() => navigate(`/orders/${o._id}/edit`)} />
-                      <IconBtn icon={Truck}    label="Status"  size="sm" variant="blue"    onClick={() => openStatus(o)} />
-                      <a className="btn-green btn-sm flex items-center gap-1" href={orderWhatsAppUrl(o)} target="_blank" rel="noreferrer">
-                        <MessageCircle size={14} /> WhatsApp
+                    <div className="flex flex-nowrap items-center justify-center gap-1">
+                      <IconBtn icon={Eye}      size="sm" variant="outline" title="View"    onClick={() => setViewOrder(o)} />
+                      <IconBtn icon={Pencil}   size="sm" variant="gold"    title="Edit"    onClick={() => navigate(`/orders/${o._id}/edit`)} />
+                      <IconBtn icon={Truck}    size="sm" variant="blue"    title="Update Status" onClick={() => openStatus(o)} />
+                      <a className="btn-green btn-sm flex items-center justify-center" title="WhatsApp" href={orderWhatsAppUrl(o)} target="_blank" rel="noreferrer">
+                        <MessageCircle size={14} />
                       </a>
-                      <IconBtn icon={Download} label={pdfBusy === o._id ? '…' : 'PDF'} size="sm" variant="outline" disabled={pdfBusy === o._id} onClick={() => downloadOrderPdf(o)} />
-                      {o.status !== 'Cancelled' && o.status !== 'Invoiced' && !o.invoiceId && <IconBtn icon={FileText} label="Invoice" size="sm" variant="outline" onClick={() => convert(o)} />}
-                      {isAdmin && <IconBtn icon={Trash2} label="Del" size="sm" variant="red" onClick={() => del(o)} />}
+                      <IconBtn icon={Download} size="sm" variant="outline" title={pdfBusy === o._id ? 'Preparing PDF…' : 'Download PDF'} disabled={pdfBusy === o._id} onClick={() => downloadOrderPdf(o)} />
+                      {o.status !== 'Cancelled' && o.status !== 'Invoiced' && !o.invoiceId && <IconBtn icon={FileText} size="sm" variant="outline" title="Convert to Invoice" onClick={() => convert(o)} />}
+                      {isAdmin && <IconBtn icon={Trash2} size="sm" variant="red" title="Delete" onClick={() => del(o)} />}
                     </div>
                   </td>
                 </tr>
