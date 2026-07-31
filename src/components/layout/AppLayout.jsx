@@ -21,7 +21,7 @@ const NAV = [
   { to: '/orders/new',  label: 'Order Form',        icon: FilePlus },
   { to: '/invoices',    label: 'Invoices',          icon: Receipt },
   { to: '/cheques',     label: 'Cheque Calendar',   icon: Banknote },
-  // { to: '/communication', label: 'Communication',   icon: MessageSquare },
+  { to: '/communication', label: 'Communication',   icon: MessageSquare },
   { to: '/tracker',     label: 'Delivery Tracker',  icon: Truck },
   { to: '/reports',     label: 'Reports',           icon: BarChart2,   admin: true },
   { to: '/daily-report',label: 'Daily Report',      icon: CalendarDays },

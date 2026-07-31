@@ -1,45 +1,61 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// Communication.jsx
-// MSG91 WhatsApp integration: connection settings, a local template registry,
-// bulk-sending an approved template to selected leads, a log of every lead's
-// last template + their response, and a manual "continue chat" drawer.
-// ─────────────────────────────────────────────────────────────────────────────
+// Communication.jsx — SkyUp CRM
+// WhatsApp-style UI wired to /api/whatsapp/* endpoints
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  MessageSquare, Settings, Plus, Send, Loader2, Eye, EyeOff, Check, X,
-  RefreshCw, Trash2, Pencil, Paperclip, FileText, Download, Upload,
-  AlertTriangle, Phone,
+  MessageSquare, Settings, Send, Loader2, RefreshCw,
+  Paperclip, FileText, Download, AlertTriangle, X,
+  Search, Plus, Users, ChevronLeft, Check, CheckCheck,
+  Clock, Zap, Trash2, Eye, EyeOff, UserPlus,
 } from 'lucide-react';
 
 import { whatsappApi, leadApi } from '../api/endpoints.js';
 import { apiError } from '../api/client.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import { formatDate, LEAD_STAGES, leadStageOf, getCountryCodes, phoneSearchMatches } from '../utils/format.js';
+import { formatDate, LEAD_STAGES, leadStageOf, phoneSearchMatches, getCountryCodes } from '../utils/format.js';
 import PageTitle from '../components/layout/PageTitle.jsx';
-import { Card, CardHead, CardBody } from '../components/ui/Card.jsx';
-import { Field, Input, Textarea } from '../components/ui/Field.jsx';
-import Button from '../components/ui/Button.jsx';
-import Modal from '../components/ui/Modal.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
-import EmptyState from '../components/ui/EmptyState.jsx';
+import Modal from '../components/ui/Modal.jsx';
+import Button from '../components/ui/Button.jsx';
+import { Input, Field, Textarea } from '../components/ui/Field.jsx';
 
-const STATUS_STYLES = {
-  queued:    'bg-gray-100 text-ink-3',
-  sent:      'bg-purple-50 text-purple-700',
-  delivered: 'bg-ok-light text-ok',
-  read:      'bg-ok-light text-ok',
-  replied:   'bg-gold-light text-navy-700',
-  failed:    'bg-danger-light text-danger',
-};
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function timeAgo(iso) {
+  if (!iso) return '';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
 
-// ── MSG91 Settings modal ─────────────────────────────────────────────────────
+function formatTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function getInitials(name = '') {
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?';
+}
+
+function MessageTick({ status }) {
+  if (status === 'failed') return <X size={11} className="text-red-500" />;
+  if (status === 'read' || status === 'replied')
+    return <CheckCheck size={11} className="text-[#015FDE]" />;
+  if (status === 'delivered')
+    return <CheckCheck size={11} className="text-[#25D366]" />;
+  return <Check size={11} style={{ color: 'var(--text-muted)' }} />;
+}
+
+// ── API Settings Modal ────────────────────────────────────────────────────────
 function SettingsModal({ settings, onClose, onSaved }) {
   const { show } = useToast();
   const [form, setForm] = useState({
     enabled: settings.enabled || false,
-    authKey: '', // always blank on open — server never returns it
+    authKey: '',
     integratedNumber: settings.integratedNumber || '',
     senderName: settings.senderName || '',
   });
@@ -50,53 +66,52 @@ function SettingsModal({ settings, onClose, onSaved }) {
     setBusy(true);
     try {
       await whatsappApi.setSettings(form);
-      show('MSG91 settings saved.', 'success');
-      onSaved();
-      onClose();
+      show('API settings saved.', 'success');
+      onSaved(); onClose();
     } catch (e) { show(apiError(e), 'error'); }
     finally { setBusy(false); }
   };
 
   return (
-    <Modal open onClose={onClose} title="MSG91 WhatsApp Settings" width="sm:max-w-[520px]">
+    <Modal open onClose={onClose} title="WhatsApp API Settings" width="sm:max-w-[480px]">
       <div className="space-y-3">
-        <label className="flex cursor-pointer items-center gap-2 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
-          <input type="checkbox" className="h-4 w-4 accent-purple-500" checked={form.enabled}
-            onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-          Enable WhatsApp sending for this company
+        <label className="flex items-center gap-2.5 cursor-pointer p-3 rounded-xl border border-[var(--border-card)] hover:bg-[var(--bg-card-head)] transition">
+          <input type="checkbox" className="w-4 h-4 accent-[#25D366] rounded"
+            checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} />
+          <div>
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>Enable WhatsApp for this company</p>
+            <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Required to send and receive messages</p>
+          </div>
         </label>
 
-        <Field label={`MSG91 Auth Key ${settings.hasAuthKey ? '(saved — leave blank to keep)' : ''}`}>
+        <Field label={`Auth Key ${settings.hasAuthKey ? '(saved — leave blank to keep)' : ''}`}>
           <div className="relative">
             <Input type={showKey ? 'text' : 'password'} value={form.authKey}
-              placeholder={settings.hasAuthKey ? '•••••••• (key saved)' : 'Your MSG91 auth key'}
-              onChange={(e) => setForm({ ...form, authKey: e.target.value })}
-              style={{ paddingRight: '2.2rem' }} />
-            <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-3"
-              onClick={() => setShowKey((v) => !v)} tabIndex={-1}>
+              placeholder={settings.hasAuthKey ? '•••••••• (saved)' : 'Paste your API auth key'}
+              onChange={e => setForm({ ...form, authKey: e.target.value })}
+              style={{ paddingRight: '2.5rem', fontFamily: 'monospace' }} />
+            <button type="button" onClick={() => setShowKey(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
               {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
+          <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
+            msg91.com → Profile → API → Auth Key
+          </p>
         </Field>
 
-        <Field label="Integrated WhatsApp Number (as shown on your MSG91 dashboard)">
-          <Input value={form.integratedNumber} placeholder="e.g. 919999999999"
-            onChange={(e) => setForm({ ...form, integratedNumber: e.target.value })} />
+        <Field label="Integrated WhatsApp Number">
+          <Input value={form.integratedNumber} placeholder="e.g. 919591327778 (country code, no +)"
+            onChange={e => setForm({ ...form, integratedNumber: e.target.value })} />
         </Field>
 
         <Field label="Sender / Business Name (optional)">
-          <Input value={form.senderName} onChange={(e) => setForm({ ...form, senderName: e.target.value })} />
+          <Input value={form.senderName} onChange={e => setForm({ ...form, senderName: e.target.value })} />
         </Field>
-
-        <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-          Get your auth key from the MSG91 dashboard → API → Auth Key. Templates must be created
-          and approved on MSG91 first — add their exact names below once approved.
-        </p>
       </div>
-
-      <div className="mt-4 flex justify-end gap-2">
+      <div className="mt-5 flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button disabled={busy} onClick={save}>
+        <Button disabled={busy} onClick={save} style={{ background: '#25D366', border: 'none', color: '#fff' }}>
           {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save Settings'}
         </Button>
       </div>
@@ -104,13 +119,15 @@ function SettingsModal({ settings, onClose, onSaved }) {
   );
 }
 
-// ── Template add/edit modal ──────────────────────────────────────────────────
+// ── Template Modal ────────────────────────────────────────────────────────────
 function TemplateModal({ template, onClose, onSaved }) {
   const { show } = useToast();
   const isEdit = !!template?.id;
   const [form, setForm] = useState({
-    name: template?.name || '', language: template?.language || 'en',
-    bodyPreview: template?.bodyPreview || '', variableCount: template?.variableCount ?? 0,
+    name: template?.name || '',
+    language: template?.language || 'en',
+    bodyPreview: template?.bodyPreview || '',
+    variableCount: template?.variableCount ?? 0,
   });
   const [busy, setBusy] = useState(false);
 
@@ -121,53 +138,515 @@ function TemplateModal({ template, onClose, onSaved }) {
       if (isEdit) await whatsappApi.updateTemplate(template.id, form);
       else await whatsappApi.createTemplate(form);
       show(`Template ${isEdit ? 'updated' : 'added'}.`, 'success');
-      onSaved();
-      onClose();
+      onSaved(); onClose();
     } catch (e) { show(apiError(e), 'error'); }
     finally { setBusy(false); }
   };
 
   return (
-    <Modal open onClose={onClose} title={isEdit ? 'Edit Template' : 'Add Template'} width="sm:max-w-[480px]">
+    <Modal open onClose={onClose} title={isEdit ? 'Edit Template' : 'Add Template'} width="sm:max-w-[440px]">
       <div className="space-y-3">
-        <Field label="Template Name (must exactly match the name approved on MSG91)">
-          <Input value={form.name} placeholder="e.g. order_confirmation" onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <Field label="Template Name (must match API exactly)">
+          <Input value={form.name} placeholder="e.g. crm_followup_leads"
+            onChange={e => setForm({ ...form, name: e.target.value })} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Language Code">
-            <Input value={form.language} placeholder="en" onChange={(e) => setForm({ ...form, language: e.target.value })} />
+          <Field label="Language">
+            <Input value={form.language} placeholder="en"
+              onChange={e => setForm({ ...form, language: e.target.value })} />
           </Field>
           <Field label="Variable Count">
-            <Input type="number" min="0" value={form.variableCount} onChange={(e) => setForm({ ...form, variableCount: Number(e.target.value) })} />
+            <Input type="number" min="0" value={form.variableCount}
+              onChange={e => setForm({ ...form, variableCount: Number(e.target.value) })} />
           </Field>
         </div>
-        <Field label="Body Preview (for reference — copy the approved template text, e.g. with {{1}}, {{2}})">
-          <Textarea rows={3} value={form.bodyPreview} onChange={(e) => setForm({ ...form, bodyPreview: e.target.value })} />
+        <Field label="Body Preview">
+          <Textarea rows={3} value={form.bodyPreview}
+            onChange={e => setForm({ ...form, bodyPreview: e.target.value })} />
         </Field>
       </div>
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button disabled={busy} onClick={save}>
-          {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save Template'}
+          {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save'}
         </Button>
       </div>
     </Modal>
   );
 }
 
-// ── Send Template panel ───────────────────────────────────────────────────────
-// ── Minimal CSV parser (same approach used in Leads.jsx's import feature) ───
+// ── Send Template Modal ───────────────────────────────────────────────────────
+function SendTemplateModal({ leadId, templates, onClose, onSent }) {
+  const { show } = useToast();
+  const [templateName, setTemplateName] = useState(templates[0]?.name || '');
+  const [busy, setBusy] = useState(false);
+
+  const send = async () => {
+    if (!templateName) return show('Select a template.', 'error');
+    setBusy(true);
+    try {
+      await whatsappApi.sendTemplate({ leadIds: [leadId], templateName, variables: [], autoFillNameVar: true });
+      show('Template sent.', 'success');
+      onSent(); onClose();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Send Template" width="sm:max-w-[380px]">
+      <p className="text-[12px] mb-3" style={{ color: 'var(--text-secondary)' }}>
+        Select a pre-approved template to send to this lead.
+      </p>
+      <Field label="Template">
+        <select value={templateName} onChange={e => setTemplateName(e.target.value)}
+          className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
+          style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+          {templates.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+        </select>
+      </Field>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button disabled={busy} onClick={send} style={{ background: '#25D366', border: 'none', color: '#fff' }}>
+          {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Sending…</>
+            : <><Send size={12} className="mr-1.5" />Send</>}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Save as Lead Modal ────────────────────────────────────────────────────────
+function SaveLeadModal({ conv, onClose, onSaved }) {
+  const { show } = useToast();
+  const [form, setForm] = useState({
+    name: conv.leadName && conv.leadName !== conv.contactNumber ? conv.leadName : '',
+    mobile: conv.contactNumber || '',
+    country: 'UAE',
+    city: '',
+    source: 'WhatsApp',
+    status: 'Contacted',
+    email: '',
+    remark: 'Added from WhatsApp conversation',
+  });
+  const [busy, setBusy] = useState(false);
+
+  const SOURCES = ['Walk-in', 'WhatsApp', 'Instagram', 'Facebook', 'Referral', 'market-in', 'Website', 'Call', 'Other'];
+  const STATUSES = ['New', 'Contacted', 'Interested', 'Follow-up', 'Won', 'Lost'];
+  const COUNTRIES = ['UAE', 'India', 'Saudi Arabia', 'Kuwait', 'Bahrain', 'Oman', 'Qatar', 'USA', 'UK', 'Other'];
+
+  const save = async () => {
+    if (!form.name.trim()) return show('Name is required.', 'error');
+    if (!form.city.trim()) return show('City is required.', 'error');
+    setBusy(true);
+    try {
+      const lead = await leadApi.create({
+        name: form.name.trim(),
+        mobile: form.mobile.trim(),
+        country: form.country,
+        city: form.city.trim(),
+        source: form.source,
+        status: form.status,
+        email: form.email.trim(),
+        remark: form.remark.trim(),
+      });
+      // Link existing messages to the new lead
+      try {
+        await whatsappApi.relinkContact({
+          contactNumber: conv.contactNumber,
+          leadId: lead._id || lead.id,
+        });
+      } catch {}
+      show(`${form.name} saved as lead.`, 'success');
+      onSaved();
+      onClose();
+    } catch (e) {
+      const details = e?.response?.data?.details;
+      if (details?.duplicate) {
+        show('This number already exists as a lead.', 'error');
+      } else {
+        show(apiError(e), 'error');
+      }
+    }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Save as Lead" width="sm:max-w-[500px]">
+      <div className="space-y-3">
+        {/* Info banner */}
+        <div className="flex gap-2.5 px-3 py-2.5 rounded-xl border"
+          style={{ background: 'var(--bg-card-head)', borderColor: 'var(--border-card)' }}>
+          <UserPlus size={14} className="shrink-0 mt-0.5 text-[#25D366]" />
+          <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+            This contact's WhatsApp history will be linked to the new lead automatically.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Full Name *">
+            <Input value={form.name} placeholder="Contact's name"
+              onChange={e => setForm({ ...form, name: e.target.value })} />
+          </Field>
+          <Field label="Mobile">
+            <Input value={form.mobile} placeholder="With country code"
+              onChange={e => setForm({ ...form, mobile: e.target.value })} />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="City *">
+            <Input value={form.city} placeholder="e.g. Dubai"
+              onChange={e => setForm({ ...form, city: e.target.value })} />
+          </Field>
+          <Field label="Country">
+            <select value={form.country} onChange={e => setForm({ ...form, country: e.target.value })}
+              className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
+              style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+              {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Source">
+            <select value={form.source} onChange={e => setForm({ ...form, source: e.target.value })}
+              className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
+              style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+              {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+          <Field label="Status">
+            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}
+              className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
+              style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <Field label="Email (optional)">
+          <Input type="email" value={form.email} placeholder="contact@example.com"
+            onChange={e => setForm({ ...form, email: e.target.value })} />
+        </Field>
+
+        <Field label="Remark (optional)">
+          <Textarea rows={2} value={form.remark}
+            onChange={e => setForm({ ...form, remark: e.target.value })} />
+        </Field>
+      </div>
+
+      <div className="mt-5 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button disabled={busy} onClick={save} style={{ background: '#015FDE', border: 'none', color: '#fff' }}>
+          {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</>
+            : <><UserPlus size={13} className="mr-1.5" />Save as Lead</>}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Message Bubble ────────────────────────────────────────────────────────────
+function Bubble({ m }) {
+  const isOut = m.direction === 'out';
+
+  const content = () => {
+    if (m.mediaUrl) {
+      if (m.mediaType === 'image') return (
+        <div>
+          <img src={m.mediaUrl} alt="attachment" className="max-h-48 rounded-lg object-contain mb-1" />
+          {m.text && <p className="text-[13px] leading-relaxed">{m.text}</p>}
+        </div>
+      );
+      return (
+        <div>
+          <a href={m.mediaUrl} target="_blank" rel="noreferrer"
+            className="flex items-center gap-2 rounded-lg border px-3 py-2 text-[12px] font-semibold mb-1"
+            style={{ borderColor: 'rgba(0,0,0,0.1)' }}>
+            <FileText size={14} />
+            {m.mediaFilename || `${m.mediaType} file`}
+            <Download size={12} className="ml-auto" />
+          </a>
+          {m.text && <p className="text-[13px]">{m.text}</p>}
+        </div>
+      );
+    }
+    if (m.kind === 'template') return (
+      <div>
+        <div className="text-[10px] font-bold uppercase mb-1 opacity-60">Template: {m.templateName}</div>
+        <p className="text-[13px] leading-relaxed">{m.text || m.variables?.join(', ')}</p>
+      </div>
+    );
+    return <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{m.text}</p>;
+  };
+
+  return (
+    <div className={`flex ${isOut ? 'justify-end' : 'justify-start'} mb-1`}>
+      <div className={`max-w-[72%] px-3.5 py-2.5 rounded-2xl ${
+        isOut ? 'rounded-br-sm bg-[#DCF8C6] text-[#111]' : 'rounded-bl-sm bg-white text-[#111]'
+      }`} style={{ boxShadow: '0 1px 2px rgba(0,0,0,.1)' }}>
+        {content()}
+        <div className={`flex items-center gap-1 mt-1 ${isOut ? 'justify-end' : 'justify-start'}`}>
+          <span className="text-[10px] opacity-55">{formatTime(m.createdAt)}</span>
+          {isOut && <MessageTick status={m.status} />}
+        </div>
+        {isOut && m.status === 'failed' && m.error && (
+          <p className="text-[10px] text-red-500 mt-0.5">{m.error}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Chat Window ───────────────────────────────────────────────────────────────
+function ChatWindow({ conv, templates, onClose, onRefreshList }) {
+  const { show } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'developer';
+
+  const [data, setData] = useState(null);
+  const [text, setText] = useState('');
+  const [busy, setSending] = useState(false);
+  const [attachment, setAttachment] = useState(null);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [showSaveLeadModal, setShowSaveLeadModal] = useState(false);
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const load = useCallback(async () => {
+    try {
+      if (conv.isLead) {
+        const d = await whatsappApi.getThread(conv.leadId);
+        setData(d);
+      } else {
+        const d = await whatsappApi.getThreadByNumber(conv.contactNumber);
+        setData(d);
+      }
+    } catch (e) { show(apiError(e), 'error'); }
+  }, [conv]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [data?.messages]);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const onPickFile = e => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) return show('File too large (max 15 MB).', 'error');
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+    setAttachment({ file, previewUrl });
+  };
+
+  const sendReply = async () => {
+    if (attachment) {
+      setSending(true);
+      try {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            await whatsappApi.sendMedia({
+              leadId: conv.leadId,
+              dataUrl: reader.result,
+              mediaType: attachment.file.type.startsWith('image/') ? 'image'
+                : attachment.file.type.startsWith('video/') ? 'video'
+                : attachment.file.type.startsWith('audio/') ? 'audio' : 'document',
+              filename: attachment.file.name,
+              caption: text,
+            });
+            setText(''); setAttachment(null); load(); onRefreshList();
+          } catch (e) { show(apiError(e), 'error'); }
+          finally { setSending(false); }
+        };
+        reader.readAsDataURL(attachment.file);
+      } catch { setSending(false); }
+      return;
+    }
+    if (!text.trim()) return;
+    setSending(true);
+    try {
+      await whatsappApi.sendReply({ leadId: conv.leadId, text });
+      setText(''); load(); onRefreshList();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setSending(false); }
+  };
+
+  const canReply = conv.isLead;
+
+  return (
+    <div className="flex flex-col h-full" style={{ background: 'var(--bg-card)' }}>
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b shrink-0"
+        style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
+        <button onClick={onClose} className="sm:hidden p-1.5 rounded-lg hover:bg-black/5"
+          style={{ color: 'var(--text-muted)' }}>
+          <ChevronLeft size={18} />
+        </button>
+
+        <div className="w-9 h-9 rounded-full bg-[#25D366]/15 flex items-center justify-center font-bold text-[13px] text-[#25D366] shrink-0">
+          {getInitials(conv.leadName)}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-[14px] font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+              {conv.leadName}
+            </p>
+            {!conv.isLead && (
+              <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-700">
+                Not a lead
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] font-mono truncate" style={{ color: 'var(--text-muted)' }}>
+            {conv.mobile || conv.contactNumber}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Save as Lead — only for non-lead contacts */}
+          {!conv.isLead && (
+            <button onClick={() => setShowSaveLeadModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition"
+              style={{ borderColor: '#015FDE', color: '#015FDE' }}
+              title="Save this contact as a lead">
+              <UserPlus size={13} />
+              <span className="hidden sm:inline">Save as Lead</span>
+            </button>
+          )}
+          {/* Send Template — only for leads */}
+          {canReply && (
+            <button onClick={() => setShowTemplateModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition"
+              style={{ borderColor: '#25D366', color: '#25D366' }}
+              title="Send a template message">
+              <Zap size={12} />
+              <span className="hidden sm:inline">Template</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-3"
+        style={{ background: 'linear-gradient(180deg, rgba(37,211,102,0.03) 0%, transparent 100%)' }}>
+        {!data ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 size={20} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
+          </div>
+        ) : data.messages?.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 opacity-60">
+            <MessageSquare size={36} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
+            <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>No messages yet</p>
+            {canReply && (
+              <button onClick={() => setShowTemplateModal(true)}
+                className="px-4 py-2 rounded-xl text-[12px] font-semibold text-white"
+                style={{ background: '#25D366' }}>
+                Send a template to start
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            {data.messages.map(m => <Bubble key={m.id} m={m} />)}
+            <div ref={bottomRef} />
+          </>
+        )}
+      </div>
+
+      {/* Attachment preview */}
+      {attachment && (
+        <div className="px-4 py-2 flex items-center gap-2 border-t"
+          style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
+          {attachment.previewUrl
+            ? <img src={attachment.previewUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />
+            : <FileText size={20} style={{ color: 'var(--text-muted)' }} />}
+          <span className="flex-1 text-[12px] truncate font-medium" style={{ color: 'var(--text-primary)' }}>
+            {attachment.file.name}
+          </span>
+          <button onClick={() => setAttachment(null)} style={{ color: 'var(--text-muted)' }}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Input bar */}
+      {canReply ? (
+        <div className="px-3 py-3 flex items-end gap-2 border-t shrink-0"
+          style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
+          <label className="p-2 rounded-xl cursor-pointer hover:bg-black/5 transition shrink-0"
+            style={{ color: 'var(--text-muted)' }} title="Attach file">
+            <Paperclip size={18} />
+            <input type="file" className="hidden"
+              accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+              onChange={onPickFile} />
+          </label>
+          <Textarea
+            ref={inputRef}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); } }}
+            placeholder={attachment ? 'Add a caption…' : 'Type a message…'}
+            rows={1}
+            style={{ resize: 'none', maxHeight: '120px', overflowY: 'auto' }}
+          />
+          <button onClick={sendReply}
+            disabled={busy || (!text.trim() && !attachment)}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-white shrink-0 transition disabled:opacity-40"
+            style={{ background: (text.trim() || attachment) ? '#25D366' : 'var(--text-muted)' }}>
+            {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+          </button>
+        </div>
+      ) : (
+        /* Not-a-lead bottom bar */
+        <div className="px-4 py-3 border-t shrink-0"
+          style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              <AlertTriangle size={13} className="text-amber-500" />
+              Save as lead to reply
+            </div>
+            <button onClick={() => setShowSaveLeadModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-white transition"
+              style={{ background: '#015FDE' }}>
+              <UserPlus size={13} />
+              Save as Lead
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modals */}
+      {showTemplateModal && (
+        <SendTemplateModal
+          leadId={conv.leadId}
+          templates={templates}
+          onClose={() => setShowTemplateModal(false)}
+          onSent={() => { load(); onRefreshList(); }}
+        />
+      )}
+      {showSaveLeadModal && (
+        <SaveLeadModal
+          conv={conv}
+          onClose={() => setShowSaveLeadModal(false)}
+          onSaved={() => { onRefreshList(); onClose(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── CSV helpers ──────────────────────────────────────────────────────────────
 function parseCSV(text) {
   const rows = [];
   let row = [], field = '', inQuotes = false;
   const pushField = () => { row.push(field); field = ''; };
-  const pushRow = () => { rows.push(row); row = []; };
+  const pushRow   = () => { rows.push(row); row = []; };
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false;
-      } else field += c;
+      if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else inQuotes = false; }
+      else field += c;
     } else if (c === '"') inQuotes = true;
     else if (c === ',') pushField();
     else if (c === '\n') { pushField(); pushRow(); }
@@ -175,155 +654,55 @@ function parseCSV(text) {
     else field += c;
   }
   if (field.length || row.length) { pushField(); pushRow(); }
-  return rows.filter((r) => r.some((c) => c.trim() !== ''));
+  return rows.filter(r => r.some(c => c.trim() !== ''));
 }
 
-// Column names recognized as "this is the phone number column" — case-insensitive.
-const PHONE_HEADER_ALIASES = ['mobile', 'phone', 'phone number', 'mobile number', 'contact'];
+const PHONE_ALIASES = ['mobile', 'phone', 'phone number', 'mobile number', 'contact'];
+const SCIENTIFIC_RE = /^-?\d+(\.\d+)?[eE][+-]?\d+$/;
 
-// A blank sample CSV matching exactly the columns/format Import CSV expects —
-// so there's no guesswork about the right header name or layout.
 function downloadCsvTemplate() {
-  const headers = ['Name', 'Mobile'];
-  const sample = ['Ali Hassan', '971501234567'];
-  const csv = [headers.join(','), sample.map((v) => `"${v}"`).join(',')].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement('a'), { href: url, download: 'whatsapp_send_template.csv' });
+  const csv = ['Name,Mobile', '"Ali Hassan","971501234567"'].join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'whatsapp_blast_template.csv' });
   document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-// A small labeled list used for each category in the results popup below.
-function ResultSection({ icon, label, colorClass, items, hint }) {
-  if (!items.length) return null;
-  return (
-    <div className="mb-3">
-      <div className={`mb-1 flex items-center gap-1.5 text-xs font-bold ${colorClass}`}>
-        {icon} {label} ({items.length})
-      </div>
-      {hint && <p className="mb-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>{hint}</p>}
-      <div className="max-h-28 overflow-y-auto rounded-md border p-1.5 text-[11px]" style={{ borderColor: 'var(--border-card)' }}>
-        {items.map((it, i) => (
-          <div key={i} className="border-b py-0.5 last:border-0" style={{ borderColor: 'var(--border-card)' }}>
-            {typeof it === 'string' ? it : <>{it.name && <strong>{it.name}</strong>}{it.name ? ' — ' : ''}{it.raw}</>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Detailed breakdown shown after every CSV import — nothing is silently
-// dropped; every number lands in exactly one category below.
-function ImportResultsModal({ result, onClose }) {
-  const { total, matched, notFound, duplicates, missingCode, unknownCode, scientificNotation = [] } = result;
-  return (
-    <Modal open onClose={onClose} title="CSV Import Results" width="sm:max-w-[520px]">
-      <p className="mb-3 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-        {total} row(s) read from the file. {matched.length} matched an existing lead, and {notFound.length} new number(s) will be sent to directly.
-      </p>
-
-      {scientificNotation.length > 0 && (
-        <div className="mb-3 rounded-md border p-2.5" style={{ borderColor: 'var(--danger, #dc2626)', backgroundColor: 'var(--danger-light, #fef2f2)' }}>
-          <div className="mb-1 flex items-center gap-1.5 text-xs font-bold" style={{ color: 'var(--danger, #dc2626)' }}>
-            <AlertTriangle size={13} /> Corrupted by Excel ({scientificNotation.length})
-          </div>
-          <p className="mb-1.5 text-[11px]" style={{ color: 'var(--text-primary)' }}>
-            Excel converted these numbers to scientific notation (e.g. "9.16E+11") when the file was saved — this <strong>permanently loses the exact digits</strong> (Excel keeps only ~6 significant figures and zeros out the rest). The real number can't be recovered from this file.
-          </p>
-          <p className="mb-1.5 text-[11px] font-bold" style={{ color: 'var(--text-primary)' }}>
-            Fix: in Excel, format the Mobile column as "Text" (or type an apostrophe ' before each number) before re-entering the numbers and re-exporting as CSV.
-          </p>
-          <div className="max-h-20 overflow-y-auto rounded border p-1.5 text-[11px]" style={{ borderColor: 'var(--border-card)' }}>
-            {scientificNotation.map((it, i) => <div key={i} className="border-b py-0.5 last:border-0" style={{ borderColor: 'var(--border-card)' }}>{it}</div>)}
-          </div>
-        </div>
-      )}
-
-      <ResultSection
-        icon={<Check size={13} />} label="Matched existing lead" colorClass="text-ok" items={matched}
-      />
-      <ResultSection
-        icon={<Send size={13} />} label="New — not yet a lead, will send directly" colorClass="text-info" items={notFound}
-        hint="These numbers don't match any lead in the CRM yet — the template is sent directly, and you'll be prompted to add them as a lead once they reply."
-      />
-      <ResultSection
-        icon={<RefreshCw size={13} />} label="Duplicate numbers in file" colorClass="text-warn" items={duplicates}
-        hint="This number appeared more than once in the file — only the first occurrence was used."
-      />
-      <ResultSection
-        icon={<Phone size={13} />} label="Missing country code" colorClass="text-warn" items={missingCode}
-        hint="Too few digits to plausibly include a country code — check and re-enter with the full international number."
-      />
-      <ResultSection
-        icon={<AlertTriangle size={13} />} label="Unrecognized country code" colorClass="text-warn" items={unknownCode}
-        hint="The leading digits don't match any known country's dial code — double-check the number."
-      />
-
-      <div className="mt-3 flex justify-end">
-        <Button onClick={onClose}>Done</Button>
-      </div>
-    </Modal>
-  );
-}
-
-function SendPanel({ templates, onSent }) {
+// ── Bulk Send Modal ───────────────────────────────────────────────────────────
+function BulkSendModal({ templates, onClose, onSent }) {
   const { show } = useToast();
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState([]);
+  const [pendingContacts, setPendingContacts] = useState([]); // CSV numbers not yet leads
   const [templateName, setTemplateName] = useState('');
   const [variableValues, setVariableValues] = useState([]);
   const [autoFillName, setAutoFillName] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('');
   const [csvBusy, setCsvBusy] = useState(false);
-  const [csvResult, setCsvResult] = useState(null); // populated after an import, drives the detail popup
-  const [pendingContacts, setPendingContacts] = useState([]); // CSV numbers that aren't leads yet — sent directly
+  const [csvResult, setCsvResult] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => { leadApi.list().then(setLeads).catch(() => setLeads([])); }, []);
 
-  const selectedTemplate = templates.find((t) => t.name === templateName) || null;
+  const selectedTemplate = templates.find(t => t.name === templateName) || null;
 
-  // Selecting a template auto-fetches how many variables it needs and lays
-  // out exactly that many input boxes — instead of a blind comma-separated
-  // text field where it's easy to miss one or get the order wrong.
-  const onTemplateChange = (name) => {
+  const onTemplateChange = name => {
     setTemplateName(name);
-    const t = templates.find((tpl) => tpl.name === name);
-    const count = t ? t.variableCount : 0;
-    setVariableValues(Array.from({ length: count }, () => ''));
+    const t = templates.find(t => t.name === name);
+    setVariableValues(Array.from({ length: t?.variableCount || 0 }, () => ''));
   };
-  const setVariableAt = (i, value) => setVariableValues((vals) => vals.map((v, idx) => (idx === i ? value : v)));
 
-  const filteredLeads = leads.filter((l) => {
-    const matchesSearch = !search.trim() || (l.name || '').toLowerCase().includes(search.toLowerCase()) || phoneSearchMatches(l.mobile, search);
-    const matchesStage = !stageFilter || leadStageOf(l) === stageFilter;
-    return matchesSearch && matchesStage;
+  const filtered = leads.filter(l => {
+    const ms = !search.trim() || (l.name || '').toLowerCase().includes(search.toLowerCase()) || phoneSearchMatches(l.mobile, search);
+    const mf = !stageFilter || leadStageOf(l) === stageFilter;
+    return ms && mf;
   });
 
-  const toggle = (id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const selectAllFiltered = () => setSelected(filteredLeads.map((l) => l.id || l._id));
-  const clearSelection = () => setSelected([]);
+  const toggle = id => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
 
-  // Import a CSV of phone numbers and auto-select every one that matches an
-  // existing lead (by phone number, tolerant of country-code formatting
-  // differences — compares the last 8 digits). Sending itself always goes to
-  // an existing lead record (numbers not already in the CRM are reported so
-  // they can be added as leads first, rather than silently messaging a
-  // number with no lead behind it).
-  // Import a CSV of phone numbers, classify every row, and auto-select every
-  // one that matches an existing lead. Categorizes problems instead of just
-  // silently skipping them:
-  //  - duplicate numbers within the file itself
-  //  - numbers too short to plausibly include a country code
-  //  - numbers whose leading digits don't match any known country's dial code
-  //  - numbers that look valid but don't match any existing lead
-  // A detailed popup (not just a toast) shows every category so nothing is
-  // silently dropped.
-  const onImportCsv = (e) => {
-    const file = e.target.files && e.target.files[0];
+  const onImportCsv = e => {
+    const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     setCsvBusy(true);
@@ -331,758 +710,538 @@ function SendPanel({ templates, onSent }) {
     reader.onload = () => {
       try {
         const rows = parseCSV(String(reader.result));
-        if (!rows.length) { show('That CSV appears to be empty.', 'error'); setCsvBusy(false); return; }
+        if (!rows.length) { show('CSV appears to be empty.', 'error'); setCsvBusy(false); return; }
 
-        const header = rows[0].map((h) => h.trim().toLowerCase());
-        let phoneCol = header.findIndex((h) => PHONE_HEADER_ALIASES.includes(h));
-        const nameCol = header.findIndex((h) => h === 'name');
-        // No recognizable header — fall back to treating the whole file as a
-        // single column of phone numbers (no header row).
+        const header  = rows[0].map(h => h.trim().toLowerCase());
+        let phoneCol  = header.findIndex(h => PHONE_ALIASES.includes(h));
+        const nameCol = header.findIndex(h => h === 'name');
         const dataRows = phoneCol === -1 ? rows : rows.slice(1);
         if (phoneCol === -1) phoneCol = 0;
 
-        // Every known dial code (built-in + any custom countries added on
-        // this browser) — used to sanity-check that a number's leading
-        // digits actually correspond to a real country code, and to guess
-        // which country a not-yet-lead number belongs to for direct sending.
-        // Longest codes first, so e.g. a 3-digit code isn't skipped in favor
-        // of a shorter code that coincidentally matches the same prefix.
         const dialCodeEntries = Object.entries(getCountryCodes())
           .filter(([, code]) => code)
           .sort((a, b) => b[1].length - a[1].length);
 
         const seenDigits = new Set();
-        const duplicates = [];
-        const missingCode = [];
-        const unknownCode = [];
-        const scientificNotation = [];
-        const candidates = [];
+        const duplicates = [], missingCode = [], unknownCode = [], scientificNotation = [], candidates = [];
 
-        // Excel auto-converts long numbers in cells not formatted as "Text"
-        // into scientific notation (e.g. "9.16364E+11") when the file is
-        // saved as CSV — and this is destructive: Excel only keeps ~6
-        // significant digits, silently rounding everything after that to
-        // zero. By the time it reaches here the real number is already gone
-        // from the file itself; the only fix is re-exporting with the phone
-        // column formatted as Text (or each value prefixed with '). This
-        // must be checked BEFORE stripping non-digit characters below,
-        // otherwise it just silently turns into a wrong, truncated number.
-        const SCIENTIFIC_NOTATION_RE = /^-?\d+(\.\d+)?[eE][+-]?\d+$/;
-
-        dataRows.forEach((r) => {
-          const raw = (r[phoneCol] || '').trim();
+        dataRows.forEach(r => {
+          const raw  = (r[phoneCol] || '').trim();
           if (!raw) return;
           const name = nameCol !== -1 ? (r[nameCol] || '').trim() : '';
-
-          if (SCIENTIFIC_NOTATION_RE.test(raw)) {
-            scientificNotation.push(raw);
-            return;
-          }
-
+          if (SCIENTIFIC_RE.test(raw)) { scientificNotation.push(raw); return; }
           const digits = raw.replace(/\D/g, '');
           if (!digits) return;
-
-          if (seenDigits.has(digits)) {
-            duplicates.push(raw);
-            return; // only the first occurrence of a repeated number is processed
-          }
+          if (seenDigits.has(digits)) { duplicates.push(raw); return; }
           seenDigits.add(digits);
-
-          if (digits.length < 8) {
-            missingCode.push(raw);
-            return;
-          }
-          const matchedEntry = dialCodeEntries.find(([, code]) => digits.startsWith(code));
-          if (!matchedEntry) {
-            unknownCode.push(raw);
-            return;
-          }
-          // A number can start with a real dial code purely by coincidence
-          // and still be incomplete — e.g. "91636411" starts with India's
-          // "91" but only has 6 digits left, nowhere near a real 10-digit
-          // Indian mobile number. Checking the LOCAL part's length (after
-          // removing the matched dial code) is what actually catches this;
-          // checking the total length alone (as before) missed it entirely.
-          const localPart = digits.slice(matchedEntry[1].length);
-          if (localPart.length < 7) {
-            missingCode.push(raw);
-            return;
-          }
-          candidates.push({ raw, name, digits, country: matchedEntry[0] });
+          if (digits.length < 8) { missingCode.push(raw); return; }
+          const match = dialCodeEntries.find(([, code]) => digits.startsWith(code));
+          if (!match) { unknownCode.push(raw); return; }
+          const local = digits.slice(match[1].length);
+          if (local.length < 7) { missingCode.push(raw); return; }
+          candidates.push({ raw, name, digits, country: match[0] });
         });
 
-        // Match the remaining valid-looking candidates against existing
-        // leads (tolerant of formatting — compares the last 8 digits).
-        // Anyone NOT already a lead is still sendable directly — they become
-        // a "pending contact" rather than being blocked.
-        const matched = [];
-        const notYetLead = [];
-        const matchedIds = [];
-        candidates.forEach((c) => {
-          const key = c.digits.slice(-8);
-          const lead = leads.find((l) => (l.mobile || '').replace(/\D/g, '').slice(-8) === key);
-          if (lead) {
-            matched.push({ raw: c.raw, name: lead.name });
-            matchedIds.push(lead.id || lead._id);
-          } else {
-            notYetLead.push({ raw: c.raw, name: c.name, mobile: c.digits, country: c.country });
-          }
+        const matched = [], notYetLead = [], matchedIds = [];
+        candidates.forEach(c => {
+          const key  = c.digits.slice(-8);
+          const lead = leads.find(l => (l.mobile || '').replace(/\D/g, '').slice(-8) === key);
+          if (lead) { matched.push({ raw: c.raw, name: lead.name }); matchedIds.push(lead.id || lead._id); }
+          else notYetLead.push({ raw: c.raw, name: c.name, mobile: c.digits, country: c.country });
         });
 
-        setSelected((prev) => [...new Set([...prev, ...matchedIds])]);
-        setPendingContacts((prev) => {
-          const existingNumbers = new Set(prev.map((p) => p.mobile));
-          const additions = notYetLead.filter((c) => !existingNumbers.has(c.mobile));
-          return [...prev, ...additions];
+        setSelected(prev => [...new Set([...prev, ...matchedIds])]);
+        setPendingContacts(prev => {
+          const existing = new Set(prev.map(p => p.mobile));
+          return [...prev, ...notYetLead.filter(c => !existing.has(c.mobile))];
         });
         setCsvResult({
           total: dataRows.length, matched,
-          notFound: notYetLead.map((c) => ({ raw: c.raw, name: c.name })),
+          notFound: notYetLead.map(c => ({ raw: c.raw, name: c.name })),
           duplicates, missingCode, unknownCode, scientificNotation,
         });
-      } catch (err) {
-        show('Could not read that CSV file.', 'error');
-      } finally {
-        setCsvBusy(false);
-      }
+      } catch { show('Could not read that CSV file.', 'error'); }
+      finally { setCsvBusy(false); }
     };
-    reader.onerror = () => { show('Could not read that file.', 'error'); setCsvBusy(false); };
+    reader.onerror = () => { show('Could not read file.', 'error'); setCsvBusy(false); };
     reader.readAsText(file);
   };
-
-  const removePendingContact = (mobile) => setPendingContacts((prev) => prev.filter((c) => c.mobile !== mobile));
 
   const send = async () => {
     if (!selected.length && !pendingContacts.length) return show('Select at least one lead or contact.', 'error');
     if (!templateName) return show('Select a template.', 'error');
     setBusy(true);
     try {
-      const variables = variableValues.map((v) => v.trim());
       const results = await whatsappApi.sendTemplate({
         leadIds: selected,
-        contacts: pendingContacts.map((c) => ({ name: c.name, mobile: c.mobile, country: c.country })),
-        templateName, variables, autoFillNameVar: autoFillName,
+        contacts: pendingContacts.map(c => ({ name: c.name, mobile: c.mobile, country: c.country })),
+        templateName,
+        variables: variableValues.map(v => v.trim()),
+        autoFillNameVar: autoFillName,
       });
-      const okCount = results.filter((r) => r.status === 'sent').length;
-      const failCount = results.length - okCount;
-      show(`Sent to ${okCount} recipient(s)${failCount ? `, ${failCount} failed` : ''}.`, failCount ? 'error' : 'success');
-      setSelected([]);
-      setPendingContacts([]);
-      onSent();
+      const ok   = results.filter(r => r.status === 'sent').length;
+      const fail = results.length - ok;
+      show(`Sent to ${ok} recipient(s)${fail ? `, ${fail} failed` : ''}.`, fail ? 'error' : 'success');
+      setSelected([]); setPendingContacts([]); onSent();
     } catch (e) { show(apiError(e), 'error'); }
     finally { setBusy(false); }
   };
 
-  return (
-    <>
-    <Card>
-      <CardHead title="Send Template to Leads" />
-      <CardBody>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Template">
-            <select
-              value={templateName}
-              onChange={(e) => onTemplateChange(e.target.value)}
-              className="w-full rounded border px-2 py-1.5 text-xs"
-              style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
-            >
-              <option value="">Select a template…</option>
-              {templates.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
-            </select>
-          </Field>
-          {selectedTemplate && selectedTemplate.bodyPreview && (
-            <Field label="Template Preview">
-              <div className="rounded border px-2.5 py-1.5 text-[11px]" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)', backgroundColor: 'var(--bg-card-head)' }}>
-                {selectedTemplate.bodyPreview}
-              </div>
-            </Field>
-          )}
-        </div>
+  const totalRecipients = selected.length + pendingContacts.length;
 
-        {selectedTemplate && selectedTemplate.variableCount > 0 && (
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
+  return (
+    <Modal open onClose={onClose} title="Send WhatsApp Blast" width="sm:max-w-[560px]">
+      <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+
+        {/* Template */}
+        <Field label="Template">
+          <select value={templateName} onChange={e => onTemplateChange(e.target.value)}
+            className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
+            style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+            <option value="">Select template…</option>
+            {templates.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+          </select>
+        </Field>
+
+        {selectedTemplate?.bodyPreview && (
+          <div className="text-[12px] px-3 py-2 rounded-xl border"
+            style={{ borderColor: 'var(--border-card)', color: 'var(--text-secondary)', background: 'var(--bg-card-head)' }}>
+            {selectedTemplate.bodyPreview}
+          </div>
+        )}
+
+        {variableValues.length > 0 && (
+          <div className="grid grid-cols-2 gap-2">
             {variableValues.map((val, i) => (
-              <Field key={i} label={`Variable {{${i + 1}}}${i === 0 && autoFillName ? ' — overridden by lead name below' : ''}`}>
-                <Input
-                  value={val}
-                  disabled={i === 0 && autoFillName}
+              <Field key={i} label={`Variable {{${i + 1}}}`}>
+                <Input value={val} disabled={i === 0 && autoFillName}
                   placeholder={i === 0 && autoFillName ? 'auto-filled with lead name' : `value for {{${i + 1}}}`}
-                  onChange={(e) => setVariableAt(i, e.target.value)}
-                />
+                  onChange={e => setVariableValues(vals => vals.map((v, idx) => idx === i ? e.target.value : v))} />
               </Field>
             ))}
           </div>
         )}
-        {templateName && selectedTemplate && selectedTemplate.variableCount === 0 && (
-          <p className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>This template has no variables to fill in.</p>
-        )}
 
-        <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
-          <input type="checkbox" className="h-3.5 w-3.5 accent-purple-500" checked={autoFillName}
-            onChange={(e) => setAutoFillName(e.target.checked)} />
-          Auto-fill the first variable with each lead's own name
+        <label className="flex items-center gap-2 text-[12px] cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
+          <input type="checkbox" className="w-3.5 h-3.5 accent-[#25D366]"
+            checked={autoFillName} onChange={e => setAutoFillName(e.target.checked)} />
+          Auto-fill first variable with lead name
         </label>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Input value={search} placeholder="Search leads by name or mobile…" onChange={(e) => setSearch(e.target.value)} className="!w-52" />
-          <select
-            value={stageFilter}
-            onChange={(e) => setStageFilter(e.target.value)}
-            className="rounded border px-2 py-1.5 text-xs"
-            style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
-          >
-            <option value="">All Stages</option>
-            {LEAD_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <Button size="sm" variant="outline" onClick={selectAllFiltered}>Select all ({filteredLeads.length})</Button>
-          <Button size="sm" variant="outline" onClick={clearSelection}>Clear</Button>
-          <Button size="sm" variant="outline" className="ml-auto" onClick={downloadCsvTemplate}>
-            <Download size={12} className="mr-1.5" />Download Template
-          </Button>
-          <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-bold ${csvBusy ? 'opacity-60' : ''}`} style={{ borderColor: 'var(--border-card)', color: 'var(--text-primary)' }}>
-            {csvBusy ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+        {/* CSV Import row */}
+        <div className="flex items-center gap-2 p-3 rounded-xl border"
+          style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
+          <div className="flex-1">
+            <p className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Import from CSV</p>
+            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              Columns: <code className="font-mono bg-black/5 px-1 rounded">Name</code>, <code className="font-mono bg-black/5 px-1 rounded">Mobile</code> (with country code)
+            </p>
+          </div>
+          <button onClick={downloadCsvTemplate}
+            className="px-3 py-1.5 rounded-lg border text-[11px] font-semibold transition"
+            style={{ borderColor: 'var(--border-card)', color: 'var(--text-secondary)' }}>
+            Sample
+          </button>
+          <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition ${csvBusy ? 'opacity-60' : ''}`}
+            style={{ borderColor: '#25D366', color: '#25D366' }}>
+            {csvBusy ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
             {csvBusy ? 'Reading…' : 'Import CSV'}
             <input type="file" accept=".csv,text/csv" className="hidden" disabled={csvBusy} onChange={onImportCsv} />
           </label>
         </div>
-        <p className="mt-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
-          Not sure of the format? Download the template above first, fill it in, then import it — matching numbers are added to the selection below; numbers not already saved as leads are reported so they can be added first.
-        </p>
 
-        <div className="mt-2 max-h-52 overflow-y-auto rounded-md border" style={{ borderColor: 'var(--border-card)' }}>
-          {filteredLeads.map((l) => {
-            const id = l.id || l._id;
-            const checked = selected.includes(id);
-            return (
-              <label key={id} className="flex cursor-pointer items-center gap-2 border-b px-2.5 py-1.5 text-xs last:border-0" style={{ borderColor: 'var(--border-card)' }}>
-                <input type="checkbox" className="h-3.5 w-3.5 accent-purple-500" checked={checked} onChange={() => toggle(id)} />
-                <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{l.name}</span>
-                <span style={{ color: 'var(--text-secondary)' }}>{l.mobile}</span>
-              </label>
-            );
-          })}
-          {!filteredLeads.length && <div className="p-3 text-center text-[11px] text-ink-3">No leads match.</div>}
-        </div>
+        {/* CSV result summary */}
+        {csvResult && (
+          <div className="px-3 py-2.5 rounded-xl border text-[12px] space-y-1"
+            style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
+            <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+              CSV: {csvResult.total} row(s) read
+            </p>
+            {csvResult.matched.length > 0 && (
+              <p className="text-[#25D366]">✓ {csvResult.matched.length} matched existing leads — auto-selected</p>
+            )}
+            {csvResult.notFound.length > 0 && (
+              <p className="text-[#FF8B15]">→ {csvResult.notFound.length} new contact(s) — will send directly</p>
+            )}
+            {csvResult.duplicates.length > 0 && (
+              <p style={{ color: 'var(--text-muted)' }}>⚠ {csvResult.duplicates.length} duplicate(s) skipped</p>
+            )}
+            {csvResult.missingCode.length > 0 && (
+              <p className="text-red-500">✗ {csvResult.missingCode.length} missing/short country code</p>
+            )}
+            {csvResult.scientificNotation.length > 0 && (
+              <p className="text-red-500">✗ {csvResult.scientificNotation.length} corrupted by Excel (scientific notation)</p>
+            )}
+          </div>
+        )}
 
+        {/* Pending CSV contacts (not yet leads) */}
         {pendingContacts.length > 0 && (
-          <div className="mt-3">
-            <div className="mb-1 text-[11px] font-bold" style={{ color: 'var(--text-secondary)' }}>
-              New contacts — not yet leads, sent directly ({pendingContacts.length})
-            </div>
-            <div className="max-h-32 overflow-y-auto rounded-md border" style={{ borderColor: 'var(--border-card)' }}>
-              {pendingContacts.map((c) => (
-                <div key={c.mobile} className="flex items-center justify-between gap-2 border-b px-2.5 py-1.5 text-xs last:border-0" style={{ borderColor: 'var(--border-card)' }}>
-                  <span>
-                    {c.name && <strong style={{ color: 'var(--text-primary)' }}>{c.name}</strong>}{c.name ? ' — ' : ''}
-                    <span style={{ color: 'var(--text-secondary)' }}>{c.mobile}</span>
+          <div>
+            <p className="text-[11px] font-bold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+              New contacts from CSV — not yet leads ({pendingContacts.length})
+            </p>
+            <div className="max-h-24 overflow-y-auto rounded-xl border" style={{ borderColor: 'var(--border-card)' }}>
+              {pendingContacts.map(c => (
+                <div key={c.mobile} className="flex items-center gap-2 px-3 py-2 border-b last:border-0"
+                  style={{ borderColor: 'var(--border-card)' }}>
+                  <span className="flex-1 text-[12px]" style={{ color: 'var(--text-primary)' }}>
+                    {c.name && <strong>{c.name}</strong>}{c.name ? ' — ' : ''}{c.mobile}
                   </span>
-                  <button type="button" onClick={() => removePendingContact(c.mobile)} className="text-ink-3"><X size={13} /></button>
+                  <button onClick={() => setPendingContacts(prev => prev.filter(p => p.mobile !== c.mobile))}
+                    style={{ color: 'var(--text-muted)' }}>
+                    <X size={13} />
+                  </button>
                 </div>
               ))}
             </div>
-            <p className="mt-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
-              If one of these replies, you'll be prompted to add them as a lead (with required details like city) from the conversation list below.
-            </p>
           </div>
         )}
 
-        <div className="mt-3 flex items-center justify-between">
-          <span className="text-[11px] font-bold" style={{ color: 'var(--text-secondary)' }}>
-            {selected.length} lead(s){pendingContacts.length > 0 ? ` + ${pendingContacts.length} new contact(s)` : ''} selected
-          </span>
-          <Button disabled={busy} onClick={send}>
-            {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Sending…</> : <><Send size={13} className="mr-1.5" />Send Template</>}
-          </Button>
+        {/* Lead search + list */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+            <Input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search leads…" style={{ paddingLeft: '2rem' }} />
+          </div>
+          <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}
+            className="rounded-lg border px-2.5 py-1.5 text-[12px]"
+            style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+            <option value="">All Stages</option>
+            {LEAD_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
         </div>
-      </CardBody>
-      </Card>
-      {csvResult && <ImportResultsModal result={csvResult} onClose={() => setCsvResult(null)} />}
-    </>
-  );
-}
 
-// ── Continue Chat drawer ─────────────────────────────────────────────────────
-// Maps a File's MIME type to the media category MSG91/WhatsApp expects.
-// Falls back to 'document' for anything not clearly image/video/audio —
-// WhatsApp delivers most file types (PDF, docx, etc.) fine as a "document".
-function mediaTypeFor(file) {
-  if (file.type.startsWith('image/')) return 'image';
-  if (file.type.startsWith('video/')) return 'video';
-  if (file.type.startsWith('audio/')) return 'audio';
-  return 'document';
-}
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Could not read that file.'));
-    reader.readAsDataURL(file);
-  });
-}
-
-// Renders one message's content — text, or a media attachment (image shown
-// inline, other file types as a download link) with an optional caption.
-function MessageBody({ m }) {
-  if (m.mediaUrl) {
-    return (
-      <div>
-        {m.mediaType === 'image' ? (
-          <img src={m.mediaUrl} alt={m.mediaFilename || 'attachment'} className="mb-1 max-h-40 rounded object-contain" />
-        ) : (
-          <a
-            href={m.mediaUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mb-1 flex items-center gap-1.5 rounded border px-2 py-1 text-[11px] font-bold underline"
-            style={{ borderColor: 'var(--border-card)' }}
-          >
-            <FileText size={12} /> {m.mediaFilename || `${m.mediaType} attachment`} <Download size={11} />
-          </a>
-        )}
-        {m.text ? <div>{m.text}</div> : null}
-      </div>
-    );
-  }
-  return <div>{m.text || (m.kind === 'template' ? `[${m.variables.join(', ')}]` : '')}</div>;
-}
-
-// ── Add-as-Lead flow for a not-yet-lead contact ─────────────────────────────
-// Shown when someone clicks a conversation row that isn't backed by a real
-// lead yet (a number sent to directly from a CSV import). Displays the
-// thread read-only (no free-text reply until they're a proper lead — that
-// needs a lead record), plus a form collecting the required fields (name,
-// city) to turn them into one. On save, the lead is created the normal way
-// (so it gets the same duplicate-phone protection as any other lead), then
-// all of this contact's prior message history is reassigned to it.
-function AddLeadFromReplyModal({ contact, onClose }) {
-  const { show } = useToast();
-  const [data, setData] = useState(null);
-  const [form, setForm] = useState({ name: contact.leadName && contact.leadName !== contact.mobile ? contact.leadName : '', city: '', country: 'UAE' });
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    whatsappApi.getThreadByNumber(contact.contactNumber)
-      .then((res) => {
-        setData(res);
-        setForm((f) => ({
-          ...f,
-          name: f.name || (res.lead && res.lead.name !== res.lead.mobile ? res.lead.name : ''),
-          country: (res.lead && res.lead.country) || 'UAE',
-        }));
-      })
-      .catch((e) => show(apiError(e), 'error'));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contact.contactNumber]);
-
-  const saveAsLead = async () => {
-    if (!form.name.trim()) return show('Name is required.', 'error');
-    if (!form.city.trim()) return show('City is required.', 'error');
-    setBusy(true);
-    try {
-      let leadId;
-      try {
-        const lead = await leadApi.create({
-          name: form.name.trim(),
-          mobile: contact.contactNumber,
-          country: form.country || 'UAE',
-          city: form.city.trim(),
-          source: 'WhatsApp',
-          status: data && data.messages.some((m) => m.direction === 'in') ? 'Contacted' : 'New',
-          remark: 'Added from a WhatsApp conversation',
-        });
-        leadId = lead._id || lead.id;
-      } catch (err) {
-        // If the server's own duplicate check finds this number already
-        // exists as a lead (a formatting edge case our own check missed),
-        // link the history to that existing lead instead of failing.
-        const details = err && err.response && err.response.data && err.response.data.details;
-        if (details && details.duplicate && details.leadId) {
-          leadId = details.leadId;
-          show('This number already exists as a lead — linking this conversation to it.', 'success');
-        } else {
-          throw err;
-        }
-      }
-
-      await whatsappApi.relinkContact({ contactNumber: contact.contactNumber, leadId });
-      show('Saved as a lead and linked this conversation to it.', 'success');
-      onClose();
-    } catch (e) { show(apiError(e), 'error'); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <Modal open onClose={onClose} title={`Add as Lead — ${contact.contactNumber}`} width="sm:max-w-[480px]">
-      {!data ? (
-        <Spinner label="Loading conversation…" />
-      ) : (
-        <>
-          <div className="mb-3 max-h-56 space-y-2 overflow-y-auto rounded-md border p-2" style={{ borderColor: 'var(--border-card)' }}>
-            {!data.messages.length ? (
-              <EmptyState title="No messages yet" hint="This number hasn't exchanged any messages yet." />
-            ) : (
-              data.messages.map((m) => (
-                <div key={m.id} className={`flex ${m.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className="max-w-[80%] rounded-lg px-2.5 py-1.5 text-xs"
-                    style={{ backgroundColor: m.direction === 'out' ? 'var(--gold-light, #fef3c7)' : 'var(--bg-card-head)', color: 'var(--text-primary)' }}
-                  >
-                    {m.kind === 'template' && (
-                      <div className="mb-0.5 text-[10px] font-bold uppercase" style={{ color: 'var(--text-secondary)' }}>Template: {m.templateName}</div>
-                    )}
-                    <MessageBody m={m} />
-                    <div className="mt-0.5 text-[9px] text-ink-3">{formatDate(m.createdAt)}</div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="rounded-md border p-3" style={{ borderColor: 'var(--border-card)' }}>
-            <p className="mb-2 text-[11px] font-bold" style={{ color: 'var(--text-primary)' }}>Add as Lead</p>
-            <div className="space-y-2">
-              <Field label="Name *">
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Customer / company name" />
-              </Field>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="City *">
-                  <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="e.g. Al Quoz" />
-                </Field>
-                <Field label="Country">
-                  <Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} />
-                </Field>
-              </div>
-            </div>
-            <div className="mt-3 flex justify-end gap-2">
-              <Button variant="outline" onClick={onClose}>Not now</Button>
-              <Button disabled={busy} onClick={saveAsLead}>
-                {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Save as Lead'}
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
-    </Modal>
-  );
-}
-
-function ChatDrawer({ leadId, onClose }) {
-  const { show } = useToast();
-  const [data, setData] = useState(null);
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [attachment, setAttachment] = useState(null); // { file, previewUrl }
-
-  const load = () => whatsappApi.getThread(leadId).then(setData).catch((e) => show(apiError(e), 'error'));
-  useEffect(() => { load(); }, [leadId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const onPickFile = (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = ''; // allow re-picking the same file
-    if (!file) return;
-    if (file.size > 15 * 1024 * 1024) return show('File too large — please use one under 15 MB.', 'error');
-    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
-    setAttachment({ file, previewUrl });
-  };
-  const clearAttachment = () => setAttachment(null);
-
-  const sendReply = async () => {
-    if (attachment) {
-      setBusy(true);
-      try {
-        const dataUrl = await readFileAsDataUrl(attachment.file);
-        await whatsappApi.sendMedia({
-          leadId, dataUrl, mediaType: mediaTypeFor(attachment.file),
-          filename: attachment.file.name, caption: text,
-        });
-        setText('');
-        setAttachment(null);
-        load();
-      } catch (e) { show(apiError(e), 'error'); }
-      finally { setBusy(false); }
-      return;
-    }
-    if (!text.trim()) return;
-    setBusy(true);
-    try {
-      await whatsappApi.sendReply({ leadId, text });
-      setText('');
-      load();
-    } catch (e) { show(apiError(e), 'error'); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <Modal open onClose={onClose} title={data ? `Chat — ${data.lead.name}` : 'Chat'} width="sm:max-w-[480px]">
-      {!data ? (
-        <Spinner label="Loading conversation…" />
-      ) : (
-        <>
-          <div className="mb-3 max-h-96 space-y-2 overflow-y-auto rounded-md border p-2" style={{ borderColor: 'var(--border-card)' }}>
-            {!data.messages.length ? (
-              <EmptyState title="No messages yet" hint="Send a template or a manual message to start the conversation." />
-            ) : (
-              data.messages.map((m) => (
-                <div key={m.id} className={`flex ${m.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className="max-w-[80%] rounded-lg px-2.5 py-1.5 text-xs"
-                    style={{
-                      backgroundColor: m.direction === 'out' ? 'var(--gold-light, #fef3c7)' : 'var(--bg-card-head)',
-                      color: 'var(--text-primary)',
-                    }}
-                  >
-                    {m.kind === 'template' && (
-                      <div className="mb-0.5 text-[10px] font-bold uppercase" style={{ color: 'var(--text-secondary)' }}>
-                        Template: {m.templateName}
-                      </div>
-                    )}
-                    <MessageBody m={m} />
-                    <div className="mt-0.5 flex items-center gap-1">
-                      <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${STATUS_STYLES[m.status] || 'bg-gray-100 text-ink-3'}`}>{m.status}</span>
-                      <span className="text-[9px] text-ink-3">{formatDate(m.createdAt)}</span>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {attachment && (
-            <div className="mb-2 flex items-center gap-2 rounded-md border p-2" style={{ borderColor: 'var(--border-card)' }}>
-              {attachment.previewUrl ? (
-                <img src={attachment.previewUrl} alt="" className="h-10 w-10 rounded object-cover" />
-              ) : (
-                <FileText size={20} />
-              )}
-              <span className="flex-1 truncate text-[11px] font-bold" style={{ color: 'var(--text-primary)' }}>{attachment.file.name}</span>
-              <button type="button" onClick={clearAttachment} className="text-ink-3"><X size={14} /></button>
-            </div>
+        <div className="max-h-44 overflow-y-auto rounded-xl border" style={{ borderColor: 'var(--border-card)' }}>
+          {filtered.map(l => {
+            const id = l.id || l._id;
+            return (
+              <label key={id} className="flex items-center gap-2.5 px-3 py-2.5 border-b last:border-0 cursor-pointer hover:bg-[rgba(0,0,0,0.02)] transition"
+                style={{ borderColor: 'var(--border-card)' }}>
+                <input type="checkbox" className="w-3.5 h-3.5 accent-[#25D366]"
+                  checked={selected.includes(id)} onChange={() => toggle(id)} />
+                <span className="font-medium text-[13px]" style={{ color: 'var(--text-primary)' }}>{l.name}</span>
+                <span className="text-[11px] ml-auto font-mono" style={{ color: 'var(--text-muted)' }}>{l.mobile}</span>
+              </label>
+            );
+          })}
+          {!filtered.length && (
+            <p className="text-center text-[12px] py-4" style={{ color: 'var(--text-muted)' }}>No leads found</p>
           )}
+        </div>
 
+        <div className="flex items-center justify-between">
+          <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+            {selected.length} lead(s){pendingContacts.length ? ` + ${pendingContacts.length} CSV contact(s)` : ''} selected
+          </span>
           <div className="flex gap-2">
-            <label className="flex cursor-pointer items-center rounded-md border px-2.5" style={{ borderColor: 'var(--border-card)' }} title="Attach image, document, video, or audio">
-              <Paperclip size={15} />
-              <input type="file" className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={onPickFile} />
-            </label>
-            <Input
-              value={text}
-              placeholder={attachment ? 'Add a caption (optional)…' : 'Type a message…'}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') sendReply(); }}
-            />
-            <Button disabled={busy || (!text.trim() && !attachment)} onClick={sendReply}>
-              {busy ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+            <Button variant="outline" size="sm" onClick={() => setSelected(filtered.map(l => l.id || l._id))}>
+              Select all
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => { setSelected([]); setPendingContacts([]); setCsvResult(null); }}>
+              Clear
             </Button>
           </div>
-          <p className="mt-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
-            Free-text replies and attachments only deliver within WhatsApp's 24-hour window after the lead last messaged in.
-          </p>
-        </>
-      )}
+        </div>
+      </div>
+
+      <div className="mt-5 flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button disabled={busy} onClick={send} style={{ background: '#25D366', border: 'none', color: '#fff' }}>
+          {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Sending…</>
+            : <><Send size={13} className="mr-1.5" />Send to {totalRecipients || '?'} recipient(s)</>}
+        </Button>
+      </div>
     </Modal>
   );
 }
 
-// ── Main page ────────────────────────────────────────────────────────────────
+// ── Conversation Row ──────────────────────────────────────────────────────────
+function ConvRow({ conv, active, onClick }) {
+  return (
+    <button onClick={onClick}
+      className={`w-full flex items-center gap-3 px-4 py-3 border-b text-left transition ${active ? 'bg-[#25D366]/8' : 'hover:bg-black/[0.02]'}`}
+      style={{ borderColor: 'var(--border-card)' }}>
+      <div className="relative shrink-0">
+        <div className="w-10 h-10 rounded-full bg-[#25D366]/15 flex items-center justify-center font-bold text-[13px] text-[#25D366]">
+          {getInitials(conv.leadName)}
+        </div>
+        {conv.unread && (
+          <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#25D366] border-2 border-white" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-0.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={`text-[13px] truncate ${conv.unread ? 'font-bold' : 'font-medium'}`}
+              style={{ color: 'var(--text-primary)' }}>
+              {conv.leadName}
+            </span>
+            {!conv.isLead && (
+              <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-700">
+                new
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] shrink-0 ml-2" style={{ color: 'var(--text-muted)' }}>
+            {timeAgo(conv.lastSentAt || conv.lastResponseAt)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <p className="text-[12px] truncate flex-1"
+            style={{ color: conv.unread ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+            {conv.lastResponse || conv.lastTemplate || 'No messages yet'}
+          </p>
+          {conv.unread && (
+            <span className="ml-2 shrink-0 w-5 h-5 rounded-full bg-[#25D366] text-white text-[10px] font-bold flex items-center justify-center">
+              1
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Communication() {
   const { show } = useToast();
-  const { isAdmin } = useAuth();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'developer';
 
-  const [settings, setSettingsState] = useState({ enabled: false, hasAuthKey: false, integratedNumber: '', senderName: '' });
+  const [settings, setSettings] = useState({ enabled: false, hasAuthKey: false, integratedNumber: '', senderName: '' });
   const [templates, setTemplates] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+
+  const [selectedConv, setSelectedConv] = useState(null);
   const [settingsModal, setSettingsModal] = useState(false);
-  const [templateModal, setTemplateModal] = useState(null); // null closed, 'new', or a template
-  const [chatLeadId, setChatLeadId] = useState(null);
-  const [contactTarget, setContactTarget] = useState(null); // a non-lead conversation row, drives AddLeadFromReplyModal
+  const [templateModal, setTemplateModal] = useState(null);
+  const [bulkModal, setBulkModal] = useState(false);
 
   const loadAll = async () => {
     setLoading(true);
-    // Promise.allSettled instead of Promise.all — if one endpoint fails (e.g.
-    // the backend hasn't deployed the WhatsApp routes yet, or MSG91 isn't
-    // configured), the other two still load instead of the whole page
-    // breaking. Each failure surfaces its own toast.
     const [sRes, tRes, cRes] = await Promise.allSettled([
-      whatsappApi.getSettings(), whatsappApi.listTemplates(), whatsappApi.listConversations(),
+      whatsappApi.getSettings(),
+      whatsappApi.listTemplates(),
+      whatsappApi.listConversations(),
     ]);
-    if (sRes.status === 'fulfilled') setSettingsState(sRes.value);
-    else show(`Settings: ${apiError(sRes.reason)}`, 'error');
-
+    if (sRes.status === 'fulfilled') setSettings(sRes.value);
     if (tRes.status === 'fulfilled') setTemplates(tRes.value);
-    else show(`Templates: ${apiError(tRes.reason)}`, 'error');
-
     if (cRes.status === 'fulfilled') setConversations(cRes.value);
-    else show(`Conversations: ${apiError(cRes.reason)}`, 'error');
-
+    else show('Could not load conversations.', 'error');
     setLoading(false);
   };
 
-  useEffect(() => { loadAll(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadAll(); }, []);
 
-  const removeTemplate = async (t) => {
+  const removeTemplate = async t => {
     if (!confirm(`Delete template "${t.name}"?`)) return;
-    try { await whatsappApi.deleteTemplate(t.id); show('Template deleted.', 'success'); loadAll(); }
+    try { await whatsappApi.deleteTemplate(t.id); show('Deleted.', 'success'); loadAll(); }
     catch (e) { show(apiError(e), 'error'); }
   };
+
+  const filteredConvs = conversations.filter(c => {
+    const ms = !search
+      || (c.leadName || '').toLowerCase().includes(search.toLowerCase())
+      || (c.mobile || '').includes(search)
+      || (c.contactNumber || '').includes(search);
+    if (!ms) return false;
+    if (filter === 'unread') return c.unread;
+    if (filter === 'replied') return !!c.lastResponse;
+    if (filter === 'new') return !c.isLead;
+    return true;
+  });
+
+  const unreadCount = conversations.filter(c => c.unread).length;
+  const newContactCount = conversations.filter(c => !c.isLead).length;
 
   if (loading) return <Spinner label="Loading Communication…" />;
 
   return (
-    <>
-      <PageTitle
-        icon={<MessageSquare size={18} />}
-        actions={
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={loadAll}><RefreshCw size={13} className="mr-1.5" />Refresh</Button>
-            {isAdmin && <Button size="sm" variant="outline" onClick={() => setSettingsModal(true)}><Settings size={13} className="mr-1.5" />MSG91 Settings</Button>}
-          </div>
-        }
-      >
-        Communication
-      </PageTitle>
-
-      <Card>
-        <CardBody>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
-              <span className={`h-2.5 w-2.5 rounded-full ${settings.enabled && settings.hasAuthKey ? 'bg-ok' : 'bg-danger'}`} />
-              {settings.enabled && settings.hasAuthKey ? 'MSG91 connected' : 'MSG91 not fully configured'}
-              {settings.integratedNumber && <span className="font-normal" style={{ color: 'var(--text-secondary)' }}>— {settings.integratedNumber}</span>}
+    <div className="h-full flex flex-col" style={{ background: 'var(--bg-page)' }}>
+      {/* Page title */}
+      <div className="px-4 pt-4 pb-3 shrink-0">
+        <PageTitle icon={<MessageSquare size={18} />}
+          actions={
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={loadAll}>
+                <RefreshCw size={13} className="mr-1.5" />Refresh
+              </Button>
+              {isAdmin && (
+                <Button size="sm" variant="outline" onClick={() => setBulkModal(true)}
+                  style={{ borderColor: '#25D366', color: '#25D366' }}>
+                  <Users size={13} className="mr-1.5" />Blast
+                </Button>
+              )}
+              {isAdmin && (
+                <Button size="sm" variant="outline" onClick={() => setSettingsModal(true)}>
+                  <Settings size={13} className="mr-1.5" />Settings
+                </Button>
+              )}
             </div>
-          </div>
-          {!(settings.enabled && settings.hasAuthKey) && (
-            <ul className="mt-2 space-y-0.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-              <li>{settings.hasAuthKey ? '✓' : '✗'} Auth Key {settings.hasAuthKey ? 'saved' : '— not saved yet'}</li>
-              <li>{settings.enabled ? '✓' : '✗'} "Enable WhatsApp sending" {settings.enabled ? 'is on' : '— currently OFF, tick it in MSG91 Settings'}</li>
-              <li>{settings.integratedNumber ? '✓' : '✗'} Integrated Number {settings.integratedNumber ? 'saved' : '— not saved yet'}</li>
-            </ul>
-          )}
-        </CardBody>
-      </Card>
+          }>
+          Communication
+        </PageTitle>
 
-      <Card>
-        <CardHead title="Templates">
-          {isAdmin && <Button size="sm" onClick={() => setTemplateModal('new')}><Plus size={13} className="mr-1.5" />Add Template</Button>}
-        </CardHead>
-        <CardBody>
-          {!templates.length ? (
-            <EmptyState title="No templates yet" hint="Add the exact name of a template approved on MSG91 to start sending it." />
-          ) : (
-            <div className="space-y-1.5">
-              {templates.map((t) => (
-                <div key={t.id} className="flex items-center justify-between rounded-md border p-2" style={{ borderColor: 'var(--border-card)' }}>
-                  <div>
-                    <div className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{t.name} <span className="font-normal text-ink-3">({t.language})</span></div>
-                    {t.bodyPreview && <div className="text-[11px] text-ink-3">{t.bodyPreview}</div>}
-                  </div>
-                  {isAdmin && (
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="outline" onClick={() => setTemplateModal(t)}><Pencil size={12} /></Button>
-                      <Button size="sm" variant="red" onClick={() => removeTemplate(t)}><Trash2 size={12} /></Button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardBody>
-      </Card>
-
-      <SendPanel templates={templates} onSent={loadAll} />
-
-      <Card>
-        <CardHead title="All Conversations">
-          {conversations.some((c) => c.unread) && (
-            <span className="flex items-center gap-1.5 rounded-full bg-danger px-2.5 py-1 text-[11px] font-bold text-white">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-              {conversations.filter((c) => c.unread).length} new {conversations.filter((c) => c.unread).length === 1 ? 'reply' : 'replies'}
+        {/* Connection status */}
+        <div className="flex items-center gap-2 mt-2 px-1">
+          <span className={`w-2 h-2 rounded-full ${settings.enabled && settings.hasAuthKey ? 'bg-[#25D366]' : 'bg-red-400'}`} />
+          <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+            {settings.enabled && settings.hasAuthKey
+              ? `API connected${settings.integratedNumber ? ` · ${settings.integratedNumber}` : ''}`
+              : 'WhatsApp API not configured — click Settings'}
+          </span>
+          {newContactCount > 0 && (
+            <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-700">
+              {newContactCount} new contact{newContactCount > 1 ? 's' : ''} — not yet leads
             </span>
           )}
-        </CardHead>
-        <CardBody className="overflow-x-auto">
-          {!conversations.length ? (
-            <EmptyState title="No messages sent yet" hint="Send a template above to start a conversation." />
-          ) : (
-            <table className="w-full min-w-[760px] border-collapse">
-              <thead>
-                <tr className="bg-navy-800 text-white">
-                  {['Lead', 'Mobile', 'Last Template', 'Status', 'Last Response', 'Updated', ''].map((h) => (
-                    <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {conversations.map((c) => (
-                  <tr
-                    key={c.key || c.leadId}
-                    className={`border-b last:border-0 ${c.unread ? 'border-gray-100' : 'border-gray-100 hover:bg-gold-pale'}`}
-                    style={c.unread ? { backgroundColor: 'var(--danger-light, #fef2f2)' } : undefined}
-                  >
-                    <td className="px-2.5 py-2 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                          style={{ backgroundColor: c.unread ? 'var(--danger, #dc2626)' : (c.isLead ? 'var(--gold-700, #a16207)' : 'var(--text-muted, #9ca3af)') }}
-                        >
-                          {(c.leadName || '?').charAt(0).toUpperCase()}
-                        </span>
-                        <div>
-                          <div className="flex items-center gap-1.5 font-bold" style={{ color: 'var(--text-primary)' }}>
-                            {c.leadName}
-                            {c.unread && <span className="h-2 w-2 flex-shrink-0 animate-pulse rounded-full bg-danger" title="New reply" />}
-                          </div>
-                          {!c.isLead && (
-                            <span className="mt-0.5 inline-block rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold text-ink-3">Not yet a lead</span>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-2.5 py-2 text-xs">{c.mobile}</td>
-                    <td className="px-2.5 py-2 text-xs">{c.lastTemplate || '—'}</td>
-                    <td className="px-2.5 py-2">
-                      {c.lastStatus && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLES[c.lastStatus] || 'bg-gray-100 text-ink-3'}`}>{c.lastStatus}</span>}
-                    </td>
-                    <td className="px-2.5 py-2 text-xs" style={{ maxWidth: 220 }}>
-                      {c.unread ? (
-                        <span className="font-bold" style={{ color: 'var(--danger, #dc2626)' }}>{c.lastResponse}</span>
-                      ) : (
-                        c.lastResponse || <span className="text-ink-3">No reply yet</span>
-                      )}
-                    </td>
-                    <td className="px-2.5 py-2 text-[11px] text-ink-3">{formatDate(c.lastSentAt || c.lastResponseAt)}</td>
-                    <td className="px-2.5 py-2">
-                      {c.isLead ? (
-                        <Button size="sm" variant={c.unread ? 'red' : 'outline'} onClick={() => setChatLeadId(c.leadId)}>
-                          {c.unread ? 'Reply Now' : 'Continue Chat'}
-                        </Button>
-                      ) : (
-                        <Button size="sm" variant={c.unread ? 'red' : 'outline'} onClick={() => setContactTarget(c)}>
-                          {c.unread ? 'Reply — Add as Lead' : 'View / Add as Lead'}
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </CardBody>
-      </Card>
+        </div>
+      </div>
 
+      {/* Main layout */}
+      <div className="flex-1 flex overflow-hidden mx-4 mb-4 rounded-2xl border shadow-sm"
+        style={{ borderColor: 'var(--border-card)' }}>
+
+        {/* LEFT SIDEBAR */}
+        <div className={`flex flex-col border-r shrink-0 ${selectedConv ? 'hidden sm:flex' : 'flex'} w-full sm:w-[300px] lg:w-[340px]`}
+          style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)' }}>
+
+          {/* Sidebar header */}
+          <div className="px-3 py-3 border-b shrink-0 space-y-2"
+            style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search conversations…"
+                className="w-full pl-8 pr-3 py-2 rounded-xl border text-[13px] focus:outline-none transition"
+                style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: 'var(--text-primary)' }} />
+            </div>
+            {/* Filter tabs */}
+            <div className="flex gap-1">
+              {[
+                ['all', 'All'],
+                ['unread', unreadCount ? `Unread (${unreadCount})` : 'Unread'],
+                ['replied', 'Replied'],
+                ['new', newContactCount ? `New (${newContactCount})` : 'New'],
+              ].map(([k, l]) => (
+                <button key={k} onClick={() => setFilter(k)}
+                  className={`flex-1 py-1.5 rounded-lg text-[10px] font-semibold transition ${
+                    filter === k
+                      ? k === 'new' ? 'bg-amber-500 text-white' : 'bg-[#25D366] text-white'
+                      : 'text-[var(--text-muted)] hover:bg-black/5'
+                  }`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Conversation list */}
+          <div className="flex-1 overflow-y-auto">
+            {filteredConvs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-3 p-6 opacity-60">
+                <MessageSquare size={32} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
+                <p className="text-[13px] text-center" style={{ color: 'var(--text-muted)' }}>
+                  {search ? 'No conversations match' : 'No conversations yet'}
+                </p>
+              </div>
+            ) : (
+              filteredConvs.map(conv => (
+                <ConvRow key={conv.key || conv.leadId || conv.contactNumber}
+                  conv={conv}
+                  active={selectedConv?.key === conv.key}
+                  onClick={() => setSelectedConv(conv)} />
+              ))
+            )}
+          </div>
+
+          {/* Templates panel */}
+          {isAdmin && (
+            <div className="border-t shrink-0" style={{ borderColor: 'var(--border-card)' }}>
+              <div className="px-3 py-2.5 flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                  Templates ({templates.length})
+                </span>
+                <button onClick={() => setTemplateModal('new')}
+                  className="w-6 h-6 rounded-lg flex items-center justify-center hover:bg-black/5 transition"
+                  style={{ color: 'var(--text-muted)' }}>
+                  <Plus size={14} />
+                </button>
+              </div>
+              <div className="max-h-36 overflow-y-auto px-3 pb-3 space-y-1.5">
+                {templates.length === 0 ? (
+                  <p className="text-[11px] italic" style={{ color: 'var(--text-muted)' }}>No templates — click + to add</p>
+                ) : templates.map(t => (
+                  <div key={t.id} className="flex items-center gap-2 p-2 rounded-xl border"
+                    style={{ borderColor: 'var(--border-card)' }}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{t.name}</p>
+                      <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{t.language} · {t.variableCount} var(s)</p>
+                    </div>
+                    <button onClick={() => setTemplateModal(t)}
+                      className="p-1 hover:bg-black/5 rounded transition" style={{ color: 'var(--text-muted)' }}>
+                      <Settings size={12} />
+                    </button>
+                    <button onClick={() => removeTemplate(t)}
+                      className="p-1 hover:bg-red-50 rounded transition text-red-400">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT — CHAT or empty state */}
+        <div className={`flex-1 overflow-hidden ${selectedConv ? 'flex' : 'hidden sm:flex'} flex-col`}>
+          {selectedConv ? (
+            <ChatWindow
+              key={selectedConv.key}
+              conv={selectedConv}
+              templates={templates}
+              onClose={() => setSelectedConv(null)}
+              onRefreshList={() => { loadAll(); setSelectedConv(null); }}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-60"
+              style={{ background: 'var(--bg-card)' }}>
+              <div className="w-16 h-16 rounded-full bg-[#25D366]/10 flex items-center justify-center">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="#25D366">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                  <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.121 1.531 5.845L.057 23.286a.5.5 0 0 0 .64.64l5.431-1.47A11.952 11.952 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.849 0-3.576-.498-5.066-1.367l-.363-.214-3.765 1.018 1.022-3.734-.234-.376A9.967 9.967 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                </svg>
+              </div>
+              <div className="text-center">
+                <p className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>Select a conversation</p>
+                <p className="text-[12px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Pick a chat from the left to view messages
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modals */}
       {settingsModal && (
         <SettingsModal settings={settings} onClose={() => setSettingsModal(false)} onSaved={loadAll} />
       )}
       {templateModal && (
-        <TemplateModal template={templateModal === 'new' ? null : templateModal} onClose={() => setTemplateModal(null)} onSaved={loadAll} />
+        <TemplateModal
+          template={templateModal === 'new' ? null : templateModal}
+          onClose={() => setTemplateModal(null)}
+          onSaved={loadAll}
+        />
       )}
-      {chatLeadId && (
-        <ChatDrawer leadId={chatLeadId} onClose={() => { setChatLeadId(null); loadAll(); }} />
+      {bulkModal && (
+        <BulkSendModal templates={templates} onClose={() => setBulkModal(false)} onSent={loadAll} />
       )}
-      {contactTarget && (
-        <AddLeadFromReplyModal contact={contactTarget} onClose={() => { setContactTarget(null); loadAll(); }} />
-      )}
-    </>
+    </div>
   );
 }
