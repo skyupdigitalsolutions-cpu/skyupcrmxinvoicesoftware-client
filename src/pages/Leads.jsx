@@ -293,6 +293,8 @@ export default function Leads() {
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
 
   // ── Inline "Duplicates" panel (admin only) ──────────────────────────────────
   const [dupOpen, setDupOpen] = useState(false);
@@ -318,6 +320,10 @@ export default function Leads() {
       .catch(() => {});
   }, [isAdmin]);
 
+  // Reset to page 1 whenever filter values change
+  const fKey = JSON.stringify(f);
+  useEffect(() => { setPage(1); }, [fKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const filtered = useMemo(() => {
     if (!leads) return [];
     return leads.filter((l) => {
@@ -335,6 +341,12 @@ export default function Leads() {
       return true;
     });
   }, [leads, f]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, page, PAGE_SIZE]);
 
   // Derive sorted unique country list from actual leads data
   const countryOptions = useMemo(() => {
@@ -607,9 +619,9 @@ export default function Leads() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((l, idx) => (
+                {paginated.map((l, idx) => (
                   <tr key={l._id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale [&>td]:align-middle">
-                    <td className="px-2.5 py-2 text-xs text-ink-3">{idx + 1}</td>
+                    <td className="px-2.5 py-2 text-xs text-ink-3">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="px-2.5 py-2 text-xs font-bold">
                       <div className="flex items-center gap-2">
                         <WhatsAppButton mobile={l.mobile} country={l.country} />
@@ -683,6 +695,65 @@ export default function Leads() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {/* ── Pagination bar ───────────────────────────────────────────── */}
+        {filtered.length > PAGE_SIZE && (
+          <div className="flex flex-shrink-0 items-center justify-between border-t px-4 py-2.5" style={{ borderColor: 'var(--border-card)' }}>
+            <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(1)}
+                className="rounded px-2 py-1 text-[11px] font-bold disabled:opacity-30"
+                style={{ color: 'var(--text-secondary)' }}
+                title="First page"
+              >«</button>
+              <button
+                disabled={page === 1}
+                onClick={() => setPage((p) => p - 1)}
+                className="rounded px-2 py-1 text-[11px] font-bold disabled:opacity-30"
+                style={{ color: 'var(--text-secondary)' }}
+                title="Previous page"
+              >‹</button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                .reduce((acc, p, i, arr) => {
+                  if (i > 0 && p - arr[i - 1] > 1) acc.push('…');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === '…' ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      className="min-w-[28px] rounded px-2 py-1 text-[11px] font-bold"
+                      style={p === page
+                        ? { backgroundColor: 'var(--navy, #1e3a5f)', color: '#fff' }
+                        : { color: 'var(--text-secondary)' }}
+                    >{p}</button>
+                  )
+                )}
+              <button
+                disabled={page === totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                className="rounded px-2 py-1 text-[11px] font-bold disabled:opacity-30"
+                style={{ color: 'var(--text-secondary)' }}
+                title="Next page"
+              >›</button>
+              <button
+                disabled={page === totalPages}
+                onClick={() => setPage(totalPages)}
+                className="rounded px-2 py-1 text-[11px] font-bold disabled:opacity-30"
+                style={{ color: 'var(--text-secondary)' }}
+                title="Last page"
+              >»</button>
+            </div>
           </div>
         )}
       </Card>
