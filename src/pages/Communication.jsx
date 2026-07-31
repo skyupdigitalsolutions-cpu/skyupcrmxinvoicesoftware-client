@@ -401,8 +401,7 @@ function Bubble({ m }) {
 // ── Chat Window ───────────────────────────────────────────────────────────────
 function ChatWindow({ conv, templates, onClose, onRefreshList }) {
   const { show } = useToast();
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin' || user?.role === 'developer';
+  const { user, isAdmin } = useAuth();
 
   const [data, setData] = useState(null);
   const [text, setText] = useState('');
@@ -455,7 +454,14 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
               caption: text,
             });
             setText(''); setAttachment(null); load(); onRefreshList();
-          } catch (e) { show(apiError(e), 'error'); }
+          } catch (e) {
+            const msg = apiError(e);
+            if (msg.toLowerCase().includes('cloudinary') || msg.includes('500') || msg.includes('File upload failed')) {
+              show('Media sending requires Cloudinary. Add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET to your server environment variables.', 'error');
+            } else {
+              show(msg, 'error');
+            }
+          }
           finally { setSending(false); }
         };
         reader.readAsDataURL(attachment.file);
@@ -581,14 +587,19 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
               accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
               onChange={onPickFile} />
           </label>
-          <Textarea
+          <textarea
             ref={inputRef}
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); } }}
             placeholder={attachment ? 'Add a caption…' : 'Type a message…'}
             rows={1}
-            style={{ resize: 'none', maxHeight: '120px', overflowY: 'auto' }}
+            className="flex-1 rounded-xl border px-3 py-2 text-[13px] focus:outline-none transition"
+            style={{
+              resize: 'none', maxHeight: '120px', overflowY: 'auto',
+              background: 'var(--bg-input)', borderColor: 'var(--border)',
+              color: 'var(--text-primary)',
+            }}
           />
           <button onClick={sendReply}
             disabled={busy || (!text.trim() && !attachment)}
@@ -1007,8 +1018,7 @@ function ConvRow({ conv, active, onClick }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Communication() {
   const { show } = useToast();
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin' || user?.role === 'developer';
+  const { user, isAdmin } = useAuth();
 
   const [settings, setSettings] = useState({ enabled: false, hasAuthKey: false, integratedNumber: '', senderName: '' });
   const [templates, setTemplates] = useState([]);
@@ -1071,12 +1081,10 @@ export default function Communication() {
               <Button size="sm" variant="outline" onClick={loadAll}>
                 <RefreshCw size={13} className="mr-1.5" />Refresh
               </Button>
-              {isAdmin && (
-                <Button size="sm" variant="outline" onClick={() => setBulkModal(true)}
-                  style={{ borderColor: '#25D366', color: '#25D366' }}>
-                  <Users size={13} className="mr-1.5" />Blast
-                </Button>
-              )}
+              <Button size="sm" variant="outline" onClick={() => setBulkModal(true)}
+                style={{ borderColor: '#25D366', color: '#25D366' }}>
+                <Users size={13} className="mr-1.5" />Blast
+              </Button>
               {isAdmin && (
                 <Button size="sm" variant="outline" onClick={() => setSettingsModal(true)}>
                   <Settings size={13} className="mr-1.5" />Settings
