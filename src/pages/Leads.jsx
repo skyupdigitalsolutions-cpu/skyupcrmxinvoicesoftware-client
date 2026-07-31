@@ -29,7 +29,7 @@ import {
 } from '../utils/format.js';
 
 const emptyLead = () => ({
-  name: '', mobile: '', email: '', country: (() => { try { return localStorage.getItem('lead_last_country') || 'UAE'; } catch { return 'UAE'; } })(), city: '',
+  name: '', mobile: '', email: '', country: 'UAE', city: '',
   source: 'Walk-in', campaign: '', interest: '', status: 'New', remark: '', delivery: '', owner: '',
 });
 
@@ -299,10 +299,6 @@ export default function Leads() {
   const [dupGroups, setDupGroups] = useState(null);
   const [dupLoading, setDupLoading] = useState(false);
 
-  // ── Pagination ──────────────────────────────────────────────────────────────
-  const PAGE_SIZE = 100;
-  const [currentPage, setCurrentPage] = useState(1);
-
   const loadDuplicates = async () => {
     setDupLoading(true);
     try { setDupGroups(await leadApi.listDuplicates()); }
@@ -322,9 +318,6 @@ export default function Leads() {
       .catch(() => {});
   }, [isAdmin]);
 
-  // Reset to page 1 whenever filters change
-  useEffect(() => { setCurrentPage(1); }, [f]);
-
   const filtered = useMemo(() => {
     if (!leads) return [];
     return leads.filter((l) => {
@@ -342,10 +335,6 @@ export default function Leads() {
       return true;
     });
   }, [leads, f]);
-
-  // Paginated slice of filtered leads
-  const totalPages  = Math.max(1, Math.ceil((filtered?.length || 0) / PAGE_SIZE));
-  const pagedLeads  = (filtered || []).slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   // Derive sorted unique country list from actual leads data
   const countryOptions = useMemo(() => {
@@ -618,9 +607,9 @@ export default function Leads() {
                 </tr>
               </thead>
               <tbody>
-                {pagedLeads.map((l, idx) => (
+                {filtered.map((l, idx) => (
                   <tr key={l._id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale [&>td]:align-middle">
-                    <td className="px-2.5 py-2 text-xs text-ink-3">{(currentPage - 1) * PAGE_SIZE + idx + 1}</td>
+                    <td className="px-2.5 py-2 text-xs text-ink-3">{idx + 1}</td>
                     <td className="px-2.5 py-2 text-xs font-bold">
                       <div className="flex items-center gap-2">
                         <WhatsAppButton mobile={l.mobile} country={l.country} />
@@ -694,99 +683,6 @@ export default function Leads() {
                 ))}
               </tbody>
             </table>
-
-            {/* ── Pagination bar ─────────────────────────────────────────── */}
-            {totalPages > 1 && (
-              <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-gray-100 bg-white px-4 py-2.5">
-                {/* Info */}
-                <span className="text-[11px] text-ink-3 shrink-0">
-                  Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length} leads
-                </span>
-
-                {/* Controls */}
-                <div className="flex items-center gap-1">
-                  {/* Prev */}
-                  <button
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-ink-2 hover:bg-gold-pale disabled:opacity-30 disabled:cursor-not-allowed transition"
-                    title="Previous page"
-                  >
-                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/>
-                    </svg>
-                  </button>
-
-                  {/* Page numbers */}
-                  {(() => {
-                    const pages = [];
-                    const delta = 2;
-                    const left  = Math.max(1, currentPage - delta);
-                    const right = Math.min(totalPages, currentPage + delta);
-
-                    if (left > 1) {
-                      pages.push(1);
-                      if (left > 2) pages.push('…');
-                    }
-                    for (let i = left; i <= right; i++) pages.push(i);
-                    if (right < totalPages) {
-                      if (right < totalPages - 1) pages.push('…');
-                      pages.push(totalPages);
-                    }
-
-                    return pages.map((p, i) =>
-                      p === '…' ? (
-                        <span key={`ellipsis-${i}`} className="px-1 text-[11px] text-ink-3">…</span>
-                      ) : (
-                        <button
-                          key={p}
-                          onClick={() => setCurrentPage(p)}
-                          className={`h-7 min-w-[28px] rounded-md border px-1.5 text-[12px] font-semibold transition ${
-                            p === currentPage
-                              ? 'border-navy-700 bg-navy-700 text-white'
-                              : 'border-gray-200 text-ink-2 hover:bg-gold-pale'
-                          }`}
-                        >
-                          {p}
-                        </button>
-                      )
-                    );
-                  })()}
-
-                  {/* Next */}
-                  <button
-                    disabled={currentPage === totalPages}
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-ink-2 hover:bg-gold-pale disabled:opacity-30 disabled:cursor-not-allowed transition"
-                    title="Next page"
-                  >
-                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
-                    </svg>
-                  </button>
-                </div>
-
-                {/* Jump to page */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[11px] text-ink-3">Go to</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={totalPages}
-                    defaultValue={currentPage}
-                    key={currentPage}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        const v = Math.min(totalPages, Math.max(1, Number(e.target.value)));
-                        setCurrentPage(v);
-                      }
-                    }}
-                    className="h-7 w-12 rounded-md border border-gray-200 px-1.5 text-center text-[12px] focus:outline-none focus:border-navy-700"
-                  />
-                  <span className="text-[11px] text-ink-3">of {totalPages}</span>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </Card>
@@ -1248,7 +1144,7 @@ function DupeWatcher({ active, mobile, country, onResult, onChecking }) {
         onResult(res.exists ? res : null);
       } catch { onResult(null); }
       finally { onChecking(false); }
-    }, 700); // 700ms gives user time to change country before lookup fires
+    }, 450);
     return () => clearTimeout(t);
   }, [active, mobile, country]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
