@@ -335,7 +335,10 @@ export default function Leads() {
       if (f.employee && String(l.owner) !== String(f.employee)) return false;
       if (f.search) {
         const q = f.search.toLowerCase();
-        const textMatch = [l.name, l.email, l.city, l.mobile, l.altMobile].some((v) => (v || '').toLowerCase().includes(q));
+        // Strip non-digits for phone search so "+98 91788" matches "9891788" in raw mobile
+        const qDigits = f.search.replace(/\D/g, '');
+        const textMatch = [l.name, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q))
+          || (qDigits.length >= 3 && [l.mobile, l.altMobile].some((v) => (v || '').replace(/\D/g, '').includes(qDigits)));
         if (!textMatch && !phoneSearchMatches(l.mobile, f.search) && !phoneSearchMatches(l.altMobile, f.search)) return false;
       }
       return true;
