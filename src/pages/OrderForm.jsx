@@ -46,7 +46,7 @@ const INITIAL_FORM = {
   date: todayStr(),
   customer: '',
   city: '',
-  country: 'UAE',
+  country: '',
   mobile: '',
   delivery: '',
   deliveryContact: '',
@@ -164,7 +164,7 @@ function useCustomerLookup({ editing, setForm }) {
     setCustState('checking');
     timerRef.current = setTimeout(async () => {
       try {
-        const res = await orderApi.customerLookup({ name: clean, mobile: mobile || '', country: country || 'UAE' });
+        const res = await orderApi.customerLookup({ name: clean, mobile: mobile || '', country: country || '' });
         if (res && res.found && res.customer) {
           const c = res.customer;
           // Fill only blank fields, so user-entered values are preserved.
