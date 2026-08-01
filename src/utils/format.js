@@ -241,7 +241,17 @@ export function phoneSearchMatches(mobile, rawSearch) {
     if (!mobileDigits) return false;
     const searchVariants = phoneSearchDigits(rawSearch);
     const mobileVariants = phoneSearchDigits(mobile);
-    return searchVariants.some((sv) => mobileVariants.some((mv) => mv.includes(sv) || sv.includes(mv)));
+    // Both sides must have >= 9 digits for any substring match to count.
+    // This prevents short stripped variants (e.g. stripping country code 91 from
+    // '911234567' gives '1234567' — only 7 digits) from matching as a substring
+    // of a completely unrelated full international number (e.g. '971501234567').
+    // 9 digits is the minimum meaningful local number length across all countries.
+    return searchVariants.some((sv) =>
+        mobileVariants.some((mv) =>
+            (sv.length >= 9 && mv.length >= 9 && mv.includes(sv)) ||
+            (sv.length >= 9 && mv.length >= 9 && sv.includes(mv))
+        )
+    );
 }
 
 export const ORDER_STATUSES = ['Pending', 'Confirmed', 'Packed', 'Market Delay', 'Out for Delivery', 'Delivered', 'Cancelled'];
