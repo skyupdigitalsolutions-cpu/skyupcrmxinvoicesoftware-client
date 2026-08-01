@@ -230,26 +230,32 @@ export function phoneSearchDigits(raw) {
 
 // True if `mobile` (a stored number, possibly with punctuation and/or a
 // country code) matches free-typed `rawSearch` — regardless of which side
-// has the country code, the leading zero, or how it's punctuated. Returns
-// false for very short search text (<3 digits) so a plain name/city search
-// that happens to contain a stray digit never gets mis-treated as a phone
-// search.
+// has the country code, the leading zero, or how it's punctuated.
+//
+// NOTE: This function is for country-code-aware matching of full numbers
+// (>= 7 digits). For partial number searches (< 7 digits), the caller
+// should use a plain raw mobile text match (mobile.includes(search)) which
+// is faster and already handles partial searches correctly.
+//
+// Returns false when search has < 7 digits — partial searches are handled
+// by the raw mobile text match in the filter (name/email/city/mobile).
 export function phoneSearchMatches(mobile, rawSearch) {
     const searchDigits = String(rawSearch || '').replace(/\D/g, '');
-    if (searchDigits.length < 3) return false;
+    // For partial searches (< 7 digits), skip — raw mobile.includes() handles it.
+    // This also prevents short stripped variants from causing false positives.
+    if (searchDigits.length < 7) return false;
     const mobileDigits = String(mobile || '').replace(/\D/g, '');
     if (!mobileDigits) return false;
     const searchVariants = phoneSearchDigits(rawSearch);
     const mobileVariants = phoneSearchDigits(mobile);
-    // Both sides must have >= 9 digits for any substring match to count.
-    // This prevents short stripped variants (e.g. stripping country code 91 from
-    // '911234567' gives '1234567' — only 7 digits) from matching as a substring
-    // of a completely unrelated full international number (e.g. '971501234567').
-    // 9 digits is the minimum meaningful local number length across all countries.
+    // sv must be >= 7 digits to avoid short stripped variants (e.g. stripping
+    // country code 98 from '989364613911' gives '9364613911' — fine at 10 digits,
+    // but further stripping must not produce < 7 digit fragments that match
+    // as substrings of completely unrelated stored numbers).
     return searchVariants.some((sv) =>
         mobileVariants.some((mv) =>
-            (sv.length >= 9 && mv.length >= 9 && mv.includes(sv)) ||
-            (sv.length >= 9 && mv.length >= 9 && sv.includes(mv))
+            (sv.length >= 7 && mv.includes(sv)) ||
+            (sv.length >= 7 && mv.length >= 7 && sv.includes(mv))
         )
     );
 }

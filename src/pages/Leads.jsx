@@ -294,7 +294,7 @@ export default function Leads() {
   const [importResult, setImportResult] = useState(null);
   const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 100;
+  const PAGE_SIZE = 50;
 
   // ── Inline "Duplicates" panel (admin only) ──────────────────────────────────
   const [dupOpen, setDupOpen] = useState(false);
@@ -335,7 +335,7 @@ export default function Leads() {
       if (f.employee && String(l.owner) !== String(f.employee)) return false;
       if (f.search) {
         const q = f.search.toLowerCase();
-        const textMatch = [l.name, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q));
+        const textMatch = [l.name, l.email, l.city, l.mobile, l.altMobile].some((v) => (v || '').toLowerCase().includes(q));
         if (!textMatch && !phoneSearchMatches(l.mobile, f.search) && !phoneSearchMatches(l.altMobile, f.search)) return false;
       }
       return true;
@@ -471,7 +471,7 @@ export default function Leads() {
 
   return (
     // Fixed-height flex column — header + filters are static, table scrolls
-    <div className="flex h-[calc(100vh-56px)] flex-col overflow-hidden" style={{ minHeight: 0 }}>
+    <div className="flex h-[calc(100vh-56px)] flex-col overflow-hidden">
 
       <PageTitle
         icon={<Target size={18} />}
@@ -607,7 +607,7 @@ export default function Leads() {
             }
           />
         ) : (
-          <div className="flex-1 overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
+          <div className="flex-1 overflow-auto">
             <table className="w-full min-w-[920px] border-collapse">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-navy-800 text-white">
