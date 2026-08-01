@@ -50,6 +50,42 @@ function MessageTick({ status }) {
   return <Check size={11} style={{ color: 'var(--text-muted)' }} />;
 }
 
+// ── Status badge shown in conversation list row ───────────────────────────────
+function ConvStatusBadge({ conv }) {
+  // If there's a customer reply, no badge needed — reply text is shown instead
+  if (conv.lastResponse) return null;
+
+  if (conv.lastStatus === 'failed') {
+    return (
+      <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">
+        <X size={9} />Failed
+      </span>
+    );
+  }
+  if (conv.lastStatus === 'sent') {
+    return (
+      <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full">
+        <Check size={9} />Sent
+      </span>
+    );
+  }
+  if (conv.lastStatus === 'delivered') {
+    return (
+      <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">
+        <CheckCheck size={9} />Delivered
+      </span>
+    );
+  }
+  if (conv.lastStatus === 'read') {
+    return (
+      <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-[#015FDE] bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">
+        <CheckCheck size={9} />Read
+      </span>
+    );
+  }
+  return null;
+}
+
 // ── API Settings Modal ────────────────────────────────────────────────────────
 function SettingsModal({ settings, onClose, onSaved }) {
   const { show } = useToast();
@@ -249,7 +285,6 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
         email: form.email.trim(),
         remark: form.remark.trim(),
       });
-      // Link existing messages to the new lead
       try {
         await whatsappApi.relinkContact({
           contactNumber: conv.contactNumber,
@@ -273,7 +308,6 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
   return (
     <Modal open onClose={onClose} title="Save as Lead" width="sm:max-w-[500px]">
       <div className="space-y-3">
-        {/* Info banner */}
         <div className="flex gap-2.5 px-3 py-2.5 rounded-xl border"
           style={{ background: 'var(--bg-card-head)', borderColor: 'var(--border-card)' }}>
           <UserPlus size={14} className="shrink-0 mt-0.5 text-[#25D366]" />
@@ -510,7 +544,6 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Save as Lead — only for non-lead contacts */}
           {!conv.isLead && (
             <button onClick={() => setShowSaveLeadModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition"
@@ -520,7 +553,6 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
               <span className="hidden sm:inline">Save as Lead</span>
             </button>
           )}
-          {/* Send Template — only for leads */}
           {canReply && (
             <button onClick={() => setShowTemplateModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition"
@@ -609,7 +641,6 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
           </button>
         </div>
       ) : (
-        /* Not-a-lead bottom bar */
         <div className="px-4 py-3 border-t shrink-0"
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
           <div className="flex items-center justify-between">
@@ -627,7 +658,6 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
         </div>
       )}
 
-      {/* Modals */}
       {showTemplateModal && (
         <SendTemplateModal
           leadId={conv.leadId}
@@ -684,7 +714,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const { show } = useToast();
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState([]);
-  const [pendingContacts, setPendingContacts] = useState([]); // CSV numbers not yet leads
+  const [pendingContacts, setPendingContacts] = useState([]);
   const [templateName, setTemplateName] = useState('');
   const [variableValues, setVariableValues] = useState([]);
   const [autoFillName, setAutoFillName] = useState(true);
@@ -803,8 +833,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
   return (
     <Modal open onClose={onClose} title="Send WhatsApp Blast" width="sm:max-w-[560px]">
       <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
-
-        {/* Template */}
         <Field label="Template">
           <select value={templateName} onChange={e => onTemplateChange(e.target.value)}
             className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
@@ -839,7 +867,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
           Auto-fill first variable with lead name
         </label>
 
-        {/* CSV Import row */}
         <div className="flex items-center gap-2 p-3 rounded-xl border"
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
           <div className="flex-1">
@@ -861,7 +888,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </label>
         </div>
 
-        {/* CSV result summary */}
         {csvResult && (
           <div className="px-3 py-2.5 rounded-xl border text-[12px] space-y-1"
             style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
@@ -886,7 +912,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </div>
         )}
 
-        {/* Pending CSV contacts (not yet leads) */}
         {pendingContacts.length > 0 && (
           <div>
             <p className="text-[11px] font-bold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
@@ -909,7 +934,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </div>
         )}
 
-        {/* Lead search + list */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
@@ -999,11 +1023,15 @@ function ConvRow({ conv, active, onClick }) {
             {timeAgo(conv.lastSentAt || conv.lastResponseAt)}
           </span>
         </div>
-        <div className="flex items-center justify-between">
-          <p className="text-[12px] truncate flex-1"
-            style={{ color: conv.unread ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-            {conv.lastResponse || conv.lastTemplate || 'No messages yet'}
-          </p>
+        {/* Preview line: status badge + message text */}
+        <div className="flex items-center gap-1.5 justify-between">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <ConvStatusBadge conv={conv} />
+            <p className="text-[12px] truncate"
+              style={{ color: conv.unread ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              {conv.lastResponse || conv.lastTemplate || 'No messages yet'}
+            </p>
+          </div>
           {conv.unread && (
             <span className="ml-2 shrink-0 w-5 h-5 rounded-full bg-[#25D366] text-white text-[10px] font-bold flex items-center justify-center">
               1
@@ -1073,7 +1101,6 @@ export default function Communication() {
 
   return (
     <div className="h-full flex flex-col" style={{ background: 'var(--bg-page)' }}>
-      {/* Page title */}
       <div className="px-4 pt-4 pb-3 shrink-0">
         <PageTitle icon={<MessageSquare size={18} />}
           actions={
@@ -1095,7 +1122,6 @@ export default function Communication() {
           Communication
         </PageTitle>
 
-        {/* Connection status */}
         <div className="flex items-center gap-2 mt-2 px-1">
           <span className={`w-2 h-2 rounded-full ${settings.enabled && settings.hasAuthKey ? 'bg-[#25D366]' : 'bg-red-400'}`} />
           <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
@@ -1111,7 +1137,6 @@ export default function Communication() {
         </div>
       </div>
 
-      {/* Main layout */}
       <div className="flex-1 flex overflow-hidden mx-4 mb-4 rounded-2xl border shadow-sm"
         style={{ borderColor: 'var(--border-card)' }}>
 
@@ -1119,7 +1144,6 @@ export default function Communication() {
         <div className={`flex flex-col border-r shrink-0 ${selectedConv ? 'hidden sm:flex' : 'flex'} w-full sm:w-[300px] lg:w-[340px]`}
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)' }}>
 
-          {/* Sidebar header */}
           <div className="px-3 py-3 border-b shrink-0 space-y-2"
             style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
             <div className="relative">
@@ -1129,7 +1153,6 @@ export default function Communication() {
                 className="w-full pl-8 pr-3 py-2 rounded-xl border text-[13px] focus:outline-none transition"
                 style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: 'var(--text-primary)' }} />
             </div>
-            {/* Filter tabs */}
             <div className="flex gap-1">
               {[
                 ['all', 'All'],
@@ -1149,7 +1172,6 @@ export default function Communication() {
             </div>
           </div>
 
-          {/* Conversation list */}
           <div className="flex-1 overflow-y-auto">
             {filteredConvs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 p-6 opacity-60">
@@ -1168,7 +1190,6 @@ export default function Communication() {
             )}
           </div>
 
-          {/* Templates panel */}
           {isAdmin && (
             <div className="border-t shrink-0" style={{ borderColor: 'var(--border-card)' }}>
               <div className="px-3 py-2.5 flex items-center justify-between">
@@ -1236,7 +1257,6 @@ export default function Communication() {
         </div>
       </div>
 
-      {/* Modals */}
       {settingsModal && (
         <SettingsModal settings={settings} onClose={() => setSettingsModal(false)} onSaved={loadAll} />
       )}
