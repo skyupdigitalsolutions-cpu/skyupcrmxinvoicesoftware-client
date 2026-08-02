@@ -103,48 +103,26 @@ function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
   const wrapRef = useRef(null);
-  // Previous unread count — used to detect NEW notifications so the chime
-  // only plays when the count goes up (never on first load or mark-as-read).
+  // Previous unread count + seen notification IDs — used to detect NEW
+  // whatsapp/cheque notifications and play the bell chime for those only.
   const prevUnread = useRef(null);
-  const audioCtxRef = useRef(null);
- 
-  const getAudioCtx = () => {
+  const seenIds = useRef(new Set());
+  const bellAudioCtxRef = useRef(null);
+
+  const getBellAudioCtx = () => {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return null;
-    if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
-    return audioCtxRef.current;
+    if (!bellAudioCtxRef.current) bellAudioCtxRef.current = new Ctx();
+    return bellAudioCtxRef.current;
   };
- 
-  // Browsers block audio until the user interacts with the page once.
-  // "Unlock" the AudioContext on the first click / key press / touch so the
-  // chime is ready the moment a notification arrives.
-  useEffect(() => {
-    const unlock = () => {
-      const ctx = getAudioCtx();
-      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('keydown', unlock);
-      window.removeEventListener('touchstart', unlock);
-    };
-    window.addEventListener('pointerdown', unlock);
-    window.addEventListener('keydown', unlock);
-    window.addEventListener('touchstart', unlock);
-    return () => {
-      window.removeEventListener('pointerdown', unlock);
-      window.removeEventListener('keydown', unlock);
-      window.removeEventListener('touchstart', unlock);
-    };
-  }, []);
- 
-  // Two-tone "ding-dong" bell chime via Web Audio (no asset file needed).
-  const playChime = () => {
+
+  // Bell chime — same two-tone ding-dong, fires only for whatsapp/cheque notifications.
+  const playBellChime = () => {
     try {
-      const ctx = getAudioCtx();
+      const ctx = getBellAudioCtx();
       if (!ctx) return;
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
       const t0 = ctx.currentTime;
-      // Each note: a sine fundamental + a quiet octave harmonic for a fuller,
-      // more bell-like tone. E5 → A5 "ding-dong".
       [[659.25, 0], [880, 0.22]].forEach(([freq, dt]) => {
         [[freq, 0.25], [freq * 2, 0.07]].forEach(([f, vol]) => {
           const osc = ctx.createOscillator();
@@ -162,12 +140,26 @@ function NotificationBell() {
       });
     } catch { /* audio unavailable/blocked — ignore */ }
   };
- 
+
+  // Notification types that should trigger the bell sound.
+  const SOUND_TYPES = new Set(['whatsapp-reply', 'whatsapp-reply-unlinked', 'cheque-collection-due']);
+
   const loadCount = async () => {
     try {
       const n = await notificationApi.unreadCount();
       setUnread(n);
-      if (prevUnread.current !== null && n > prevUnread.current) playChime();
+      // Only fetch full list when count increased — to check types.
+      if (prevUnread.current !== null && n > prevUnread.current) {
+        try {
+          const { notifications } = await notificationApi.list({ unread: 1, limit: 50 });
+          const newSoundNotif = (notifications || []).some(
+            (notif) => SOUND_TYPES.has(notif.type) && !seenIds.current.has(notif._id || notif.id)
+          );
+          if (newSoundNotif) playBellChime();
+          // Mark all current unread as seen so we don't re-chime them next poll.
+          (notifications || []).forEach((notif) => seenIds.current.add(notif._id || notif.id));
+        } catch { /* ignore */ }
+      }
       prevUnread.current = n;
     } catch { /* ignore */ }
   };
@@ -459,13 +451,81 @@ export default function AppLayout({ children }) {
   const [chatUnread, setChatUnread] = useState(0);
   const [showTerms, setShowTerms] = useState(false);
  
+  // Chat-only chime — plays only when new internal chat messages arrive.
+  // Audio context and chime live here so they fire exclusively for chat,
+  // not for lead updates, WhatsApp replies, or any other notification type.
+  const chatAudioCtxRef = useRef(null);
+  const prevChatUnread = useRef(null);
+
+  const getChatAudioCtx = () => {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!chatAudioCtxRef.current) chatAudioCtxRef.current = new Ctx();
+    return chatAudioCtxRef.current;
+  };
+
+  // Unlock AudioContext on first user interaction so the chime is ready.
+  useEffect(() => {
+    const unlock = () => {
+      const ctx = getChatAudioCtx();
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    window.addEventListener('touchstart', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+  }, []);
+
+  const playChatChime = () => {
+    try {
+      const ctx = getChatAudioCtx();
+      if (!ctx) return;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const t0 = ctx.currentTime;
+      // Two-tone "ding-dong" — only for internal chat messages.
+      [[659.25, 0], [880, 0.22]].forEach(([freq, dt]) => {
+        [[freq, 0.25], [freq * 2, 0.07]].forEach(([f, vol]) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = f;
+          gain.gain.setValueAtTime(0.0001, t0 + dt);
+          gain.gain.exponentialRampToValueAtTime(vol, t0 + dt + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.6);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t0 + dt);
+          osc.stop(t0 + dt + 0.65);
+        });
+      });
+    } catch { /* audio unavailable/blocked — ignore */ }
+  };
+
   // Poll chat unread total for the sidebar badge (skipped for developers, who
   // have no company-scoped chat). Refreshes on every route change too.
+  // Chime fires only when chat unread count increases.
   useEffect(() => {
     if (isDeveloper) return undefined;
     let alive = true;
     const load = async () => {
-      try { const u = await chatApi.unreadCount(); if (alive) setChatUnread(u || 0); }
+      try {
+        const u = await chatApi.unreadCount();
+        if (!alive) return;
+        const count = u || 0;
+        // Play chime only when new chat messages arrive (count went up).
+        if (prevChatUnread.current !== null && count > prevChatUnread.current) {
+          playChatChime();
+        }
+        prevChatUnread.current = count;
+        setChatUnread(count);
+      }
       catch { /* ignore */ }
     };
     load();

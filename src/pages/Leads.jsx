@@ -330,12 +330,17 @@ export default function Leads() {
       if (f.status && l.status !== f.status) return false;
       if (f.source && l.source !== f.source) return false;
       if (f.stage && leadStageOf(l) !== f.stage) return false;
-      if (f.country && l.country !== f.country) return false;
+      if (f.country && (l.country || '').trim().toLowerCase() !== f.country.trim().toLowerCase()) return false;
       if (f.campaign && (l.campaign || '') !== f.campaign) return false;
       if (f.employee && String(l.owner) !== String(f.employee)) return false;
       if (f.search) {
         const q = f.search.toLowerCase();
-        const textMatch = [l.name, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q));
+        const qDigits = f.search.replace(/\D/g, '');
+        // Text match: name, email, city + raw mobile digits (handles partial number search like last 4 digits)
+        const textMatch =
+          [l.name, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q)) ||
+          (qDigits.length >= 3 && [l.mobile, l.altMobile].some((v) => (v || '').replace(/\D/g, '').includes(qDigits)));
+        // Phone-aware match: handles country code variants for full numbers (>= 7 digits)
         if (!textMatch && !phoneSearchMatches(l.mobile, f.search) && !phoneSearchMatches(l.altMobile, f.search)) return false;
       }
       return true;
@@ -351,7 +356,15 @@ export default function Leads() {
   // Derive sorted unique country list from actual leads data
   const countryOptions = useMemo(() => {
     if (!leads) return [];
-    return [...new Set(leads.map((l) => l.country).filter(Boolean))].sort();
+    // Normalize casing so 'iran' and 'Iran' don't appear as two separate options
+    const seen = new Map();
+    leads.forEach((l) => {
+      if (!l.country) return;
+      const norm = l.country.trim();
+      const key = norm.toLowerCase();
+      if (!seen.has(key)) seen.set(key, norm);
+    });
+    return [...seen.values()].sort();
   }, [leads]);
 
   // Campaign filter is optional — only leads that were actually tagged with
@@ -650,7 +663,7 @@ export default function Leads() {
                     <td className="px-2.5 py-2 text-xs">{l.ownerName || '—'}</td>
                     <td className="px-2.5 py-2 text-xs whitespace-nowrap">{l.country || '—'}</td>
                     <td className="px-2.5 py-2">
-                      <span className={`status ${leadStageClass(leadStageOf(l))}`}>{leadStageOf(l)}</span>
+                      <span className={`status ${leadStageClass(leadStageOf(l), l)}`}>{leadStageOf(l)}</span>
                     </td>
                     <td className="px-2.5 py-2">
                       <span className={`status ${leadStatusClass(l.status)}`}>{l.status}</span>
