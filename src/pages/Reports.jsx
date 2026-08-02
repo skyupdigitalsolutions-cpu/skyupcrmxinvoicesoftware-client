@@ -64,10 +64,15 @@ const getPeriodBounds = (query) => {
 // ── Single merged report page: Leads + Sales Analytics share one filter bar,
 // one combined stat row, side-by-side panels, and one export. ──────────────
 export default function Reports() {
+  const [activeTab, setActiveTab] = useState('overview'); // overview | monthly
   const { isAdmin, user } = useAuth();
   const { show } = useToast();
 
   const { data: leads, loading: leadsLoading, refetch: refetchLeads } = useFetch(() => leadApi.list(), []);
+  const { data: monthlyData, loading: monthlyLoading } = useFetch(
+    () => activeTab === 'monthly' ? reportApi.monthlyComparison() : Promise.resolve(null),
+    [activeTab]
+  );
   const [query, setQuery] = useState({ period: 'month' });
   const { data: sales, loading: salesLoading } = useFetch(() => reportApi.sales(query), [JSON.stringify(query)]);
 
@@ -229,6 +234,25 @@ export default function Reports() {
 
   return (
     <>
+      {/* Tab bar */}
+      <div className="mb-4 flex gap-1 rounded-xl border p-1" style={{ background: 'var(--bg-card-head)', borderColor: 'var(--border-card)', width: 'fit-content' }}>
+        {[['overview', 'Overview'], ['monthly', 'Monthly Comparison']].map(([k, l]) => (
+          <button key={k} onClick={() => setActiveTab(k)}
+            className="rounded-lg px-4 py-1.5 text-[12px] font-bold transition"
+            style={{
+              background: activeTab === k ? 'var(--bg-card)' : 'transparent',
+              color: activeTab === k ? 'var(--text-primary)' : 'var(--text-muted)',
+              boxShadow: activeTab === k ? 'var(--shadow-card)' : 'none',
+            }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'monthly' ? (
+        <MonthlyComparison data={monthlyData} loading={monthlyLoading} />
+      ) : (
+      <>
       <PageTitle icon={<BarChart2 size={18} />}>Reports</PageTitle>
 
       {/* ── shared filter bar (drives BOTH leads + sales analytics) ── */}
@@ -450,6 +474,8 @@ export default function Reports() {
           onOpenExisting={() => setEditLead(null)}
         />
       )}
+      </>
+      )}
     </>
   );
 }
@@ -484,5 +510,126 @@ function Table({ rows, cols, render, empty }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+// ── Monthly Comparison sub-page ───────────────────────────────────────────────
+function MonthlyComparison({ data, loading }) {
+  if (loading) return <Spinner label="Loading monthly comparison…" />;
+  if (!data?.months) return <EmptyState title="No data yet" hint="Monthly comparison will appear once you have lead data." />;
+
+  const months = data.months;
+  const maxVal = Math.max(1, ...months.flatMap(m => [m.buyers, m.opportunity, m.enquiry, m.newLeads]));
+
+  const SERIES = [
+    { key: 'buyers',      label: 'Buyers',      color: '#10B981' },
+    { key: 'opportunity', label: 'Opportunity',  color: '#F59E0B' },
+    { key: 'enquiry',     label: 'Enquiry',      color: '#2563EB' },
+    { key: 'newLeads',    label: 'New Leads',    color: '#6B7280' },
+  ];
+
+  return (
+    <>
+      {/* Summary cards — current month vs previous */}
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {SERIES.map(({ key, label, color }) => {
+          const cur  = months[months.length - 1]?.[key] || 0;
+          const prev = months[months.length - 2]?.[key] || 0;
+          const diff = cur - prev;
+          return (
+            <div key={key} className="rounded-xl border p-3" style={{ borderColor: color + '30', background: 'var(--bg-surface)' }}>
+              <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color }}>{label}</div>
+              <div className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>{cur}</div>
+              <div className="text-[11px] mt-1 font-semibold" style={{ color: diff > 0 ? '#16a34a' : diff < 0 ? '#dc2626' : 'var(--text-muted)' }}>
+                {diff > 0 ? `▲ +${diff}` : diff < 0 ? `▼ ${diff}` : '— No change'} vs last month
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bar chart comparison */}
+      <div className="rounded-xl border p-4 mb-4" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-card)' }}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[13px] font-bold" style={{ color: 'var(--text-primary)' }}>6-Month Comparison</h3>
+          <div className="flex flex-wrap gap-3">
+            {SERIES.map(({ label, color }) => (
+              <div key={label} className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                <span className="h-2.5 w-2.5 rounded-sm inline-block" style={{ background: color }} />
+                {label}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-end gap-2 overflow-x-auto pb-2">
+          {months.map((m) => (
+            <div key={m.key} className="flex-1 min-w-[60px]">
+              <div className="flex items-end gap-0.5 mb-1" style={{ height: '120px' }}>
+                {SERIES.map(({ key, color }) => {
+                  const val = m[key] || 0;
+                  const pct = (val / maxVal) * 100;
+                  return (
+                    <div key={key} className="flex-1 rounded-t-sm relative group" style={{ height: `${pct}%`, minHeight: val > 0 ? '4px' : '0', background: color, opacity: 0.85 }}>
+                      {val > 0 && (
+                        <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[9px] font-bold opacity-0 group-hover:opacity-100 transition whitespace-nowrap" style={{ color }}>
+                          {val}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="text-center text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>{m.label}</div>
+              <div className="text-center text-[9px]" style={{ color: 'var(--text-hint)' }}>Total: {m.total}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-card)' }}>
+        <table className="w-full border-collapse text-[12px]">
+          <thead>
+            <tr style={{ background: 'var(--bg-card-head)' }}>
+              <th className="px-4 py-2.5 text-left font-bold" style={{ color: 'var(--text-secondary)' }}>Month</th>
+              <th className="px-4 py-2.5 text-center font-bold" style={{ color: '#10B981' }}>Buyers</th>
+              <th className="px-4 py-2.5 text-center font-bold" style={{ color: '#F59E0B' }}>Opportunity</th>
+              <th className="px-4 py-2.5 text-center font-bold" style={{ color: '#2563EB' }}>Enquiry</th>
+              <th className="px-4 py-2.5 text-center font-bold" style={{ color: '#6B7280' }}>New</th>
+              <th className="px-4 py-2.5 text-center font-bold" style={{ color: 'var(--text-secondary)' }}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {months.map((m, i) => {
+              const prev = months[i - 1];
+              const isLatest = i === months.length - 1;
+              return (
+                <tr key={m.key} style={{ background: isLatest ? 'var(--bg-card-head)' : 'transparent', borderTop: '1px solid var(--border-card)' }}>
+                  <td className="px-4 py-2.5 font-bold" style={{ color: 'var(--text-primary)' }}>
+                    {m.label}{isLatest && <span className="ml-2 text-[9px] bg-gold-100 text-gold-700 px-1.5 py-0.5 rounded-full font-bold">Current</span>}
+                  </td>
+                  {[['buyers','#10B981'],['opportunity','#F59E0B'],['enquiry','#2563EB'],['newLeads','#6B7280']].map(([key, color]) => {
+                    const val = m[key] || 0;
+                    const pval = prev?.[key] || 0;
+                    const diff = val - pval;
+                    return (
+                      <td key={key} className="px-4 py-2.5 text-center">
+                        <span className="font-black text-[13px]" style={{ color }}>{val}</span>
+                        {prev && diff !== 0 && (
+                          <span className="ml-1 text-[9px] font-bold" style={{ color: diff > 0 ? '#16a34a' : '#dc2626' }}>
+                            {diff > 0 ? `+${diff}` : diff}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="px-4 py-2.5 text-center font-bold" style={{ color: 'var(--text-primary)' }}>{m.total}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }

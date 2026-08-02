@@ -31,6 +31,7 @@ const stageOfStatus = (status) => {
   return 'Lead'; // New / Lost / anything else
 };
 const LEAD_STATUS_LIST = ['New', 'Contacted', 'Interested', 'Follow-up', 'Won', 'Lost'];
+const DELIVERY_STAGE_LIST = ['Pending', 'Confirmed', 'Packed', 'Market Delay', 'Out for Delivery'];
 
 const Stat = ({ value, label, color, hint, onClick }) => (
   <button onClick={onClick} disabled={!onClick}
@@ -85,7 +86,7 @@ export default function Dashboard() {
         <Stat value={stats.totalLeads} label="Total Contacts Enquired" color="border-info"     hint="View leads →"   onClick={() => navigate('/leads')} />
         <Stat value={stats.buyers}     label="Buyers"               color="border-ok"       hint="View won →"     onClick={() => navigate('/leads?status=Won')} />
         <Stat value={stageCounts.Enquiry} label="Enquiries"          color="border-purple-400" hint="View leads →"  onClick={() => navigate('/leads')} />
-        <Stat value={stats.pending}    label="Pending Delivery"     color="border-gold"       hint="View orders →" onClick={() => navigate('/orders?status=Pending')} />
+        <Stat value={stats.pending}    label="Pending Delivery"     color="border-gold"       hint="Go to Delivery Tracker →" onClick={() => navigate('/tracker')} />
       </div>
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
@@ -94,6 +95,22 @@ export default function Dashboard() {
           const count = leads.byStatus[s] || 0;
           return (
             <button key={s} onClick={() => navigate(`/leads?status=${encodeURIComponent(s)}`)}
+              className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition hover:border-gold hover:bg-gold-pale"
+              style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-card)', color: 'var(--text-muted)' }}>
+              {s}
+              <span className="rounded-full bg-gray-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-bold text-navy dark:text-white">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Delivery Tracker status — same style as leads by status row */}
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: 'var(--text-hint)' }}>Delivery tracker:</span>
+        {DELIVERY_STAGE_LIST.map((s) => {
+          const count = (data.deliveryByStage || {})[s] || 0;
+          return (
+            <button key={s} onClick={() => navigate('/tracker')}
               className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition hover:border-gold hover:bg-gold-pale"
               style={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-card)', color: 'var(--text-muted)' }}>
               {s}
@@ -163,7 +180,7 @@ export default function Dashboard() {
 
       <div className={`mb-5 grid grid-cols-2 gap-3.5 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
         <Stat value={stats.totalOrders}         label="Total Orders"   color="border-gold" hint="View all →"         onClick={() => navigate('/orders')} />
-        <Stat value={stats.pending}             label="Pending"        color="border-warn" hint="Filter pending →"   onClick={() => navigate('/orders?status=Pending')} />
+        <Stat value={stats.pending}             label="Pending"        color="border-warn" hint="Go to tracker →"    onClick={() => navigate('/tracker')} />
         <Stat value={stats.delivered}           label="Delivered"      color="border-ok"   hint="Filter delivered →" onClick={() => navigate('/orders?status=Delivered')} />
         {isAdmin && <Stat value={fmtAED(stats.totalRevenue)} label="Total Revenue" color="border-info" />}
       </div>

@@ -653,7 +653,7 @@ export default function Leads() {
                     <td className="px-2.5 py-2 text-xs">{l.ownerName || '—'}</td>
                     <td className="px-2.5 py-2 text-xs whitespace-nowrap">{l.country || '—'}</td>
                     <td className="px-2.5 py-2">
-                      <span className={`status ${leadStageClass(leadStageOf(l))}`}>{leadStageOf(l)}</span>
+                      <span className={`status ${leadStageClass(leadStageOf(l), l)}`}>{leadStageOf(l)}{l.monthlyReset && leadStageOf(l) === 'Opportunity' ? ' ★' : ''}</span>
                     </td>
                     <td className="px-2.5 py-2">
                       <span className={`status ${leadStatusClass(l.status)}`}>{l.status}</span>

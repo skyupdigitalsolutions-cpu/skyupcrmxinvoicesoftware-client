@@ -320,12 +320,22 @@ export const leadStageOf = (l) => {
     return 'Lead'; // New / Lost / anything else
 };
 
-export const leadStageClass = (s) => ({
-    Lead: 'bg-gray-100 text-gray-600',
-    Opportunity: 'bg-warn-light text-warn',
-    Enquiry: 'bg-info-light text-info',
-    Buyer: 'bg-ok-light text-ok',
-}[s] || 'bg-gray-100 text-gray-600');
+// leadStageClass accepts the stage string plus an optional lead object.
+// When the lead was auto-reset by the monthly scheduler (monthlyReset: true),
+// Opportunity badges render green instead of orange so the team can instantly
+// identify freshly-reset leads. The green clears as soon as the salesperson
+// manually changes the status.
+export const leadStageClass = (s, lead) => {
+    if (s === 'Opportunity' && lead && lead.monthlyReset) {
+        return 'bg-ok-light text-ok'; // green — monthly auto-reset
+    }
+    return {
+        Lead: 'bg-gray-100 text-gray-600',
+        Opportunity: 'bg-warn-light text-warn',
+        Enquiry: 'bg-info-light text-info',
+        Buyer: 'bg-ok-light text-ok',
+    }[s] || 'bg-gray-100 text-gray-600';
+};
 
 export const fmtDateTime = (d) => {
     if (!d) return '';
