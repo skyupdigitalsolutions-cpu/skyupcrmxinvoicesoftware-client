@@ -335,10 +335,7 @@ export default function Leads() {
       if (f.employee && String(l.owner) !== String(f.employee)) return false;
       if (f.search) {
         const q = f.search.toLowerCase();
-        // Strip non-digits for phone search so "+98 91788" matches "9891788" in raw mobile
-        const qDigits = f.search.replace(/\D/g, '');
-        const textMatch = [l.name, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q))
-          || (qDigits.length >= 3 && [l.mobile, l.altMobile].some((v) => (v || '').replace(/\D/g, '').includes(qDigits)));
+        const textMatch = [l.name, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q));
         if (!textMatch && !phoneSearchMatches(l.mobile, f.search) && !phoneSearchMatches(l.altMobile, f.search)) return false;
       }
       return true;
@@ -653,7 +650,7 @@ export default function Leads() {
                     <td className="px-2.5 py-2 text-xs">{l.ownerName || '—'}</td>
                     <td className="px-2.5 py-2 text-xs whitespace-nowrap">{l.country || '—'}</td>
                     <td className="px-2.5 py-2">
-                      <span className={`status ${leadStageClass(leadStageOf(l), l)}`}>{leadStageOf(l)}{l.monthlyReset && leadStageOf(l) === 'Opportunity' ? ' ★' : ''}</span>
+                      <span className={`status ${leadStageClass(leadStageOf(l))}`}>{leadStageOf(l)}</span>
                     </td>
                     <td className="px-2.5 py-2">
                       <span className={`status ${leadStatusClass(l.status)}`}>{l.status}</span>
@@ -1070,16 +1067,16 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
                     placeholder="e.g. 506731305"
                     onChange={handleChange}
                     onBlur={handleBlur}
-                    readOnly={isEdit}
-                    title={isEdit ? "Mobile number can't be changed after a lead is created" : undefined}
+                    readOnly={isEdit && !isAdmin}
+                    title={isEdit && !isAdmin ? "Only admins can edit the mobile number" : undefined}
                     style={
-                      isEdit
+                      isEdit && !isAdmin
                         ? { backgroundColor: 'var(--bg-card-head)', cursor: 'not-allowed' }
                         : dupe ? { borderColor: '#DC2626' } : undefined
                     }
                   />
                 </div>
-                {isEdit && <span className="mt-1 block text-[10px]" style={{ color: 'var(--text-muted)' }}>Mobile number can't be edited after creation.</span>}
+                {isEdit && !isAdmin && <span className="mt-1 block text-[10px]" style={{ color: 'var(--text-muted)' }}>Only admins can edit the mobile number.</span>}
               </FieldRow>
               <FieldRow label="Alternate Country (optional)" name="altCountry" error={touched.altCountry && errors.altCountry}>
                 <CountrySelect value={values.altCountry} onChange={(v) => setFieldValue('altCountry', v)} />
