@@ -336,12 +336,30 @@ export default function Leads() {
       if (f.search) {
         const q = f.search.toLowerCase();
         const qDigits = f.search.replace(/\D/g, '');
-        // Text match: name, email, city + raw mobile digits (handles partial number search like last 4 digits)
-        const textMatch =
-          [l.name, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q)) ||
-          (qDigits.length >= 3 && [l.mobile, l.altMobile].some((v) => (v || '').replace(/\D/g, '').includes(qDigits)));
-        // Phone-aware match: handles country code variants for full numbers (>= 7 digits)
-        if (!textMatch && !phoneSearchMatches(l.mobile, f.search) && !phoneSearchMatches(l.altMobile, f.search)) return false;
+
+        // 1. Text match on name, email, city
+        const textMatch = [l.name, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q));
+
+        // 2. Raw mobile digit match — strip non-digits from both sides.
+        const mobileDigits = (l.mobile || '').replace(/\D/g, '');
+        const altMobileDigits = (l.altMobile || '').replace(/\D/g, '');
+        // Also build the full E164 number (country code + stored digits) for matching.
+        // This handles "+971" matching UAE leads whose stored mobile is "506731305" (no code).
+        const dialCode = dialFor(l.country) || '';
+        const fullMobileDigits = dialCode ? dialCode + mobileDigits : mobileDigits;
+        const fullAltMobileDigits = dialCode ? dialCode + altMobileDigits : altMobileDigits;
+
+        const rawMobileMatch = qDigits.length >= 2 && (
+          mobileDigits.includes(qDigits) ||
+          altMobileDigits.includes(qDigits) ||
+          fullMobileDigits.includes(qDigits) ||
+          fullAltMobileDigits.includes(qDigits)
+        );
+
+        // 3. Phone-aware match: handles country code stripping for full numbers (>= 7 digits)
+        const phoneMatch = phoneSearchMatches(l.mobile, f.search) || phoneSearchMatches(l.altMobile, f.search);
+
+        if (!textMatch && !rawMobileMatch && !phoneMatch) return false;
       }
       return true;
     });
