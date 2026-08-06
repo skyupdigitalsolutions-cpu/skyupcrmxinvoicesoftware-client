@@ -1231,7 +1231,9 @@ export default function Communication() {
   if (loading) return <Spinner label="Loading Communication…" />;
 
   return (
-    <div className="flex flex-col overflow-hidden" style={{ background: 'var(--bg-page)', position: 'absolute', inset: 0 }}>
+    // FIX: h-full on root so the page fills the viewport and flex children can
+    // be properly bounded — prevents the whole page from growing past screen height
+    <div className="h-full flex flex-col" style={{ background: 'var(--bg-page)' }}>
       {/* Page title */}
       <div className="px-4 pt-4 pb-3 shrink-0">
         <PageTitle icon={<MessageSquare size={18} />}
