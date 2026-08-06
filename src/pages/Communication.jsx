@@ -822,27 +822,40 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const [loadingStatuses, setLoadingStatuses] = useState(false);
   const [excludeSent, setExcludeSent] = useState(false);
 
+  // Extracted fetch so it can be called both on template change AND when leads
+  // finish loading (leads load async — if user picks a template before leads
+  // arrive the old `if (name && leads.length)` guard silently skipped the fetch)
+  const fetchTemplateSentStatus = (name, leadList) => {
+    if (!name || !leadList.length) { setTemplateStatuses({}); return; }
+    setLoadingStatuses(true);
+    const allIds = leadList.map(l => String(l._id || l.id));
+    whatsappApi.getTemplateSentStatus(allIds, name)
+      .then(s => {
+        const statuses = s || {};
+        setTemplateStatuses(statuses);
+        if (excludeSent) {
+          setSelected(prev => prev.filter(id => !statuses[String(id)] || statuses[String(id)].status !== 'sent'));
+        }
+      })
+      .catch(() => setTemplateStatuses({}))
+      .finally(() => setLoadingStatuses(false));
+  };
+
   const onTemplateChange = name => {
     setTemplateName(name);
     const t = templates.find(t => t.name === name);
     setVariableValues(Array.from({ length: t?.variableCount || 0 }, () => ''));
-    if (name && leads.length) {
-      setLoadingStatuses(true);
-      const allIds = leads.map(l => String(l._id || l.id));
-      whatsappApi.getTemplateSentStatus(allIds, name)
-        .then(s => {
-          const statuses = s || {};
-          setTemplateStatuses(statuses);
-          if (excludeSent) {
-            setSelected(prev => prev.filter(id => !statuses[String(id)] || statuses[String(id)].status !== 'sent'));
-          }
-        })
-        .catch(() => setTemplateStatuses({}))
-        .finally(() => setLoadingStatuses(false));
-    } else {
-      setTemplateStatuses({});
-    }
+    fetchTemplateSentStatus(name, leads);
   };
+
+  // Re-fetch when leads finish loading (handles the race where user picks a
+  // template before leadApi.list() resolves)
+  useEffect(() => {
+    if (leads.length && templateName) {
+      fetchTemplateSentStatus(templateName, leads);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads.length]);
 
   const onExcludeSentToggle = (checked) => {
     setExcludeSent(checked);
@@ -1077,6 +1090,15 @@ function BulkSendModal({ templates, onClose, onSent }) {
             {LEAD_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+
+        {/* Loading indicator while statuses or leads are fetching */}
+        {(loadingStatuses) && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px]"
+            style={{ background: 'rgba(37,211,102,0.08)', color: '#16a34a' }}>
+            <Loader2 size={11} className="animate-spin shrink-0" />
+            Checking which leads already received this template…
+          </div>
+        )}
 
         <div className="max-h-44 overflow-y-auto rounded-xl border" style={{ borderColor: 'var(--border-card)' }}>
           {filtered.map(l => {
@@ -1343,8 +1365,16 @@ export default function Communication() {
                3. Templates panel         — fixed 180px, scrolls independently
              This means no matter how many leads or templates, the sidebar
              stays the same height as the chat panel beside it. */}
-        <div className={`flex-col border-r shrink-0 sm:w-[280px] lg:w-[320px] sm:flex ${selectedConv ? 'hidden' : 'flex w-full'}`}
-          style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)', overflow: 'hidden', height: '100%' }}>
+        <div
+          className={`border-r shrink-0 sm:w-[280px] lg:w-[320px] ${selectedConv ? 'hidden sm:flex' : 'flex w-full'}`}
+          style={{
+            borderColor: 'var(--border-card)',
+            background: 'var(--bg-card)',
+            flexDirection: 'column',   /* always column regardless of Tailwind order */
+            overflow: 'hidden',         /* hard clip — nothing escapes this box */
+            minHeight: 0,               /* lets flex-1 children shrink below content size */
+            alignSelf: 'stretch',       /* fills the full height of the flex row */
+          }}>
 
           {/* ① Search + filter — fixed, never grows */}
           <div className="px-3 py-3 border-b shrink-0 space-y-2"
