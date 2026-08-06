@@ -478,12 +478,9 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
   };
 
   // ── 24-hour WhatsApp session window ────────────────────────────────────────
-  // WhatsApp only allows free-form replies within 24 hours of the last
-  // inbound message from the customer. After that only templates work.
-  const [sessionWindow, setSessionWindow] = useState(null); // { open, expiresAt, lastInboundAt }
-  const [timeLeft, setTimeLeft]           = useState('');   // live countdown string e.g. "2h 14m left"
+  const [sessionWindow, setSessionWindow] = useState(null);
+  const [timeLeft, setTimeLeft]           = useState('');
 
-  // Fetch session window whenever conversation changes
   useEffect(() => {
     if (!conv?.isLead || !conv?.leadId) { setSessionWindow(null); return; }
     whatsappApi.getSessionWindow(conv.leadId)
@@ -491,7 +488,6 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
       .catch(() => setSessionWindow(null));
   }, [conv?.leadId]);
 
-  // Recalculate countdown every 30 seconds so the timer stays live
   useEffect(() => {
     if (!sessionWindow?.expiresAt) { setTimeLeft(''); return; }
     const calc = () => {
@@ -510,11 +506,9 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
     return () => clearInterval(t);
   }, [sessionWindow?.expiresAt]);
 
-  // Reply allowed only if session window is open (null = loading, optimistically allow)
   const sessionOpen = sessionWindow === null ? true : sessionWindow.open;
   const canReply    = conv.isLead && sessionOpen;
 
-  // Session window banner shown at top of chat
   const SessionBanner = () => {
     if (!conv?.isLead || sessionWindow === null) return null;
     if (sessionWindow.open) {
@@ -543,7 +537,8 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
   };
 
   return (
-    <div className="flex flex-col h-full" style={{ background: 'var(--bg-card)' }}>
+    // FIX: h-full + min-h-0 ensures this flex column is strictly bounded by its parent
+    <div className="flex flex-col h-full min-h-0" style={{ background: 'var(--bg-card)' }}>
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b shrink-0"
         style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
@@ -573,7 +568,6 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Save as Lead — only for non-lead contacts */}
           {!conv.isLead && (
             <button onClick={() => setShowSaveLeadModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition"
@@ -583,14 +577,13 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
               <span className="hidden sm:inline">Save as Lead</span>
             </button>
           )}
-          {/* Send Template — only for leads */}
           {conv.isLead && !sessionOpen && (
-        <div className="px-4 py-3 text-[12px] text-center shrink-0"
-          style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
-          Reply window closed. Use <b>Send Template</b> to re-open the conversation.
-        </div>
-      )}
-      {canReply && (
+            <div className="px-4 py-3 text-[12px] text-center shrink-0"
+              style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
+              Reply window closed. Use <b>Send Template</b> to re-open the conversation.
+            </div>
+          )}
+          {canReply && (
             <button onClick={() => setShowTemplateModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition"
               style={{ borderColor: '#25D366', color: '#25D366' }}
@@ -605,8 +598,9 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
       {/* 24-hour session window banner */}
       <SessionBanner />
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3"
+      {/* FIX: flex-1 + min-h-0 — without min-h-0 the div grows to fit all content
+           and pushes the input bar off screen */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3"
         style={{ background: 'linear-gradient(180deg, rgba(37,211,102,0.03) 0%, transparent 100%)' }}>
         {!data ? (
           <div className="flex items-center justify-center h-full">
@@ -617,12 +611,12 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
             <MessageSquare size={36} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
             <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>No messages yet</p>
             {conv.isLead && !sessionOpen && (
-        <div className="px-4 py-3 text-[12px] text-center shrink-0"
-          style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
-          Reply window closed. Use <b>Send Template</b> to re-open the conversation.
-        </div>
-      )}
-      {canReply && (
+              <div className="px-4 py-3 text-[12px] text-center shrink-0"
+                style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
+                Reply window closed. Use <b>Send Template</b> to re-open the conversation.
+              </div>
+            )}
+            {canReply && (
               <button onClick={() => setShowTemplateModal(true)}
                 className="px-4 py-2 rounded-xl text-[12px] font-semibold text-white"
                 style={{ background: '#25D366' }}>
@@ -640,7 +634,7 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
 
       {/* Attachment preview */}
       {attachment && (
-        <div className="px-4 py-2 flex items-center gap-2 border-t"
+        <div className="px-4 py-2 flex items-center gap-2 border-t shrink-0"
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
           {attachment.previewUrl
             ? <img src={attachment.previewUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />
@@ -687,20 +681,29 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
           </button>
         </div>
       ) : (
-        /* Not-a-lead bottom bar */
+        /* Not-a-lead OR session-closed bottom bar */
         <div className="px-4 py-3 border-t shrink-0"
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--text-muted)' }}>
               <AlertTriangle size={13} className="text-amber-500" />
-              Save as lead to reply
+              {conv.isLead ? 'Reply window closed — send a template to re-open' : 'Save as lead to reply'}
             </div>
-            <button onClick={() => setShowSaveLeadModal(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-white transition"
-              style={{ background: '#015FDE' }}>
-              <UserPlus size={13} />
-              Save as Lead
-            </button>
+            {conv.isLead ? (
+              <button onClick={() => setShowTemplateModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-white transition"
+                style={{ background: '#25D366' }}>
+                <Zap size={13} />
+                Send Template
+              </button>
+            ) : (
+              <button onClick={() => setShowSaveLeadModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-white transition"
+                style={{ background: '#015FDE' }}>
+                <UserPlus size={13} />
+                Save as Lead
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -762,7 +765,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const { show } = useToast();
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState([]);
-  const [pendingContacts, setPendingContacts] = useState([]); // CSV numbers not yet leads
+  const [pendingContacts, setPendingContacts] = useState([]);
   const [templateName, setTemplateName] = useState('');
   const [variableValues, setVariableValues] = useState([]);
   const [autoFillName, setAutoFillName] = useState(true);
@@ -776,16 +779,14 @@ function BulkSendModal({ templates, onClose, onSent }) {
 
   const selectedTemplate = templates.find(t => t.name === templateName) || null;
 
-  // Track which leads already received the selected template
-  const [templateStatuses, setTemplateStatuses] = useState({});  // { leadId: { sent, sentAt, status } }
+  const [templateStatuses, setTemplateStatuses] = useState({});
   const [loadingStatuses, setLoadingStatuses] = useState(false);
-  const [excludeSent, setExcludeSent] = useState(false); // toggle to auto-deselect already-sent leads
+  const [excludeSent, setExcludeSent] = useState(false);
 
   const onTemplateChange = name => {
     setTemplateName(name);
     const t = templates.find(t => t.name === name);
     setVariableValues(Array.from({ length: t?.variableCount || 0 }, () => ''));
-    // Fetch sent status for all leads when template changes
     if (name && leads.length) {
       setLoadingStatuses(true);
       const allIds = leads.map(l => String(l._id || l.id));
@@ -793,7 +794,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
         .then(s => {
           const statuses = s || {};
           setTemplateStatuses(statuses);
-          // If excludeSent is on, auto-deselect leads that already received this template
           if (excludeSent) {
             setSelected(prev => prev.filter(id => !statuses[String(id)] || statuses[String(id)].status !== 'sent'));
           }
@@ -805,11 +805,9 @@ function BulkSendModal({ templates, onClose, onSent }) {
     }
   };
 
-  // When excludeSent toggle changes — deselect or restore sent leads accordingly
   const onExcludeSentToggle = (checked) => {
     setExcludeSent(checked);
     if (checked) {
-      // Remove already-sent leads from selection immediately
       setSelected(prev => prev.filter(id => !templateStatuses[String(id)] || templateStatuses[String(id)].status !== 'sent'));
     }
   };
@@ -926,7 +924,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
     <Modal open onClose={onClose} title="Send WhatsApp Blast" width="sm:max-w-[560px]">
       <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
 
-        {/* Template */}
         <Field label="Template">
           <select value={templateName} onChange={e => onTemplateChange(e.target.value)}
             className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
@@ -961,7 +958,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
           Auto-fill first variable with lead name
         </label>
 
-        {/* CSV Import row */}
         <div className="flex items-center gap-2 p-3 rounded-xl border"
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
           <div className="flex-1">
@@ -983,7 +979,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </label>
         </div>
 
-        {/* CSV result summary */}
         {csvResult && (
           <div className="px-3 py-2.5 rounded-xl border text-[12px] space-y-1"
             style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
@@ -1008,7 +1003,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </div>
         )}
 
-        {/* Pending CSV contacts (not yet leads) */}
         {pendingContacts.length > 0 && (
           <div>
             <p className="text-[11px] font-bold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
@@ -1031,7 +1025,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </div>
         )}
 
-        {/* Lead search + list */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
@@ -1109,7 +1102,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
             )}
             <Button variant="outline" size="sm" onClick={() => {
               const ids = filtered.map(l => l.id || l._id);
-              // If excludeSent is on, only select leads that haven't received this template
               const toSelect = excludeSent
                 ? ids.filter(id => !templateStatuses[String(id)] || templateStatuses[String(id)].status !== 'sent')
                 : ids;
@@ -1239,6 +1231,8 @@ export default function Communication() {
   if (loading) return <Spinner label="Loading Communication…" />;
 
   return (
+    // FIX: h-full on root so the page fills the viewport and flex children can
+    // be properly bounded — prevents the whole page from growing past screen height
     <div className="h-full flex flex-col" style={{ background: 'var(--bg-page)' }}>
       {/* Page title */}
       <div className="px-4 pt-4 pb-3 shrink-0">
@@ -1278,12 +1272,14 @@ export default function Communication() {
         </div>
       </div>
 
-      {/* Main layout */}
-      <div className="flex-1 flex overflow-hidden mx-4 mb-4 rounded-2xl border shadow-sm"
+      {/* FIX: flex-1 + min-h-0 — this is the critical chain link.
+           Without min-h-0, flex-1 children default to min-height:auto and
+           the container expands past the viewport instead of scrolling */}
+      <div className="flex-1 min-h-0 flex overflow-hidden mx-4 mb-4 rounded-2xl border shadow-sm"
         style={{ borderColor: 'var(--border-card)' }}>
 
-        {/* LEFT SIDEBAR */}
-        <div className={`flex flex-col border-r shrink-0 ${selectedConv ? 'hidden sm:flex' : 'flex'} w-full sm:w-[300px] lg:w-[340px]`}
+        {/* LEFT SIDEBAR — always shown on sm+; on mobile, hidden when a conv is open */}
+        <div className={`flex-col border-r shrink-0 sm:w-[280px] lg:w-[320px] sm:flex ${selectedConv ? 'hidden' : 'flex w-full'}`}
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)' }}>
 
           {/* Sidebar header */}
@@ -1316,8 +1312,8 @@ export default function Communication() {
             </div>
           </div>
 
-          {/* Conversation list */}
-          <div className="flex-1 overflow-y-auto">
+          {/* FIX: min-h-0 allows this to shrink when templates panel expands */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {filteredConvs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 p-6 opacity-60">
                 <MessageSquare size={32} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
@@ -1335,10 +1331,12 @@ export default function Communication() {
             )}
           </div>
 
-          {/* Templates panel */}
+          {/* FIX: templates panel — max-h-[40%] caps growth, flex flex-col lets
+               inner list scroll independently, never squishes the conv list above */}
           {isAdmin && (
-            <div className="border-t shrink-0" style={{ borderColor: 'var(--border-card)' }}>
-              <div className="px-3 py-2.5 flex items-center justify-between">
+            <div className="border-t shrink-0 max-h-[40%] flex flex-col overflow-hidden"
+              style={{ borderColor: 'var(--border-card)' }}>
+              <div className="px-3 py-2.5 flex items-center justify-between shrink-0">
                 <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                   Templates ({templates.length})
                 </span>
@@ -1348,7 +1346,8 @@ export default function Communication() {
                   <Plus size={14} />
                 </button>
               </div>
-              <div className="max-h-36 overflow-y-auto px-3 pb-3 space-y-1.5">
+              {/* FIX: flex-1 + min-h-0 + overflow-y-auto — list scrolls within the capped panel */}
+              <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3 space-y-1.5">
                 {templates.length === 0 ? (
                   <p className="text-[11px] italic" style={{ color: 'var(--text-muted)' }}>No templates — click + to add</p>
                 ) : templates.map(t => (
@@ -1373,8 +1372,8 @@ export default function Communication() {
           )}
         </div>
 
-        {/* RIGHT — CHAT or empty state */}
-        <div className={`flex-1 overflow-hidden ${selectedConv ? 'flex' : 'hidden sm:flex'} flex-col`}>
+        {/* RIGHT panel — always shown on sm+; on mobile, hidden when no conv selected */}
+        <div className={`flex-1 min-h-0 overflow-hidden flex-col sm:flex ${selectedConv ? 'flex' : 'hidden'}`}>
           {selectedConv ? (
             <ChatWindow
               key={selectedConv.key}
