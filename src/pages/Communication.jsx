@@ -1191,6 +1191,22 @@ export default function Communication() {
   const [templateModal, setTemplateModal] = useState(null);
   const [bulkModal, setBulkModal] = useState(false);
 
+  // Measure own top offset → fill exactly remaining viewport height
+  // Works regardless of navbar/shell height — no need to touch Layout.jsx
+  const containerRef = useRef(null);
+  const [containerHeight, setContainerHeight] = useState(null);
+  useEffect(() => {
+    const measure = () => {
+      if (containerRef.current) {
+        const top = containerRef.current.getBoundingClientRect().top;
+        setContainerHeight(window.innerHeight - top);
+      }
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+
   const loadAll = async () => {
     setLoading(true);
     const [sRes, tRes, cRes] = await Promise.allSettled([
@@ -1231,9 +1247,11 @@ export default function Communication() {
   if (loading) return <Spinner label="Loading Communication…" />;
 
   return (
-    // FIX: h-full on root so the page fills the viewport and flex children can
-    // be properly bounded — prevents the whole page from growing past screen height
-    <div className="h-full flex flex-col" style={{ background: 'var(--bg-page)' }}>
+    <div
+      ref={containerRef}
+      className="flex flex-col overflow-hidden"
+      style={{ background: 'var(--bg-page)', height: containerHeight ? `${containerHeight}px` : '100%' }}
+    >
       {/* Page title */}
       <div className="px-4 pt-4 pb-3 shrink-0">
         <PageTitle icon={<MessageSquare size={18} />}
