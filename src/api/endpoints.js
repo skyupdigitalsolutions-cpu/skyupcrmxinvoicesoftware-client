@@ -32,6 +32,9 @@ export const whatsappApi = {
     getThread: (leadId) => api.get(`/whatsapp/thread/${leadId}`).then((r) => r.data),
     getThreadByNumber: (contactNumber) => api.get(`/whatsapp/thread-by-number/${encodeURIComponent(contactNumber)}`).then((r) => r.data),
     relinkContact: (body) => api.post('/whatsapp/relink-contact', body).then((r) => r.data),
+    getSessionWindow: (leadId) => api.get(`/whatsapp/session-window/${leadId}`).then((r) => r.data),
+    getTemplateSentStatus: (leadIds, templateName) =>
+        api.get('/whatsapp/template-status', { params: { leadIds: leadIds.join(','), templateName } }).then((r) => r.data.statuses),
 };
 
 export const chequeApi = {
@@ -66,7 +69,6 @@ export const userApi = {
 
 export const reportApi = {
     dashboard: (params) => api.get('/reports/dashboard', { params }).then((r) => r.data),
-    monthlyComparison: () => api.get('/reports/monthly-comparison').then((r) => r.data),
     daily: (params) => api.get('/reports/daily', { params }).then((r) => r.data),
     sales: (params) => api.get('/reports/sales', { params }).then((r) => r.data),
 };
