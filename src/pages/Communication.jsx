@@ -1333,7 +1333,7 @@ export default function Communication() {
            Without min-h-0, flex-1 children default to min-height:auto and
            the container expands past the viewport instead of scrolling */}
       <div className="flex-1 min-h-0 flex overflow-hidden mx-4 mb-4 rounded-2xl border shadow-sm"
-        style={{ borderColor: 'var(--border-card)' }}>
+        style={{ borderColor: 'var(--border-card)', alignItems: 'stretch' }}>
 
         {/* LEFT SIDEBAR
              - Fixed width on desktop (280px / 320px lg)
@@ -1344,7 +1344,7 @@ export default function Communication() {
              This means no matter how many leads or templates, the sidebar
              stays the same height as the chat panel beside it. */}
         <div className={`flex-col border-r shrink-0 sm:w-[280px] lg:w-[320px] sm:flex ${selectedConv ? 'hidden' : 'flex w-full'}`}
-          style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)' }}>
+          style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)', overflow: 'hidden', height: '100%' }}>
 
           {/* ① Search + filter — fixed, never grows */}
           <div className="px-3 py-3 border-b shrink-0 space-y-2"
