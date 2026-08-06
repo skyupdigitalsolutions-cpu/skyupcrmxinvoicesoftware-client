@@ -477,17 +477,43 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
     finally { setSending(false); }
   };
 
-  // ── 24-hour WhatsApp session window ────────────────────────────────────────
-  const [sessionWindow, setSessionWindow] = useState(null);
+  // ── 24-hour WhatsApp session window ─────────────────────────────────────────
+  // Seed initial state from the conversation list row (sessionOpen/sessionExpiresAt
+  // are now included in listConversations response) so the banner shows instantly
+  // without waiting for the getSessionWindow API call. Then confirm with the
+  // dedicated endpoint which is authoritative.
+  const seedWindow = conv?.isLead && conv?.sessionExpiresAt
+    ? { open: conv.sessionOpen, expiresAt: conv.sessionExpiresAt, lastInboundAt: conv.lastInboundAt || null }
+    : null;
+
+  const [sessionWindow, setSessionWindow] = useState(seedWindow);
   const [timeLeft, setTimeLeft]           = useState('');
 
+  // Re-seed when conv changes (different lead selected)
   useEffect(() => {
-    if (!conv?.isLead || !conv?.leadId) { setSessionWindow(null); return; }
-    whatsappApi.getSessionWindow(conv.leadId)
-      .then(d  => setSessionWindow(d))
-      .catch(() => setSessionWindow(null));
+    if (conv?.isLead && conv?.sessionExpiresAt) {
+      setSessionWindow({ open: conv.sessionOpen, expiresAt: conv.sessionExpiresAt, lastInboundAt: conv.lastInboundAt || null });
+    } else {
+      setSessionWindow(null);
+    }
   }, [conv?.leadId]);
 
+  // Confirm with the server — this is the source of truth since listConversations
+  // bakes in the timestamp at request time but we need live accuracy
+  useEffect(() => {
+    if (!conv?.isLead || !conv?.leadId) return;
+    whatsappApi.getSessionWindow(conv.leadId)
+      .then(d => setSessionWindow({ open: d.open, expiresAt: d.expiresAt, lastInboundAt: d.lastInboundAt }))
+      .catch(() => {
+        // Endpoint missing or errored — fall back to conv row data; if that's
+        // also absent, assume window is closed (safer than assuming it's open)
+        if (!conv?.sessionExpiresAt) {
+          setSessionWindow({ open: false, expiresAt: null, lastInboundAt: null });
+        }
+      });
+  }, [conv?.leadId]);
+
+  // Live countdown — recalculates every 30s, flips open→false when it hits zero
   useEffect(() => {
     if (!sessionWindow?.expiresAt) { setTimeLeft(''); return; }
     const calc = () => {
@@ -506,32 +532,45 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
     return () => clearInterval(t);
   }, [sessionWindow?.expiresAt]);
 
-  const sessionOpen = sessionWindow === null ? true : sessionWindow.open;
+  // null = still loading initial state; treat as closed (don't optimistically allow)
+  const sessionOpen = sessionWindow?.open === true;
   const canReply    = conv.isLead && sessionOpen;
 
   const SessionBanner = () => {
-    if (!conv?.isLead || sessionWindow === null) return null;
+    if (!conv?.isLead) return null;
+    // Still loading — show a neutral placeholder so layout doesn't jump
+    if (sessionWindow === null) {
+      return (
+        <div className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-medium shrink-0"
+          style={{ background: 'var(--bg-card-head)', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-card)' }}>
+          <Loader2 size={11} className="animate-spin" />
+          Checking session window…
+        </div>
+      );
+    }
     if (sessionWindow.open) {
       return (
         <div className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-medium shrink-0"
           style={{ background: '#f0fdf4', color: '#16a34a', borderBottom: '1px solid #bbf7d0' }}>
+          {/* Clock icon */}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
           </svg>
-          Session window open — {timeLeft}. Free replies allowed.
+          Session window open — <strong>{timeLeft}</strong>. Free replies allowed.
         </div>
       );
     }
     return (
       <div className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-medium shrink-0"
         style={{ background: '#fef2f2', color: '#dc2626', borderBottom: '1px solid #fecaca' }}>
+        {/* Warning icon */}
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
           <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
         </svg>
         24-hour window expired
         {sessionWindow.lastInboundAt && (
-          <> — last reply {new Date(sessionWindow.lastInboundAt).toLocaleDateString(undefined, { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</>
-        )}. Send a template to re-open the conversation.
+          <> — last inbound {new Date(sessionWindow.lastInboundAt).toLocaleString(undefined, { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</>
+        )}. Use <strong className="mx-0.5">Send Template</strong> to re-open.
       </div>
     );
   };
@@ -1296,11 +1335,18 @@ export default function Communication() {
       <div className="flex-1 min-h-0 flex overflow-hidden mx-4 mb-4 rounded-2xl border shadow-sm"
         style={{ borderColor: 'var(--border-card)' }}>
 
-        {/* LEFT SIDEBAR — always shown on sm+; on mobile, hidden when a conv is open */}
+        {/* LEFT SIDEBAR
+             - Fixed width on desktop (280px / 320px lg)
+             - Full height of parent, split into 3 fixed sections:
+               1. Search + filter header  — shrink-0, never scrolls
+               2. Conversation list       — flex-1, scrolls independently
+               3. Templates panel         — fixed 180px, scrolls independently
+             This means no matter how many leads or templates, the sidebar
+             stays the same height as the chat panel beside it. */}
         <div className={`flex-col border-r shrink-0 sm:w-[280px] lg:w-[320px] sm:flex ${selectedConv ? 'hidden' : 'flex w-full'}`}
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)' }}>
 
-          {/* Sidebar header */}
+          {/* ① Search + filter — fixed, never grows */}
           <div className="px-3 py-3 border-b shrink-0 space-y-2"
             style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
             <div className="relative">
@@ -1330,7 +1376,7 @@ export default function Communication() {
             </div>
           </div>
 
-          {/* FIX: min-h-0 allows this to shrink when templates panel expands */}
+          {/* ② Conversation list — takes all remaining space, scrolls */}
           <div className="flex-1 min-h-0 overflow-y-auto">
             {filteredConvs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 p-6 opacity-60">
@@ -1349,12 +1395,13 @@ export default function Communication() {
             )}
           </div>
 
-          {/* FIX: templates panel — max-h-[40%] caps growth, flex flex-col lets
-               inner list scroll independently, never squishes the conv list above */}
+          {/* ③ Templates panel — fixed 180px tall, scrolls its own list
+               Never grows, never shrinks the conversation list above it */}
           {isAdmin && (
-            <div className="border-t shrink-0 max-h-[40%] flex flex-col overflow-hidden"
-              style={{ borderColor: 'var(--border-card)' }}>
-              <div className="px-3 py-2.5 flex items-center justify-between shrink-0">
+            <div className="border-t flex flex-col overflow-hidden"
+              style={{ borderColor: 'var(--border-card)', height: '180px', minHeight: '180px', maxHeight: '180px' }}>
+              <div className="px-3 py-2 flex items-center justify-between shrink-0"
+                style={{ borderBottom: '1px solid var(--border-card)' }}>
                 <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                   Templates ({templates.length})
                 </span>
@@ -1364,8 +1411,7 @@ export default function Communication() {
                   <Plus size={14} />
                 </button>
               </div>
-              {/* FIX: flex-1 + min-h-0 + overflow-y-auto — list scrolls within the capped panel */}
-              <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3 space-y-1.5">
+              <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-1.5">
                 {templates.length === 0 ? (
                   <p className="text-[11px] italic" style={{ color: 'var(--text-muted)' }}>No templates — click + to add</p>
                 ) : templates.map(t => (
