@@ -1406,8 +1406,8 @@ export default function Communication() {
             </div>
           </div>
 
-          {/* ② Conversation list — takes all remaining space, scrolls */}
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* ② Conversation list — fixed height showing ~7 rows, scrolls for more */}
+          <div className="overflow-y-auto" style={{ height: '448px', minHeight: '448px', maxHeight: '448px' }}>
             {filteredConvs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 p-6 opacity-60">
                 <MessageSquare size={32} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
