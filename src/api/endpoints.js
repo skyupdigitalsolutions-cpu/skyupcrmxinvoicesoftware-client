@@ -33,8 +33,10 @@ export const whatsappApi = {
     getThreadByNumber: (contactNumber) => api.get(`/whatsapp/thread-by-number/${encodeURIComponent(contactNumber)}`).then((r) => r.data),
     relinkContact: (body) => api.post('/whatsapp/relink-contact', body).then((r) => r.data),
     getSessionWindow: (leadId) => api.get(`/whatsapp/session-window/${leadId}`).then((r) => r.data),
+    // POST instead of GET — with 1000+ leads the query string exceeds ~8KB
+    // URL limits causing 414 errors; sending leadIds in the body avoids this.
     getTemplateSentStatus: (leadIds, templateName) =>
-        api.get('/whatsapp/template-status', { params: { leadIds: leadIds.join(','), templateName } }).then((r) => r.data.statuses),
+        api.post('/whatsapp/template-status', { leadIds, templateName }).then((r) => r.data.statuses),
 };
 
 export const chequeApi = {
