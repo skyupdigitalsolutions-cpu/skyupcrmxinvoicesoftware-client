@@ -1383,7 +1383,7 @@ export default function Communication() {
   if (loading) return <Spinner label="Loading Communication…" />;
 
   return (
-    <div className="flex flex-col" style={{ background: 'var(--bg-page)', height: '100%', overflow: 'hidden' }}>
+    <div className="flex flex-col" style={{ background: 'var(--bg-page)', height: 'calc(100vh - 52px - 24px)', overflow: 'hidden' }}>
       {/* Page title */}
       <div className="px-4 pt-4 pb-3 shrink-0">
         <PageTitle icon={<MessageSquare size={18} />}
