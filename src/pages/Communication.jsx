@@ -1427,7 +1427,7 @@ export default function Communication() {
         style={{ borderColor: 'var(--border-card)' }}>
 
         {/* LEFT SIDEBAR */}
-        <div className={`flex flex-col border-r shrink-0 ${selectedConv ? 'hidden sm:flex' : 'flex'} w-full sm:w-[300px] lg:w-[340px]`}
+        <div className={`flex flex-col border-r shrink-0 overflow-hidden ${selectedConv ? 'hidden sm:flex' : 'flex'} w-full sm:w-[300px] lg:w-[340px]`}
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)' }}>
 
           {/* Sidebar header */}
@@ -1486,7 +1486,7 @@ export default function Communication() {
           </div>
 
           {/* Conversation list */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {filteredConvs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 p-6 opacity-60">
                 <MessageSquare size={32} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
