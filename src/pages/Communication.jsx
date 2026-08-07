@@ -9,7 +9,7 @@ import {
   Clock, Zap, Trash2, Eye, EyeOff, UserPlus,
 } from 'lucide-react';
 
-import { whatsappApi, leadApi } from '../api/endpoints.js';
+import { whatsappApi, leadApi, userApi } from '../api/endpoints.js';
 import { apiError } from '../api/client.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -218,38 +218,53 @@ function SendTemplateModal({ leadId, templates, onClose, onSent }) {
 // ── Save as Lead Modal ────────────────────────────────────────────────────────
 function SaveLeadModal({ conv, onClose, onSaved }) {
   const { show } = useToast();
+  const { user: currentUser, isAdmin } = useAuth();
   const [form, setForm] = useState({
-    name: conv.leadName && conv.leadName !== conv.contactNumber ? conv.leadName : '',
-    mobile: conv.contactNumber || '',
+    name:    conv.leadName && conv.leadName !== conv.contactNumber ? conv.leadName : '',
+    mobile:  conv.contactNumber || '',
     country: 'UAE',
-    city: '',
-    source: 'WhatsApp',
-    status: 'Contacted',
-    email: '',
-    remark: 'Added from WhatsApp conversation',
+    city:    '',
+    source:  'WhatsApp',
+    status:  'Contacted',
+    email:   '',
+    remark:  'Added from WhatsApp conversation',
+    owner:   '',   // '' = assign to self (default)
   });
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy]       = useState(false);
+  const [employees, setEmps]  = useState([]); // list for Assign To dropdown
 
-  const SOURCES = ['Walk-in', 'WhatsApp', 'Instagram', 'Facebook', 'Referral', 'market-in', 'Website', 'Call', 'Other'];
-  const STATUSES = ['New', 'Contacted', 'Interested', 'Follow-up', 'Won', 'Lost'];
-  const COUNTRIES = ['UAE', 'India', 'Saudi Arabia', 'Kuwait', 'Bahrain', 'Oman', 'Qatar', 'USA', 'UK', 'Other'];
+  const SOURCES   = ['Walk-in','WhatsApp','Instagram','Facebook','Referral','market-in','Website','Call','Other'];
+  const STATUSES  = ['New','Contacted','Interested','Follow-up','Won','Lost'];
+  const COUNTRIES = ['UAE','India','Saudi Arabia','Kuwait','Bahrain','Oman','Qatar','Iran','Iraq','Yemen','Somalia','Nigeria','Other'];
+
+  // Load employees for Assign To (admin only — sales can only assign to themselves)
+  useEffect(() => {
+    if (!isAdmin) return;
+    userApi.list()
+      .then(list => setEmps((list || []).filter(u => u.role === 'sales' || u.role === 'admin')))
+      .catch(() => {});
+  }, [isAdmin]);
 
   const save = async () => {
     if (!form.name.trim()) return show('Name is required.', 'error');
     if (!form.city.trim()) return show('City is required.', 'error');
     setBusy(true);
     try {
-      const lead = await leadApi.create({
-        name: form.name.trim(),
-        mobile: form.mobile.trim(),
+      const payload = {
+        name:    form.name.trim(),
+        mobile:  form.mobile.trim(),
         country: form.country,
-        city: form.city.trim(),
-        source: form.source,
-        status: form.status,
-        email: form.email.trim(),
-        remark: form.remark.trim(),
-      });
-      // Link existing messages to the new lead
+        city:    form.city.trim(),
+        source:  form.source,
+        status:  form.status,
+        email:   form.email.trim(),
+        remark:  form.remark.trim(),
+      };
+      // Only send owner if admin has explicitly chosen someone else
+      if (isAdmin && form.owner) payload.owner = form.owner;
+
+      const lead = await leadApi.create(payload);
+      // Link existing WhatsApp messages to the new lead
       try {
         await whatsappApi.relinkContact({
           contactNumber: conv.contactNumber,
@@ -266,12 +281,14 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
       } else {
         show(apiError(e), 'error');
       }
-    }
-    finally { setBusy(false); }
+    } finally { setBusy(false); }
   };
 
+  const sel = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
+  const inp = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
+
   return (
-    <Modal open onClose={onClose} title="Save as Lead" width="sm:max-w-[500px]">
+    <Modal open onClose={onClose} title="Save as Lead" width="sm:max-w-[520px]">
       <div className="space-y-3">
         {/* Info banner */}
         <div className="flex gap-2.5 px-3 py-2.5 rounded-xl border"
@@ -284,22 +301,19 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Full Name *">
-            <Input value={form.name} placeholder="Contact's name"
-              onChange={e => setForm({ ...form, name: e.target.value })} />
+            <Input value={form.name} placeholder="Contact's name" onChange={inp('name')} />
           </Field>
           <Field label="Mobile">
-            <Input value={form.mobile} placeholder="With country code"
-              onChange={e => setForm({ ...form, mobile: e.target.value })} />
+            <Input value={form.mobile} placeholder="With country code" onChange={inp('mobile')} />
           </Field>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="City *">
-            <Input value={form.city} placeholder="e.g. Dubai"
-              onChange={e => setForm({ ...form, city: e.target.value })} />
+            <Input value={form.city} placeholder="e.g. Dubai" onChange={inp('city')} />
           </Field>
           <Field label="Country">
-            <select value={form.country} onChange={e => setForm({ ...form, country: e.target.value })}
+            <select value={form.country} onChange={sel('country')}
               className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
               style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
               {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -309,14 +323,14 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Source">
-            <select value={form.source} onChange={e => setForm({ ...form, source: e.target.value })}
+            <select value={form.source} onChange={sel('source')}
               className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
               style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
               {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
           <Field label="Status">
-            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}
+            <select value={form.status} onChange={sel('status')}
               className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
               style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
               {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -324,14 +338,27 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
           </Field>
         </div>
 
+        {/* Assign To — admin only */}
+        {isAdmin && (
+          <Field label="Assign To">
+            <select value={form.owner} onChange={sel('owner')}
+              className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
+              style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+              <option value="">Me ({currentUser?.name || 'yourself'})</option>
+              {employees
+                .filter(u => u._id !== currentUser?._id)
+                .map(u => <option key={u._id} value={u._id}>{u.name} ({u.role})</option>)
+              }
+            </select>
+          </Field>
+        )}
+
         <Field label="Email (optional)">
-          <Input type="email" value={form.email} placeholder="contact@example.com"
-            onChange={e => setForm({ ...form, email: e.target.value })} />
+          <Input type="email" value={form.email} placeholder="contact@example.com" onChange={inp('email')} />
         </Field>
 
         <Field label="Remark (optional)">
-          <Textarea rows={2} value={form.remark}
-            onChange={e => setForm({ ...form, remark: e.target.value })} />
+          <Textarea rows={2} value={form.remark} onChange={inp('remark')} />
         </Field>
       </div>
 
@@ -339,7 +366,7 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button disabled={busy} onClick={save} style={{ background: '#015FDE', border: 'none', color: '#fff' }}>
           {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</>
-            : <><UserPlus size={13} className="mr-1.5" />Save as Lead</>}
+                : <><UserPlus size={13} className="mr-1.5" />Save as Lead</>}
         </Button>
       </div>
     </Modal>
@@ -477,43 +504,21 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
     finally { setSending(false); }
   };
 
-  // ── 24-hour WhatsApp session window ─────────────────────────────────────────
-  // Seed initial state from the conversation list row (sessionOpen/sessionExpiresAt
-  // are now included in listConversations response) so the banner shows instantly
-  // without waiting for the getSessionWindow API call. Then confirm with the
-  // dedicated endpoint which is authoritative.
-  const seedWindow = conv?.isLead && conv?.sessionExpiresAt
-    ? { open: conv.sessionOpen, expiresAt: conv.sessionExpiresAt, lastInboundAt: conv.lastInboundAt || null }
-    : null;
+  // ── 24-hour WhatsApp session window ────────────────────────────────────────
+  // WhatsApp only allows free-form replies within 24 hours of the last
+  // inbound message from the customer. After that only templates work.
+  const [sessionWindow, setSessionWindow] = useState(null); // { open, expiresAt, lastInboundAt }
+  const [timeLeft, setTimeLeft]           = useState('');   // live countdown string e.g. "2h 14m left"
 
-  const [sessionWindow, setSessionWindow] = useState(seedWindow);
-  const [timeLeft, setTimeLeft]           = useState('');
-
-  // Re-seed when conv changes (different lead selected)
+  // Fetch session window whenever conversation changes
   useEffect(() => {
-    if (conv?.isLead && conv?.sessionExpiresAt) {
-      setSessionWindow({ open: conv.sessionOpen, expiresAt: conv.sessionExpiresAt, lastInboundAt: conv.lastInboundAt || null });
-    } else {
-      setSessionWindow(null);
-    }
-  }, [conv?.leadId]);
-
-  // Confirm with the server — this is the source of truth since listConversations
-  // bakes in the timestamp at request time but we need live accuracy
-  useEffect(() => {
-    if (!conv?.isLead || !conv?.leadId) return;
+    if (!conv?.isLead || !conv?.leadId) { setSessionWindow(null); return; }
     whatsappApi.getSessionWindow(conv.leadId)
-      .then(d => setSessionWindow({ open: d.open, expiresAt: d.expiresAt, lastInboundAt: d.lastInboundAt }))
-      .catch(() => {
-        // Endpoint missing or errored — fall back to conv row data; if that's
-        // also absent, assume window is closed (safer than assuming it's open)
-        if (!conv?.sessionExpiresAt) {
-          setSessionWindow({ open: false, expiresAt: null, lastInboundAt: null });
-        }
-      });
+      .then(d  => setSessionWindow(d))
+      .catch(() => setSessionWindow(null));
   }, [conv?.leadId]);
 
-  // Live countdown — recalculates every 30s, flips open→false when it hits zero
+  // Recalculate countdown every 30 seconds so the timer stays live
   useEffect(() => {
     if (!sessionWindow?.expiresAt) { setTimeLeft(''); return; }
     const calc = () => {
@@ -532,52 +537,40 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
     return () => clearInterval(t);
   }, [sessionWindow?.expiresAt]);
 
-  // null = still loading initial state; treat as closed (don't optimistically allow)
-  const sessionOpen = sessionWindow?.open === true;
+  // Reply allowed only if session window is open (null = loading, optimistically allow)
+  const sessionOpen = sessionWindow === null ? true : sessionWindow.open;
   const canReply    = conv.isLead && sessionOpen;
 
+  // Session window banner shown at top of chat
   const SessionBanner = () => {
-    if (!conv?.isLead) return null;
-    // Still loading — show a neutral placeholder so layout doesn't jump
-    if (sessionWindow === null) {
-      return (
-        <div className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-medium shrink-0"
-          style={{ background: 'var(--bg-card-head)', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-card)' }}>
-          <Loader2 size={11} className="animate-spin" />
-          Checking session window…
-        </div>
-      );
-    }
+    if (!conv?.isLead || sessionWindow === null) return null;
     if (sessionWindow.open) {
       return (
         <div className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-medium shrink-0"
           style={{ background: '#f0fdf4', color: '#16a34a', borderBottom: '1px solid #bbf7d0' }}>
-          {/* Clock icon */}
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
           </svg>
-          Session window open — <strong>{timeLeft}</strong>. Free replies allowed.
+          Session window open — {timeLeft}. Free replies allowed.
         </div>
       );
     }
     return (
       <div className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-medium shrink-0"
         style={{ background: '#fef2f2', color: '#dc2626', borderBottom: '1px solid #fecaca' }}>
-        {/* Warning icon */}
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
           <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
         </svg>
         24-hour window expired
         {sessionWindow.lastInboundAt && (
-          <> — last inbound {new Date(sessionWindow.lastInboundAt).toLocaleString(undefined, { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</>
-        )}. Use <strong className="mx-0.5">Send Template</strong> to re-open.
+          <> — last reply {new Date(sessionWindow.lastInboundAt).toLocaleDateString(undefined, { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</>
+        )}. Send a template to re-open the conversation.
       </div>
     );
   };
 
   return (
-    // FIX: h-full + min-h-0 ensures this flex column is strictly bounded by its parent
-    <div className="flex flex-col h-full min-h-0" style={{ background: 'var(--bg-card)' }}>
+    <div className="flex flex-col h-full" style={{ background: 'var(--bg-card)' }}>
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b shrink-0"
         style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
@@ -607,6 +600,7 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Save as Lead — only for non-lead contacts */}
           {!conv.isLead && (
             <button onClick={() => setShowSaveLeadModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition"
@@ -616,13 +610,14 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
               <span className="hidden sm:inline">Save as Lead</span>
             </button>
           )}
+          {/* Send Template — only for leads */}
           {conv.isLead && !sessionOpen && (
-            <div className="px-4 py-3 text-[12px] text-center shrink-0"
-              style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
-              Reply window closed. Use <b>Send Template</b> to re-open the conversation.
-            </div>
-          )}
-          {canReply && (
+        <div className="px-4 py-3 text-[12px] text-center shrink-0"
+          style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
+          Reply window closed. Use <b>Send Template</b> to re-open the conversation.
+        </div>
+      )}
+      {canReply && (
             <button onClick={() => setShowTemplateModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition"
               style={{ borderColor: '#25D366', color: '#25D366' }}
@@ -637,9 +632,8 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
       {/* 24-hour session window banner */}
       <SessionBanner />
 
-      {/* FIX: flex-1 + min-h-0 — without min-h-0 the div grows to fit all content
-           and pushes the input bar off screen */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3"
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-3"
         style={{ background: 'linear-gradient(180deg, rgba(37,211,102,0.03) 0%, transparent 100%)' }}>
         {!data ? (
           <div className="flex items-center justify-center h-full">
@@ -650,12 +644,12 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
             <MessageSquare size={36} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
             <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>No messages yet</p>
             {conv.isLead && !sessionOpen && (
-              <div className="px-4 py-3 text-[12px] text-center shrink-0"
-                style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
-                Reply window closed. Use <b>Send Template</b> to re-open the conversation.
-              </div>
-            )}
-            {canReply && (
+        <div className="px-4 py-3 text-[12px] text-center shrink-0"
+          style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
+          Reply window closed. Use <b>Send Template</b> to re-open the conversation.
+        </div>
+      )}
+      {canReply && (
               <button onClick={() => setShowTemplateModal(true)}
                 className="px-4 py-2 rounded-xl text-[12px] font-semibold text-white"
                 style={{ background: '#25D366' }}>
@@ -673,7 +667,7 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
 
       {/* Attachment preview */}
       {attachment && (
-        <div className="px-4 py-2 flex items-center gap-2 border-t shrink-0"
+        <div className="px-4 py-2 flex items-center gap-2 border-t"
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
           {attachment.previewUrl
             ? <img src={attachment.previewUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />
@@ -720,29 +714,20 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
           </button>
         </div>
       ) : (
-        /* Not-a-lead OR session-closed bottom bar */
+        /* Not-a-lead bottom bar */
         <div className="px-4 py-3 border-t shrink-0"
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-[12px]" style={{ color: 'var(--text-muted)' }}>
               <AlertTriangle size={13} className="text-amber-500" />
-              {conv.isLead ? 'Reply window closed — send a template to re-open' : 'Save as lead to reply'}
+              Save as lead to reply
             </div>
-            {conv.isLead ? (
-              <button onClick={() => setShowTemplateModal(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-white transition"
-                style={{ background: '#25D366' }}>
-                <Zap size={13} />
-                Send Template
-              </button>
-            ) : (
-              <button onClick={() => setShowSaveLeadModal(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-white transition"
-                style={{ background: '#015FDE' }}>
-                <UserPlus size={13} />
-                Save as Lead
-              </button>
-            )}
+            <button onClick={() => setShowSaveLeadModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-white transition"
+              style={{ background: '#015FDE' }}>
+              <UserPlus size={13} />
+              Save as Lead
+            </button>
           </div>
         </div>
       )}
@@ -804,7 +789,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const { show } = useToast();
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState([]);
-  const [pendingContacts, setPendingContacts] = useState([]);
+  const [pendingContacts, setPendingContacts] = useState([]); // CSV numbers not yet leads
   const [templateName, setTemplateName] = useState('');
   const [variableValues, setVariableValues] = useState([]);
   const [autoFillName, setAutoFillName] = useState(true);
@@ -818,51 +803,77 @@ function BulkSendModal({ templates, onClose, onSent }) {
 
   const selectedTemplate = templates.find(t => t.name === templateName) || null;
 
-  const [templateStatuses, setTemplateStatuses] = useState({});
+  // Track which leads already received the selected template
+  const [templateStatuses, setTemplateStatuses] = useState({});  // { leadId: { sent, sentAt, status } }
   const [loadingStatuses, setLoadingStatuses] = useState(false);
-  const [excludeSent, setExcludeSent] = useState(false);
+  const [excludeSent, setExcludeSent] = useState(false); // toggle to auto-deselect already-sent leads
 
-  // Extracted fetch so it can be called both on template change AND when leads
-  // finish loading (leads load async — if user picks a template before leads
-  // arrive the old `if (name && leads.length)` guard silently skipped the fetch)
-  const fetchTemplateSentStatus = (name, leadList) => {
-    if (!name || !leadList.length) { setTemplateStatuses({}); return; }
-    setLoadingStatuses(true);
-    const allIds = leadList.map(l => String(l._id || l.id));
-    whatsappApi.getTemplateSentStatus(allIds, name)
-      .then(s => {
-        const statuses = s || {};
-        setTemplateStatuses(statuses);
-        if (excludeSent) {
-          setSelected(prev => prev.filter(id => !statuses[String(id)] || statuses[String(id)].status !== 'sent'));
-        }
-      })
-      .catch(() => setTemplateStatuses({}))
-      .finally(() => setLoadingStatuses(false));
-  };
+  // Manual count selector — how many leads to send to at once (0 = all selected)
+  const [sendCount, setSendCount] = useState(0);
+  const [countInput, setCountInput] = useState(''); // raw text in the manual input
+
+  // anyTemplateSent: true if lead has received ANY template (not just current one)
+  // Used for excludeSent when no specific template is chosen yet
+  const [anyTemplateSentIds, setAnyTemplateSentIds] = useState(new Set());
+
+  // Load "any template sent" set when modal opens
+  useEffect(() => {
+    if (!leads.length) return;
+    const allIds = leads.map(l => String(l._id || l.id));
+    // Fetch with empty templateName — server returns all template sends
+    whatsappApi.getTemplateSentStatus(allIds, '__any__')
+      .then(s => setAnyTemplateSentIds(new Set(Object.keys(s || {}))))
+      .catch(() => setAnyTemplateSentIds(new Set()));
+  }, [leads]);
 
   const onTemplateChange = name => {
     setTemplateName(name);
     const t = templates.find(t => t.name === name);
     setVariableValues(Array.from({ length: t?.variableCount || 0 }, () => ''));
-    fetchTemplateSentStatus(name, leads);
+    // Fetch sent status for all leads when template changes
+    if (name && leads.length) {
+      setLoadingStatuses(true);
+      const allIds = leads.map(l => String(l._id || l.id));
+      whatsappApi.getTemplateSentStatus(allIds, name)
+        .then(s => {
+          const statuses = s || {};
+          setTemplateStatuses(statuses);
+          // If excludeSent is on, auto-deselect leads that already received this template
+          if (excludeSent) {
+            setSelected(prev => prev.filter(id => !statuses[String(id)] || statuses[String(id)].status !== 'sent'));
+          }
+        })
+        .catch(() => setTemplateStatuses({}))
+        .finally(() => setLoadingStatuses(false));
+    } else {
+      setTemplateStatuses({});
+    }
   };
 
-  // Re-fetch when leads finish loading (handles the race where user picks a
-  // template before leadApi.list() resolves)
-  useEffect(() => {
-    if (leads.length && templateName) {
-      fetchTemplateSentStatus(templateName, leads);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads.length]);
-
+  // When excludeSent toggle changes — deselect or restore sent leads accordingly
   const onExcludeSentToggle = (checked) => {
     setExcludeSent(checked);
     if (checked) {
-      setSelected(prev => prev.filter(id => !templateStatuses[String(id)] || templateStatuses[String(id)].status !== 'sent'));
+      setSelected(prev => prev.filter(id => {
+        // If a specific template is selected, check that template's status
+        if (templateName && templateStatuses[String(id)]) {
+          return templateStatuses[String(id)].status !== 'sent';
+        }
+        // Otherwise exclude any lead that has received ANY template
+        return !anyTemplateSentIds.has(String(id));
+      }));
     }
   };
+
+  // Compute effective recipient list based on sendCount cap
+  const effectiveRecipients = (() => {
+    const base = selected.filter(id => {
+      if (!excludeSent) return true;
+      if (templateName && templateStatuses[String(id)]) return templateStatuses[String(id)].status !== 'sent';
+      return !anyTemplateSentIds.has(String(id));
+    });
+    return sendCount > 0 ? base.slice(0, sendCount) : base;
+  })();
 
   const templateSentAgo = (sentAt) => {
     if (!sentAt) return '';
@@ -951,12 +962,12 @@ function BulkSendModal({ templates, onClose, onSent }) {
   };
 
   const send = async () => {
-    if (!selected.length && !pendingContacts.length) return show('Select at least one lead or contact.', 'error');
+    if (!effectiveRecipients.length && !pendingContacts.length) return show('Select at least one lead or contact.', 'error');
     if (!templateName) return show('Select a template.', 'error');
     setBusy(true);
     try {
       const results = await whatsappApi.sendTemplate({
-        leadIds: selected,
+        leadIds: effectiveRecipients,
         contacts: pendingContacts.map(c => ({ name: c.name, mobile: c.mobile, country: c.country })),
         templateName,
         variables: variableValues.map(v => v.trim()),
@@ -976,6 +987,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
     <Modal open onClose={onClose} title="Send WhatsApp Blast" width="sm:max-w-[560px]">
       <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
 
+        {/* Template */}
         <Field label="Template">
           <select value={templateName} onChange={e => onTemplateChange(e.target.value)}
             className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
@@ -1010,6 +1022,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
           Auto-fill first variable with lead name
         </label>
 
+        {/* CSV Import row */}
         <div className="flex items-center gap-2 p-3 rounded-xl border"
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
           <div className="flex-1">
@@ -1031,6 +1044,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </label>
         </div>
 
+        {/* CSV result summary */}
         {csvResult && (
           <div className="px-3 py-2.5 rounded-xl border text-[12px] space-y-1"
             style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
@@ -1055,6 +1069,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </div>
         )}
 
+        {/* Pending CSV contacts (not yet leads) */}
         {pendingContacts.length > 0 && (
           <div>
             <p className="text-[11px] font-bold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
@@ -1077,6 +1092,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </div>
         )}
 
+        {/* Lead search + list */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
@@ -1090,15 +1106,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
             {LEAD_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-
-        {/* Loading indicator while statuses or leads are fetching */}
-        {(loadingStatuses) && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px]"
-            style={{ background: 'rgba(37,211,102,0.08)', color: '#16a34a' }}>
-            <Loader2 size={11} className="animate-spin shrink-0" />
-            Checking which leads already received this template…
-          </div>
-        )}
 
         <div className="max-h-44 overflow-y-auto rounded-xl border" style={{ borderColor: 'var(--border-card)' }}>
           {filtered.map(l => {
@@ -1147,22 +1154,50 @@ function BulkSendModal({ templates, onClose, onSent }) {
             })()}
           </span>
           <div className="flex items-center gap-2">
-            {templateName && Object.keys(templateStatuses).length > 0 && (
-              <label className="flex items-center gap-1.5 cursor-pointer select-none"
-                title="When ON, leads that already received this template are excluded from selection">
+            {/* Exclude already sent — triggers if any template sent to lead */}
+            <label className="flex items-center gap-1.5 cursor-pointer select-none"
+              title="Exclude leads that have already received any WhatsApp template">
+              <input
+                type="checkbox"
+                checked={excludeSent}
+                onChange={e => onExcludeSentToggle(e.target.checked)}
+                className="w-3.5 h-3.5 accent-[#25D366]"
+              />
+              <span className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                Exclude sent
+              </span>
+            </label>
+
+            {/* Manual count selector */}
+            <div className="flex items-center gap-1" title="Limit how many leads receive this blast">
+              <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Send to:</span>
+              <select
+                value={sendCount === 0 ? 'all' : 'custom'}
+                onChange={e => { if (e.target.value === 'all') { setSendCount(0); setCountInput(''); } else setSendCount(50); }}
+                className="rounded border px-1.5 py-0.5 text-[11px]"
+                style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+                <option value="all">All</option>
+                <option value="custom">Custom #</option>
+              </select>
+              {sendCount > 0 && (
                 <input
-                  type="checkbox"
-                  checked={excludeSent}
-                  onChange={e => onExcludeSentToggle(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-[#25D366]"
+                  type="number" min="1" max="9999"
+                  value={countInput || sendCount}
+                  onChange={e => {
+                    setCountInput(e.target.value);
+                    const n = parseInt(e.target.value, 10);
+                    if (!isNaN(n) && n > 0) setSendCount(n);
+                  }}
+                  onBlur={() => setCountInput('')}
+                  className="w-16 rounded border px-1.5 py-0.5 text-[11px] text-center"
+                  style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
+                  placeholder="100"
                 />
-                <span className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
-                  Exclude already sent
-                </span>
-              </label>
-            )}
+              )}
+            </div>
             <Button variant="outline" size="sm" onClick={() => {
               const ids = filtered.map(l => l.id || l._id);
+              // If excludeSent is on, only select leads that haven't received this template
               const toSelect = excludeSent
                 ? ids.filter(id => !templateStatuses[String(id)] || templateStatuses[String(id)].status !== 'sent')
                 : ids;
@@ -1181,7 +1216,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button disabled={busy} onClick={send} style={{ background: '#25D366', border: 'none', color: '#fff' }}>
           {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Sending…</>
-            : <><Send size={13} className="mr-1.5" />Send to {totalRecipients || '?'} recipient(s)</>}
+            : <><Send size={13} className="mr-1.5" />Send to {effectiveRecipients.length + pendingContacts.length || '?'} recipient(s){sendCount > 0 && selected.length > sendCount ? ` (capped at ${sendCount})` : ''}</>}
         </Button>
       </div>
     </Modal>
@@ -1219,16 +1254,25 @@ function ConvRow({ conv, active, onClick }) {
             {timeAgo(conv.lastSentAt || conv.lastResponseAt)}
           </span>
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-1">
           <p className="text-[12px] truncate flex-1"
             style={{ color: conv.unread ? 'var(--text-primary)' : 'var(--text-muted)' }}>
             {conv.lastResponse || conv.lastTemplate || 'No messages yet'}
           </p>
-          {conv.unread && (
-            <span className="ml-2 shrink-0 w-5 h-5 rounded-full bg-[#25D366] text-white text-[10px] font-bold flex items-center justify-center">
-              1
-            </span>
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {conv.isLead && conv.ownerName && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold truncate max-w-[70px]"
+                style={{ background: 'var(--bg-tag, #EFF6FF)', color: 'var(--primary, #015FDE)' }}
+                title={`Owner: ${conv.ownerName}`}>
+                {conv.ownerName.split(' ')[0]}
+              </span>
+            )}
+            {conv.unread && (
+              <span className="w-5 h-5 rounded-full bg-[#25D366] text-white text-[10px] font-bold flex items-center justify-center">
+                1
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </button>
@@ -1246,27 +1290,22 @@ export default function Communication() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  const [empFilter, setEmpFilter] = useState('');  // '' = all employees
 
   const [selectedConv, setSelectedConv] = useState(null);
   const [settingsModal, setSettingsModal] = useState(false);
   const [templateModal, setTemplateModal] = useState(null);
   const [bulkModal, setBulkModal] = useState(false);
 
-  // Measure own top offset → fill exactly remaining viewport height
-  // Works regardless of navbar/shell height — no need to touch Layout.jsx
-  const containerRef = useRef(null);
-  const [containerHeight, setContainerHeight] = useState(null);
+  const [empList, setEmpList] = useState([]); // for employee filter dropdown
+
+  // Load employee list for filter — admin only
   useEffect(() => {
-    const measure = () => {
-      if (containerRef.current) {
-        const top = containerRef.current.getBoundingClientRect().top;
-        setContainerHeight(window.innerHeight - top);
-      }
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, []);
+    if (!isAdmin) return;
+    userApi.list()
+      .then(list => setEmpList((list || []).filter(u => u.role === 'sales' || u.role === 'admin')))
+      .catch(() => {});
+  }, [isAdmin]);
 
   const loadAll = async () => {
     setLoading(true);
@@ -1299,6 +1338,9 @@ export default function Communication() {
     if (filter === 'unread') return c.unread;
     if (filter === 'replied') return !!c.lastResponse;
     if (filter === 'new') return !c.isLead;
+    // Employee filter — only show conversations owned by selected employee
+    if (empFilter && c.isLead && c.ownerId !== empFilter) return false;
+    if (empFilter && !c.isLead) return false; // non-lead contacts have no owner
     return true;
   });
 
@@ -1308,11 +1350,7 @@ export default function Communication() {
   if (loading) return <Spinner label="Loading Communication…" />;
 
   return (
-    <div
-      ref={containerRef}
-      className="flex flex-col overflow-hidden"
-      style={{ background: 'var(--bg-page)', height: containerHeight ? `${containerHeight}px` : '100%' }}
-    >
+    <div className="h-full flex flex-col" style={{ background: 'var(--bg-page)' }}>
       {/* Page title */}
       <div className="px-4 pt-4 pb-3 shrink-0">
         <PageTitle icon={<MessageSquare size={18} />}
@@ -1351,32 +1389,15 @@ export default function Communication() {
         </div>
       </div>
 
-      {/* FIX: flex-1 + min-h-0 — this is the critical chain link.
-           Without min-h-0, flex-1 children default to min-height:auto and
-           the container expands past the viewport instead of scrolling */}
-      <div className="flex-1 min-h-0 flex overflow-hidden mx-4 mb-4 rounded-2xl border shadow-sm"
-        style={{ borderColor: 'var(--border-card)', alignItems: 'stretch' }}>
+      {/* Main layout */}
+      <div className="flex-1 flex overflow-hidden mx-4 mb-4 rounded-2xl border shadow-sm"
+        style={{ borderColor: 'var(--border-card)' }}>
 
-        {/* LEFT SIDEBAR
-             - Fixed width on desktop (280px / 320px lg)
-             - Full height of parent, split into 3 fixed sections:
-               1. Search + filter header  — shrink-0, never scrolls
-               2. Conversation list       — flex-1, scrolls independently
-               3. Templates panel         — fixed 180px, scrolls independently
-             This means no matter how many leads or templates, the sidebar
-             stays the same height as the chat panel beside it. */}
-        <div
-          className={`border-r shrink-0 sm:w-[280px] lg:w-[320px] ${selectedConv ? 'hidden sm:flex' : 'flex w-full'}`}
-          style={{
-            borderColor: 'var(--border-card)',
-            background: 'var(--bg-card)',
-            flexDirection: 'column',   /* always column regardless of Tailwind order */
-            overflow: 'hidden',         /* hard clip — nothing escapes this box */
-            minHeight: 0,               /* lets flex-1 children shrink below content size */
-            alignSelf: 'stretch',       /* fills the full height of the flex row */
-          }}>
+        {/* LEFT SIDEBAR */}
+        <div className={`flex flex-col border-r shrink-0 ${selectedConv ? 'hidden sm:flex' : 'flex'} w-full sm:w-[300px] lg:w-[340px]`}
+          style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)' }}>
 
-          {/* ① Search + filter — fixed, never grows */}
+          {/* Sidebar header */}
           <div className="px-3 py-3 border-b shrink-0 space-y-2"
             style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
             <div className="relative">
@@ -1404,10 +1425,35 @@ export default function Communication() {
                 </button>
               ))}
             </div>
+
+            {/* Employee filter — admin only */}
+            {isAdmin && empList.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Users size={11} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                <select
+                  value={empFilter}
+                  onChange={e => setEmpFilter(e.target.value)}
+                  className="flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium"
+                  style={{ background: 'var(--bg-input)', color: empFilter ? 'var(--text-primary)' : 'var(--text-muted)', borderColor: empFilter ? '#25D366' : 'var(--border)' }}>
+                  <option value="">All Employees</option>
+                  {empList.map(u => (
+                    <option key={u._id} value={u._id}>
+                      {u.name} {u.role === 'admin' ? '(Admin)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {empFilter && (
+                  <button onClick={() => setEmpFilter('')}
+                    className="text-[10px] px-1.5 py-1 rounded font-bold"
+                    style={{ color: 'var(--text-muted)' }}
+                    title="Clear filter">✕</button>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* ② Conversation list — fixed height showing ~7 rows, scrolls for more */}
-          <div className="overflow-y-auto" style={{ height: '448px', minHeight: '448px', maxHeight: '448px' }}>
+          {/* Conversation list */}
+          <div className="flex-1 overflow-y-auto">
             {filteredConvs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 p-6 opacity-60">
                 <MessageSquare size={32} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
@@ -1425,13 +1471,10 @@ export default function Communication() {
             )}
           </div>
 
-          {/* ③ Templates panel — fixed 180px tall, scrolls its own list
-               Never grows, never shrinks the conversation list above it */}
+          {/* Templates panel */}
           {isAdmin && (
-            <div className="border-t flex flex-col overflow-hidden"
-              style={{ borderColor: 'var(--border-card)', height: '180px', minHeight: '180px', maxHeight: '180px' }}>
-              <div className="px-3 py-2 flex items-center justify-between shrink-0"
-                style={{ borderBottom: '1px solid var(--border-card)' }}>
+            <div className="border-t shrink-0" style={{ borderColor: 'var(--border-card)' }}>
+              <div className="px-3 py-2.5 flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                   Templates ({templates.length})
                 </span>
@@ -1441,7 +1484,7 @@ export default function Communication() {
                   <Plus size={14} />
                 </button>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-1.5">
+              <div className="max-h-36 overflow-y-auto px-3 pb-3 space-y-1.5">
                 {templates.length === 0 ? (
                   <p className="text-[11px] italic" style={{ color: 'var(--text-muted)' }}>No templates — click + to add</p>
                 ) : templates.map(t => (
@@ -1466,8 +1509,8 @@ export default function Communication() {
           )}
         </div>
 
-        {/* RIGHT panel — always shown on sm+; on mobile, hidden when no conv selected */}
-        <div className={`flex-1 min-h-0 overflow-hidden flex-col sm:flex ${selectedConv ? 'flex' : 'hidden'}`}>
+        {/* RIGHT — CHAT or empty state */}
+        <div className={`flex-1 overflow-hidden ${selectedConv ? 'flex' : 'hidden sm:flex'} flex-col`}>
           {selectedConv ? (
             <ChatWindow
               key={selectedConv.key}
