@@ -346,8 +346,8 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
               style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
               <option value="">Me ({currentUser?.name || 'yourself'})</option>
               {employees
-                .filter(u => u._id !== currentUser?._id)
-                .map(u => <option key={u._id} value={u._id}>{u.name} ({u.role})</option>)
+                .filter(u => (u.id || u._id) !== (currentUser?.id || currentUser?._id))
+                .map(u => <option key={u.id || u._id} value={u.id || u._id}>{u.name} ({u.role})</option>)
               }
             </select>
           </Field>
@@ -1141,73 +1141,106 @@ function BulkSendModal({ templates, onClose, onSent }) {
           )}
         </div>
 
-        <div className="flex items-center justify-between">
-          <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-            {selected.length} lead(s){pendingContacts.length ? ` + ${pendingContacts.length} CSV contact(s)` : ''} selected
-            {templateName && Object.keys(templateStatuses).length > 0 && (() => {
+        {/* ── Bottom controls bar ── */}
+        <div className="space-y-2.5 pt-1">
+
+          {/* Selection summary */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[12px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+              <span style={{ color: 'var(--text-primary)' }}>{selected.length}</span> lead(s) selected
+              {pendingContacts.length > 0 && (
+                <span className="ml-1" style={{ color: 'var(--text-muted)' }}>
+                  + {pendingContacts.length} CSV contact(s)
+                </span>
+              )}
+            </span>
+            {templateName && (() => {
               const alreadyCount = selected.filter(id => templateStatuses[String(id)]?.status === 'sent').length;
               return alreadyCount > 0 ? (
-                <span className="ml-2 text-[11px] font-medium" style={{ color: '#d97706' }}>
-                  ({alreadyCount} already received this template)
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                  style={{ background: '#FEF3C7', color: '#D97706' }}>
+                  ⚠ {alreadyCount} already received this template
                 </span>
               ) : null;
             })()}
-          </span>
-          <div className="flex items-center gap-2">
-            {/* Exclude already sent — triggers if any template sent to lead */}
-            <label className="flex items-center gap-1.5 cursor-pointer select-none"
+            {sendCount > 0 && (
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: '#EFF6FF', color: '#015FDE' }}>
+                Capped at {sendCount} — sending to {Math.min(sendCount, effectiveRecipients.length)}
+              </span>
+            )}
+          </div>
+
+          {/* Controls row */}
+          <div className="flex flex-wrap items-center gap-2">
+
+            {/* Exclude sent toggle */}
+            <label className="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none transition hover:bg-black/[0.02]"
+              style={{ borderColor: excludeSent ? '#25D366' : 'var(--border)', background: excludeSent ? 'rgba(37,211,102,0.06)' : 'var(--bg-input)' }}
               title="Exclude leads that have already received any WhatsApp template">
               <input
                 type="checkbox"
                 checked={excludeSent}
                 onChange={e => onExcludeSentToggle(e.target.checked)}
-                className="w-3.5 h-3.5 accent-[#25D366]"
+                className="w-4 h-4 accent-[#25D366]"
               />
-              <span className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
-                Exclude sent
+              <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: excludeSent ? '#25D366' : 'var(--text-secondary)' }}>
+                Exclude already sent
               </span>
             </label>
 
-            {/* Manual count selector */}
-            <div className="flex items-center gap-1" title="Limit how many leads receive this blast">
-              <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Send to:</span>
+            {/* Custom count selector */}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border"
+              style={{ borderColor: sendCount > 0 ? '#015FDE' : 'var(--border)', background: sendCount > 0 ? '#EFF6FF' : 'var(--bg-input)' }}>
+              <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                Limit:
+              </span>
               <select
                 value={sendCount === 0 ? 'all' : 'custom'}
-                onChange={e => { if (e.target.value === 'all') { setSendCount(0); setCountInput(''); } else setSendCount(50); }}
-                className="rounded border px-1.5 py-0.5 text-[11px]"
-                style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
-                <option value="all">All</option>
-                <option value="custom">Custom #</option>
+                onChange={e => {
+                  if (e.target.value === 'all') { setSendCount(0); setCountInput(''); }
+                  else { setSendCount(50); setCountInput('50'); }
+                }}
+                className="rounded border px-2 py-1 text-[12px] font-medium"
+                style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
+                <option value="all">All selected</option>
+                <option value="custom">Custom count</option>
               </select>
               {sendCount > 0 && (
                 <input
                   type="number" min="1" max="9999"
-                  value={countInput || sendCount}
+                  value={countInput}
+                  placeholder={String(sendCount)}
                   onChange={e => {
-                    setCountInput(e.target.value);
-                    const n = parseInt(e.target.value, 10);
+                    const raw = e.target.value;
+                    setCountInput(raw);
+                    const n = parseInt(raw, 10);
                     if (!isNaN(n) && n > 0) setSendCount(n);
                   }}
-                  onBlur={() => setCountInput('')}
-                  className="w-16 rounded border px-1.5 py-0.5 text-[11px] text-center"
-                  style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
-                  placeholder="100"
+                  onFocus={e => e.target.select()}
+                  className="w-20 rounded border px-2 py-1 text-[12px] font-bold text-center"
+                  style={{ background: 'var(--bg-card)', color: '#015FDE', borderColor: '#015FDE' }}
                 />
               )}
             </div>
-            <Button variant="outline" size="sm" onClick={() => {
-              const ids = filtered.map(l => l.id || l._id);
-              // If excludeSent is on, only select leads that haven't received this template
-              const toSelect = excludeSent
-                ? ids.filter(id => !templateStatuses[String(id)] || templateStatuses[String(id)].status !== 'sent')
-                : ids;
-              setSelected(toSelect);
-            }}>
-              Select all
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => { setSelected([]); setPendingContacts([]); setCsvResult(null); }}>
-              Clear
-            </Button>
+
+            <div className="flex items-center gap-1.5 ml-auto">
+              <Button variant="outline" size="sm" onClick={() => {
+                const ids = filtered.map(l => l.id || l._id);
+                const toSelect = excludeSent
+                  ? ids.filter(id => {
+                      if (templateName && templateStatuses[String(id)]) return templateStatuses[String(id)].status !== 'sent';
+                      return !anyTemplateSentIds.has(String(id));
+                    })
+                  : ids;
+                setSelected(toSelect);
+              }}>
+                Select all
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => { setSelected([]); setPendingContacts([]); setCsvResult(null); }}>
+                Clear
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -1216,7 +1249,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button disabled={busy} onClick={send} style={{ background: '#25D366', border: 'none', color: '#fff' }}>
           {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Sending…</>
-            : <><Send size={13} className="mr-1.5" />Send to {effectiveRecipients.length + pendingContacts.length || '?'} recipient(s){sendCount > 0 && selected.length > sendCount ? ` (capped at ${sendCount})` : ''}</>}
+            : <><Send size={13} className="mr-1.5" />Send to {(Math.min(effectiveRecipients.length, sendCount > 0 ? sendCount : Infinity) + pendingContacts.length) || '?'} recipient(s)</>}
         </Button>
       </div>
     </Modal>
@@ -1303,7 +1336,7 @@ export default function Communication() {
   useEffect(() => {
     if (!isAdmin) return;
     userApi.list()
-      .then(list => setEmpList((list || []).filter(u => u.role === 'sales' || u.role === 'admin')))
+      .then(list => setEmpList((list || []).filter(u => (u.role === 'sales' || u.role === 'admin') && (u.id || u._id))))
       .catch(() => {});
   }, [isAdmin]);
 
@@ -1339,7 +1372,7 @@ export default function Communication() {
     if (filter === 'replied') return !!c.lastResponse;
     if (filter === 'new') return !c.isLead;
     // Employee filter — only show conversations owned by selected employee
-    if (empFilter && c.isLead && c.ownerId !== empFilter) return false;
+    if (empFilter && c.isLead && String(c.ownerId || '') !== String(empFilter)) return false;
     if (empFilter && !c.isLead) return false; // non-lead contacts have no owner
     return true;
   });
@@ -1437,7 +1470,7 @@ export default function Communication() {
                   style={{ background: 'var(--bg-input)', color: empFilter ? 'var(--text-primary)' : 'var(--text-muted)', borderColor: empFilter ? '#25D366' : 'var(--border)' }}>
                   <option value="">All Employees</option>
                   {empList.map(u => (
-                    <option key={u._id} value={u._id}>
+                    <option key={u.id || u._id} value={u.id || u._id}>
                       {u.name} {u.role === 'admin' ? '(Admin)' : ''}
                     </option>
                   ))}
