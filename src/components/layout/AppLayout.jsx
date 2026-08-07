@@ -578,7 +578,7 @@ export default function AppLayout({ children }) {
           </div>
         )}
  
-        <main className="min-w-0 flex-1 overflow-hidden p-3 sm:p-5" style={{ height: 0 }}>
+        <main className="min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5">
           {children}
           <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-3 pb-1 text-[11px]" style={{ borderColor: 'var(--header-border)', color: 'var(--text-muted)' }}>
             <span>&copy; {new Date().getFullYear()} SkyUp CRM Software</span>
