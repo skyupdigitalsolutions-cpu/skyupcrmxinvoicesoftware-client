@@ -165,9 +165,14 @@ function NotificationBell() {
  
   const loadCount = async () => {
     try {
-      // Bell only counts WhatsApp reply notifications — all other types
-      // (lead edits, follow-ups, cheques, subscriptions) are filtered out.
-      const { notifications } = await notificationApi.list({ limit: 200 });
+      // Use lightweight unread-count endpoint for polling — avoids fetching
+      // all notifications every 15s which was causing ~975ms queries in logs.
+      // Note: this counts ALL unread types, so we fetch the full list to
+      // get the accurate WhatsApp-only count, but only when count changes.
+      const total = await notificationApi.unreadCount();
+      if (total === prevUnread.current) return; // no change — skip full fetch
+      // Count changed — fetch list to get WhatsApp-only count
+      const { notifications } = await notificationApi.list({ limit: 50, unread: 1 });
       const waOnly = (notifications || []).filter(
         n => !n.read && (n.type === 'whatsapp-reply' || n.type === 'whatsapp-reply-unlinked')
       );
@@ -181,8 +186,8 @@ function NotificationBell() {
   const loadList = async () => {
     setLoading(true);
     try {
-      // Show only WhatsApp reply notifications in the bell dropdown
-      const { notifications } = await notificationApi.list({ limit: 100 });
+      // Fetch recent notifications and filter to WhatsApp types only
+      const { notifications } = await notificationApi.list({ limit: 50 });
       const waItems = (notifications || []).filter(
         n => n.type === 'whatsapp-reply' || n.type === 'whatsapp-reply-unlinked'
       );
@@ -529,7 +534,7 @@ export default function AppLayout({ children }) {
         </div>
       </header>
  
-      <div className="flex min-h-[calc(100vh-52px)] items-stretch">
+      <div className="flex h-[calc(100vh-52px)] items-stretch overflow-hidden">
         {/* ── Desktop sidebar ────────────────────────────────────────────── */}
         <aside
           className="hidden w-[200px] flex-shrink-0 self-stretch border-r lg:block"
@@ -578,7 +583,7 @@ export default function AppLayout({ children }) {
           </div>
         )}
  
-        <main className="min-w-0 flex-1 overflow-x-hidden p-3 sm:p-5">
+        <main className="min-w-0 flex-1 overflow-y-auto p-3 sm:p-5" style={{ minHeight: 0 }}>
           {children}
           <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-3 pb-1 text-[11px]" style={{ borderColor: 'var(--header-border)', color: 'var(--text-muted)' }}>
             <span>&copy; {new Date().getFullYear()} SkyUp CRM Software</span>
