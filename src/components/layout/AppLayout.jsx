@@ -96,7 +96,7 @@ function DevCredit() {
 // Notification bell: polls unread count, opens a dropdown with the latest
 // notifications, lets the user mark one / all read, and deep-links to the lead.
 // Hidden for developers (who have no company-scoped notifications).
-function NotificationBell() {
+function NotificationBell({ onWaUnreadChange }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
@@ -178,6 +178,7 @@ function NotificationBell() {
       );
       const n = waOnly.length;
       setUnread(n);
+      onWaUnreadChange?.(n);  // sync to nav badge
       if (prevUnread.current !== null && n > prevUnread.current) playChime();
       prevUnread.current = n;
     } catch { /* ignore */ }
@@ -194,6 +195,7 @@ function NotificationBell() {
       setItems(waItems);
       const u = waItems.filter(n => !n.read).length;
       setUnread(u);
+      onWaUnreadChange?.(u);
       prevUnread.current = u;
     } catch { /* ignore */ }
     finally { setLoading(false); }
@@ -231,6 +233,7 @@ function NotificationBell() {
     try { await notificationApi.markAllRead(); } catch { /* ignore */ }
     setItems((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnread(0);
+    onWaUnreadChange?.(0);
     prevUnread.current = 0;
   };
  
@@ -416,7 +419,7 @@ function ThemeToggle() {
   );
 }
  
-function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout, chatUnread = 0 }) {
+function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout, chatUnread = 0, waUnread = 0 }) {
   const items = isDeveloper ? DEV_NAV : NAV.filter((n) => !n.admin || isAdmin);
   return (
     <>
@@ -424,6 +427,7 @@ function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout, chatUnread
       {items.map((n) => {
         const Icon = n.icon;
         const showChatBadge = n.to === '/chat' && chatUnread > 0;
+        const showWaBadge   = n.to === '/communication' && waUnread > 0;
         return (
           <NavLink
             key={n.to}
@@ -442,6 +446,14 @@ function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout, chatUnread
           >
             <Icon size={15} className="shrink-0" />
             <span className="flex-1">{n.label}</span>
+            {showWaBadge && (
+              <span
+                className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
+                style={{ background: '#25D366' }}
+              >
+                {waUnread > 99 ? '99+' : waUnread}
+              </span>
+            )}
             {showChatBadge && (
               <span
                 className="flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
@@ -473,6 +485,7 @@ export default function AppLayout({ children }) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [chatUnread, setChatUnread] = useState(0);
+  const [waUnread, setWaUnread] = useState(0);   // WhatsApp reply unread count
   const [showTerms, setShowTerms] = useState(false);
  
   // Poll chat unread total for the sidebar badge (skipped for developers, who
@@ -524,7 +537,7 @@ export default function AppLayout({ children }) {
  
         <div className="flex items-center gap-2 sm:gap-3">
           {!isAdmin && !isDeveloper && <AttendanceWidget />}
-          {!isDeveloper && <NotificationBell />}
+          {!isDeveloper && <NotificationBell onWaUnreadChange={setWaUnread} />}
           <ThemeToggle />
           {/* User label — hidden on the smallest screens to save room */}
           <div className="hidden text-right text-[11px] sm:block" style={{ color: 'var(--text-secondary)' }}>
@@ -542,7 +555,7 @@ export default function AppLayout({ children }) {
         >
           <div className="sticky top-[52px] flex h-[calc(100vh-52px)] flex-col py-4">
             <div className="flex-1 overflow-y-auto">
-              <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} chatUnread={chatUnread} />
+              <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} chatUnread={chatUnread} waUnread={waUnread} />
             </div>
             <DevCredit />
           </div>
@@ -576,16 +589,17 @@ export default function AppLayout({ children }) {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto py-2">
-                <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} onNavigate={() => setMobileOpen(false)} chatUnread={chatUnread} />
+                <SidebarNav isAdmin={isAdmin} isDeveloper={isDeveloper} handleLogout={handleLogout} onNavigate={() => setMobileOpen(false)} chatUnread={chatUnread} waUnread={waUnread} />
               </div>
               <DevCredit />
             </aside>
           </div>
         )}
  
-        <main className="min-w-0 flex-1 overflow-y-auto p-3 sm:p-5" style={{ minHeight: 0 }}>
-          {children}
-          <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-3 pb-1 text-[11px]" style={{ borderColor: 'var(--header-border)', color: 'var(--text-muted)' }}>
+        <main className="min-w-0 flex-1 overflow-hidden p-3 sm:p-5" style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {children}
+            <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-3 pb-1 text-[11px]" style={{ borderColor: 'var(--header-border)', color: 'var(--text-muted)' }}>
             <span>&copy; {new Date().getFullYear()} SkyUp CRM Software</span>
             <span aria-hidden>·</span>
             <button
@@ -596,7 +610,8 @@ export default function AppLayout({ children }) {
             >
               Terms &amp; Conditions
             </button>
-          </footer>
+            </footer>
+          </div>
         </main>
       </div>
       <TermsViewerModal open={showTerms} onClose={() => setShowTerms(false)} />
