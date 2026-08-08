@@ -448,7 +448,15 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
         const d = await whatsappApi.getThreadByNumber(conv.contactNumber);
         setData(d);
       }
-    } catch (e) { show(apiError(e), 'error'); }
+    } catch (e) {
+      if (e?.response?.status === 404) {
+        // Lead was deleted — show empty state instead of infinite spinner + toast
+        setData({ messages: [], lead: null, deleted: true });
+      } else {
+        show(apiError(e), 'error');
+        setData({ messages: [], lead: null }); // unblock spinner on any error
+      }
+    }
   }, [conv]);
 
   useEffect(() => { load(); }, [load]);
@@ -514,8 +522,8 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
   useEffect(() => {
     if (!conv?.isLead || !conv?.leadId) { setSessionWindow(null); return; }
     whatsappApi.getSessionWindow(conv.leadId)
-      .then(d  => setSessionWindow(d))
-      .catch(() => setSessionWindow(null));
+      .then(d => setSessionWindow(d))
+      .catch(() => setSessionWindow({ open: false, expiresAt: null, lastInboundAt: null }));
   }, [conv?.leadId]);
 
   // Recalculate countdown every 30 seconds so the timer stays live
@@ -638,6 +646,11 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
         {!data ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 size={20} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
+          </div>
+        ) : data.deleted ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 opacity-50">
+            <AlertTriangle size={32} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
+            <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>This lead no longer exists</p>
           </div>
         ) : data.messages?.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 opacity-60">
