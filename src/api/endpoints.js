@@ -32,9 +32,12 @@ export const whatsappApi = {
     getThread: (leadId) => api.get(`/whatsapp/thread/${leadId}`).then((r) => r.data),
     getThreadByNumber: (contactNumber) => api.get(`/whatsapp/thread-by-number/${encodeURIComponent(contactNumber)}`).then((r) => r.data),
     relinkContact: (body) => api.post('/whatsapp/relink-contact', body).then((r) => r.data),
+    // Returns { open, expiresAt, lastInboundAt } for the 24-hour session window
     getSessionWindow: (leadId) => api.get(`/whatsapp/session-window/${leadId}`).then((r) => r.data),
+    // Returns map of { [leadId]: { status, sentAt, templateName } } for given leadIds + templateName
+    // Pass templateName='__any__' to get status for any template ever sent
     getTemplateSentStatus: (leadIds, templateName) =>
-        api.get('/whatsapp/template-status', { params: { leadIds: leadIds.join(','), templateName } }).then((r) => r.data.statuses),
+        api.post('/whatsapp/template-sent-status', { leadIds, templateName }).then((r) => r.data.statuses),
 };
 
 export const chequeApi = {
