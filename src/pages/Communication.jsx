@@ -825,22 +825,23 @@ function BulkSendModal({ templates, onClose, onSent }) {
 
   // anyTemplateSent: true if lead has received ANY template (not just current one)
   // Used for excludeSent when no specific template is chosen yet
-  const [anyTemplateSentIds, setAnyTemplateSentIds] = useState(new Set());
+  // Map of leadId → { templateName, sentAt, status } for any template ever sent
+  const [anyTemplateSentMap, setAnyTemplateSentMap] = useState({});
 
-  // Load "any template sent" set when modal opens — auto-deselect if excludeSent on
+  // Load "any template sent" map when modal opens — auto-deselect if excludeSent on
   useEffect(() => {
     if (!leads.length) return;
     const allIds = leads.map(l => String(l._id || l.id));
     whatsappApi.getTemplateSentStatus(allIds, '__any__')
       .then(s => {
-        const sentIds = new Set(Object.keys(s || {}));
-        setAnyTemplateSentIds(sentIds);
+        const statuses = s || {};
+        setAnyTemplateSentMap(statuses);
         // Auto-deselect leads that already received any template
         if (excludeSent) {
-          setSelected(prev => prev.filter(id => !sentIds.has(String(id))));
+          setSelected(prev => prev.filter(id => !statuses[String(id)]));
         }
       })
-      .catch(() => setAnyTemplateSentIds(new Set()));
+      .catch(() => setAnyTemplateSentMap({}));
   }, [leads]);
 
   const onTemplateChange = name => {
@@ -857,7 +858,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
           setTemplateStatuses(statuses);
           // If excludeSent is on, auto-deselect leads that received ANY template
           if (excludeSent) {
-            setSelected(prev => prev.filter(id => !anyTemplateSentIds.has(String(id))));
+            setSelected(prev => prev.filter(id => !anyTemplateSentMap[String(id)]));
           }
         })
         .catch(() => setTemplateStatuses({}))
@@ -873,7 +874,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
     if (checked) {
       // Always exclude leads that received ANY template — consistent behaviour
       // regardless of which specific template is currently selected.
-      setSelected(prev => prev.filter(id => !anyTemplateSentIds.has(String(id))));
+      setSelected(prev => prev.filter(id => !anyTemplateSentMap[String(id)]));
     }
   };
 
@@ -883,7 +884,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const effectiveRecipients = (() => {
     const base = selected.filter(id => {
       if (!excludeSent) return true;
-      return !anyTemplateSentIds.has(String(id));
+      return !anyTemplateSentMap[String(id)];
     });
     return sendCount > 0 ? base.slice(0, sendCount) : base;
   })();
@@ -1128,8 +1129,8 @@ function BulkSendModal({ templates, onClose, onSent }) {
             const tStatus = templateName ? templateStatuses[String(id)] : null;
             const alreadySent = !!tStatus;
             const sentOk = alreadySent && tStatus.status === 'sent';
-            // Always use anyTemplateSentIds for exclude — same behaviour for all templates
-            const excludedByAny = excludeSent && anyTemplateSentIds.has(String(id));
+            // Always use anyTemplateSentMap for exclude — same behaviour for all templates
+            const excludedByAny = excludeSent && !!anyTemplateSentMap[String(id)];
             return (
               <label key={id}
                 className={`flex items-center gap-2.5 px-3 py-2.5 border-b last:border-0 transition ${(excludeSent && sentOk) || excludedByAny ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-[rgba(0,0,0,0.02)]'}`}
@@ -1142,12 +1143,19 @@ function BulkSendModal({ templates, onClose, onSent }) {
                 />
                 <div className="flex flex-col min-w-0 flex-1">
                   <span className="font-medium text-[13px]" style={{ color: 'var(--text-primary)' }}>{l.name}</span>
-                  {alreadySent && (
-                    <span className="text-[10px] font-medium mt-0.5"
-                      style={{ color: sentOk ? '#16a34a' : '#dc2626' }}>
-                      {sentOk ? `✓ Template sent ${templateSentAgo(tStatus.sentAt)}` : `✗ Last send failed ${templateSentAgo(tStatus.sentAt)}`}
-                    </span>
-                  )}
+                  {(() => {
+                    // Show specific template status if selected, otherwise show last-sent-any info
+                    const display = tStatus || anyTemplateSentMap[String(id)];
+                    if (!display) return null;
+                    const ok = display.status === 'sent';
+                    return (
+                      <span className="text-[10px] font-medium mt-0.5" style={{ color: ok ? '#16a34a' : '#dc2626' }}>
+                        {ok
+                          ? `✓ ${display.templateName || 'Template'} · ${templateSentAgo(display.sentAt)}`
+                          : `✗ ${display.templateName || 'Template'} failed · ${templateSentAgo(display.sentAt)}`}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <span className="text-[11px] font-mono shrink-0" style={{ color: 'var(--text-muted)' }}>{l.mobile}</span>
               </label>
@@ -1246,7 +1254,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
                 const ids = filtered.map(l => l.id || l._id);
                 // Always exclude any-template-sent leads when excludeSent is on
                 const toSelect = excludeSent
-                  ? ids.filter(id => !anyTemplateSentIds.has(String(id)))
+                  ? ids.filter(id => !anyTemplateSentMap[String(id)])
                   : ids;
                 setSelected(toSelect);
               }}>
