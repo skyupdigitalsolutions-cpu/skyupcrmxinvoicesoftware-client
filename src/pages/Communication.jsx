@@ -855,9 +855,9 @@ function BulkSendModal({ templates, onClose, onSent }) {
         .then(s => {
           const statuses = s || {};
           setTemplateStatuses(statuses);
-          // If excludeSent is on, auto-deselect leads that already received this template
+          // If excludeSent is on, auto-deselect leads that received ANY template
           if (excludeSent) {
-            setSelected(prev => prev.filter(id => !statuses[String(id)] || statuses[String(id)].status !== 'sent'));
+            setSelected(prev => prev.filter(id => !anyTemplateSentIds.has(String(id))));
           }
         })
         .catch(() => setTemplateStatuses({}))
@@ -871,22 +871,18 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const onExcludeSentToggle = (checked) => {
     setExcludeSent(checked);
     if (checked) {
-      setSelected(prev => prev.filter(id => {
-        // If a specific template is selected, check that template's status
-        if (templateName && templateStatuses[String(id)]) {
-          return templateStatuses[String(id)].status !== 'sent';
-        }
-        // Otherwise exclude any lead that has received ANY template
-        return !anyTemplateSentIds.has(String(id));
-      }));
+      // Always exclude leads that received ANY template — consistent behaviour
+      // regardless of which specific template is currently selected.
+      setSelected(prev => prev.filter(id => !anyTemplateSentIds.has(String(id))));
     }
   };
 
   // Compute effective recipient list based on sendCount cap
+  // effectiveRecipients: always excludes leads that received ANY template when
+  // excludeSent is on — regardless of which specific template is currently selected.
   const effectiveRecipients = (() => {
     const base = selected.filter(id => {
       if (!excludeSent) return true;
-      if (templateName && templateStatuses[String(id)]) return templateStatuses[String(id)].status !== 'sent';
       return !anyTemplateSentIds.has(String(id));
     });
     return sendCount > 0 ? base.slice(0, sendCount) : base;
@@ -905,6 +901,8 @@ function BulkSendModal({ templates, onClose, onSent }) {
   };
 
   const filtered = leads.filter(l => {
+    // Skip leads with no mobile — they can't receive WhatsApp messages
+    if (!l.mobile || !String(l.mobile).replace(/\D/g, '')) return false;
     const ms = !search.trim() || (l.name || '').toLowerCase().includes(search.toLowerCase()) || phoneSearchMatches(l.mobile, search);
     const mf = !stageFilter || leadStageOf(l) === stageFilter;
     return ms && mf;
@@ -1130,8 +1128,8 @@ function BulkSendModal({ templates, onClose, onSent }) {
             const tStatus = templateName ? templateStatuses[String(id)] : null;
             const alreadySent = !!tStatus;
             const sentOk = alreadySent && tStatus.status === 'sent';
-            // When no specific template selected, use anyTemplateSentIds for exclude logic
-            const excludedByAny = excludeSent && !templateName && anyTemplateSentIds.has(String(id));
+            // Always use anyTemplateSentIds for exclude — same behaviour for all templates
+            const excludedByAny = excludeSent && anyTemplateSentIds.has(String(id));
             return (
               <label key={id}
                 className={`flex items-center gap-2.5 px-3 py-2.5 border-b last:border-0 transition ${(excludeSent && sentOk) || excludedByAny ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-[rgba(0,0,0,0.02)]'}`}
@@ -1246,11 +1244,9 @@ function BulkSendModal({ templates, onClose, onSent }) {
             <div className="flex items-center gap-1.5 ml-auto">
               <Button variant="outline" size="sm" onClick={() => {
                 const ids = filtered.map(l => l.id || l._id);
+                // Always exclude any-template-sent leads when excludeSent is on
                 const toSelect = excludeSent
-                  ? ids.filter(id => {
-                      if (templateName && templateStatuses[String(id)]) return templateStatuses[String(id)].status !== 'sent';
-                      return !anyTemplateSentIds.has(String(id));
-                    })
+                  ? ids.filter(id => !anyTemplateSentIds.has(String(id)))
                   : ids;
                 setSelected(toSelect);
               }}>
