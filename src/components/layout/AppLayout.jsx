@@ -172,7 +172,9 @@ function NotificationBell({ onWaUnreadChange }) {
         n => !n.read && (n.type === 'whatsapp-reply' || n.type === 'whatsapp-reply-unlinked')
       );
       const n = waOnly.length;
-      if (n === prevUnread.current) return; // no change — skip re-render
+      // Always update on first load (prevUnread.current === null)
+      // Skip re-render only on subsequent polls with no change
+      if (prevUnread.current !== null && n === prevUnread.current) return;
       setUnread(n);
       onWaUnreadChange?.(n);  // sync to nav badge
       if (prevUnread.current !== null && n > prevUnread.current) playChime();
