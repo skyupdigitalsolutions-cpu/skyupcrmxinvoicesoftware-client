@@ -1385,6 +1385,16 @@ export default function Communication() {
 
   useEffect(() => { loadAll(); }, []);
 
+  // Auto-refresh conversation list every 15s so new replies and green dots
+  // appear without needing a manual Refresh click.
+  useEffect(() => {
+    const t = setInterval(() => {
+      // Only refresh if no conversation is actively open (avoids disrupting chat)
+      loadAll();
+    }, 15000);
+    return () => clearInterval(t);
+  }, []);
+
   const removeTemplate = async t => {
     if (!confirm(`Delete template "${t.name}"?`)) return;
     try { await whatsappApi.deleteTemplate(t.id); show('Deleted.', 'success'); loadAll(); }
