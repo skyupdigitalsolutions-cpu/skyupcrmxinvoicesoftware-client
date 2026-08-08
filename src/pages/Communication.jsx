@@ -618,18 +618,12 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
               <span className="hidden sm:inline">Save as Lead</span>
             </button>
           )}
-          {/* Send Template — only for leads */}
-          {conv.isLead && !sessionOpen && (
-        <div className="px-4 py-3 text-[12px] text-center shrink-0"
-          style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
-          Reply window closed. Use <b>Send Template</b> to re-open the conversation.
-        </div>
-      )}
-      {canReply && (
+          {/* Template button — always shown for leads so it's accessible even when window is closed */}
+          {conv.isLead && (
             <button onClick={() => setShowTemplateModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition"
               style={{ borderColor: '#25D366', color: '#25D366' }}
-              title="Send a template message">
+              title={sessionOpen ? 'Send a template message' : 'Session window closed — send a template to re-open'}>
               <Zap size={12} />
               <span className="hidden sm:inline">Template</span>
             </button>
@@ -656,19 +650,11 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
           <div className="flex flex-col items-center justify-center h-full gap-3 opacity-60">
             <MessageSquare size={36} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
             <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>No messages yet</p>
-            {conv.isLead && !sessionOpen && (
-        <div className="px-4 py-3 text-[12px] text-center shrink-0"
-          style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
-          Reply window closed. Use <b>Send Template</b> to re-open the conversation.
-        </div>
-      )}
-      {canReply && (
-              <button onClick={() => setShowTemplateModal(true)}
-                className="px-4 py-2 rounded-xl text-[12px] font-semibold text-white"
-                style={{ background: '#25D366' }}>
-                Send a template to start
-              </button>
-            )}
+            <button onClick={() => setShowTemplateModal(true)}
+              className="px-4 py-2 rounded-xl text-[12px] font-semibold text-white"
+              style={{ background: '#25D366' }}>
+              Send a template to start
+            </button>
           </div>
         ) : (
           <>
