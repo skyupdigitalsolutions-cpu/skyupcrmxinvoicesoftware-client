@@ -165,18 +165,14 @@ function NotificationBell({ onWaUnreadChange }) {
  
   const loadCount = async () => {
     try {
-      // Use lightweight unread-count endpoint for polling — avoids fetching
-      // all notifications every 15s which was causing ~975ms queries in logs.
-      // Note: this counts ALL unread types, so we fetch the full list to
-      // get the accurate WhatsApp-only count, but only when count changes.
-      const total = await notificationApi.unreadCount();
-      if (total === prevUnread.current) return; // no change — skip full fetch
-      // Count changed — fetch list to get WhatsApp-only count
-      const { notifications } = await notificationApi.list({ limit: 50, unread: 1 });
+      // Always fetch WhatsApp-only count directly — avoids the two-step
+      // total→waOnly approach which missed existing unread on first load.
+      const { notifications } = await notificationApi.list({ limit: 100, unread: 1 });
       const waOnly = (notifications || []).filter(
         n => !n.read && (n.type === 'whatsapp-reply' || n.type === 'whatsapp-reply-unlinked')
       );
       const n = waOnly.length;
+      if (n === prevUnread.current) return; // no change — skip re-render
       setUnread(n);
       onWaUnreadChange?.(n);  // sync to nav badge
       if (prevUnread.current !== null && n > prevUnread.current) playChime();
