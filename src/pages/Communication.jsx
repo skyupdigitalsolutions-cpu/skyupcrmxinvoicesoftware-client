@@ -713,6 +713,17 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
           </button>
         </div>
+      ) : conv.isLead ? (
+        /* Existing lead — session window closed — prompt to send template */
+        <div className="px-4 py-3 border-t shrink-0"
+          style={{ borderColor: 'var(--border-card)', background: '#fef2f2' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-[12px] font-medium" style={{ color: '#dc2626' }}>
+              <AlertTriangle size={13} />
+              24-hour window closed — send a template to re-open
+            </div>
+          </div>
+        </div>
       ) : (
         /* Not-a-lead bottom bar */
         <div className="px-4 py-3 border-t shrink-0"
@@ -1383,7 +1394,7 @@ export default function Communication() {
   if (loading) return <Spinner label="Loading Communication…" />;
 
   return (
-    <div className="flex flex-col" style={{ background: 'var(--bg-page)', height: 'calc(100vh - 52px - 24px)', overflow: 'hidden' }}>
+    <div className="flex flex-col" style={{ background: 'var(--bg-page)', height: '100%', overflow: 'hidden' }}>
       {/* Page title */}
       <div className="px-4 pt-4 pb-3 shrink-0">
         <PageTitle icon={<MessageSquare size={18} />}
