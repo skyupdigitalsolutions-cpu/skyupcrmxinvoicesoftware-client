@@ -756,7 +756,10 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
         <SaveLeadModal
           conv={conv}
           onClose={() => setShowSaveLeadModal(false)}
-          onSaved={() => { onRefreshList(); onClose(); }}
+          onSaved={() => {
+            setShowSaveLeadModal(false);
+            onRefreshList(); // refresh list — panel stays open showing updated conversation
+          }}
         />
       )}
     </div>
@@ -1385,12 +1388,14 @@ export default function Communication() {
 
   useEffect(() => { loadAll(); }, []);
 
-  // Auto-refresh conversation list every 15s so new replies and green dots
-  // appear without needing a manual Refresh click.
+  // Auto-refresh conversations only every 15s — does NOT reload settings/templates
+  // so the page doesn't flicker. Uses a silent fetch without setLoading.
   useEffect(() => {
-    const t = setInterval(() => {
-      // Only refresh if no conversation is actively open (avoids disrupting chat)
-      loadAll();
+    const t = setInterval(async () => {
+      try {
+        const convs = await whatsappApi.listConversations();
+        setConversations(convs);
+      } catch { /* silent — manual Refresh available */ }
     }, 15000);
     return () => clearInterval(t);
   }, []);
