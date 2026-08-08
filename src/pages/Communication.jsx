@@ -9,7 +9,7 @@ import {
   Clock, Zap, Trash2, Eye, EyeOff, UserPlus,
 } from 'lucide-react';
 
-import { whatsappApi, leadApi, userApi } from '../api/endpoints.js';
+import { whatsappApi, leadApi } from '../api/endpoints.js';
 import { apiError } from '../api/client.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -218,53 +218,38 @@ function SendTemplateModal({ leadId, templates, onClose, onSent }) {
 // ── Save as Lead Modal ────────────────────────────────────────────────────────
 function SaveLeadModal({ conv, onClose, onSaved }) {
   const { show } = useToast();
-  const { user: currentUser, isAdmin } = useAuth();
   const [form, setForm] = useState({
-    name:    conv.leadName && conv.leadName !== conv.contactNumber ? conv.leadName : '',
-    mobile:  conv.contactNumber || '',
+    name: conv.leadName && conv.leadName !== conv.contactNumber ? conv.leadName : '',
+    mobile: conv.contactNumber || '',
     country: 'UAE',
-    city:    '',
-    source:  'WhatsApp',
-    status:  'Contacted',
-    email:   '',
-    remark:  'Added from WhatsApp conversation',
-    owner:   '',   // '' = assign to self (default)
+    city: '',
+    source: 'WhatsApp',
+    status: 'Contacted',
+    email: '',
+    remark: 'Added from WhatsApp conversation',
   });
-  const [busy, setBusy]       = useState(false);
-  const [employees, setEmps]  = useState([]); // list for Assign To dropdown
+  const [busy, setBusy] = useState(false);
 
-  const SOURCES   = ['Walk-in','WhatsApp','Instagram','Facebook','Referral','market-in','Website','Call','Other'];
-  const STATUSES  = ['New','Contacted','Interested','Follow-up','Won','Lost'];
-  const COUNTRIES = ['UAE','India','Saudi Arabia','Kuwait','Bahrain','Oman','Qatar','Iran','Iraq','Yemen','Somalia','Nigeria','Other'];
-
-  // Load employees for Assign To (admin only — sales can only assign to themselves)
-  useEffect(() => {
-    if (!isAdmin) return;
-    userApi.list()
-      .then(list => setEmps((list || []).filter(u => u.role === 'sales' || u.role === 'admin')))
-      .catch(() => {});
-  }, [isAdmin]);
+  const SOURCES = ['Walk-in', 'WhatsApp', 'Instagram', 'Facebook', 'Referral', 'market-in', 'Website', 'Call', 'Other'];
+  const STATUSES = ['New', 'Contacted', 'Interested', 'Follow-up', 'Won', 'Lost'];
+  const COUNTRIES = ['UAE', 'India', 'Saudi Arabia', 'Kuwait', 'Bahrain', 'Oman', 'Qatar', 'USA', 'UK', 'Other'];
 
   const save = async () => {
     if (!form.name.trim()) return show('Name is required.', 'error');
     if (!form.city.trim()) return show('City is required.', 'error');
     setBusy(true);
     try {
-      const payload = {
-        name:    form.name.trim(),
-        mobile:  form.mobile.trim(),
+      const lead = await leadApi.create({
+        name: form.name.trim(),
+        mobile: form.mobile.trim(),
         country: form.country,
-        city:    form.city.trim(),
-        source:  form.source,
-        status:  form.status,
-        email:   form.email.trim(),
-        remark:  form.remark.trim(),
-      };
-      // Only send owner if admin has explicitly chosen someone else
-      if (isAdmin && form.owner) payload.owner = form.owner;
-
-      const lead = await leadApi.create(payload);
-      // Link existing WhatsApp messages to the new lead
+        city: form.city.trim(),
+        source: form.source,
+        status: form.status,
+        email: form.email.trim(),
+        remark: form.remark.trim(),
+      });
+      // Link existing messages to the new lead
       try {
         await whatsappApi.relinkContact({
           contactNumber: conv.contactNumber,
@@ -281,14 +266,12 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
       } else {
         show(apiError(e), 'error');
       }
-    } finally { setBusy(false); }
+    }
+    finally { setBusy(false); }
   };
 
-  const sel = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
-  const inp = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }));
-
   return (
-    <Modal open onClose={onClose} title="Save as Lead" width="sm:max-w-[520px]">
+    <Modal open onClose={onClose} title="Save as Lead" width="sm:max-w-[500px]">
       <div className="space-y-3">
         {/* Info banner */}
         <div className="flex gap-2.5 px-3 py-2.5 rounded-xl border"
@@ -301,19 +284,22 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Full Name *">
-            <Input value={form.name} placeholder="Contact's name" onChange={inp('name')} />
+            <Input value={form.name} placeholder="Contact's name"
+              onChange={e => setForm({ ...form, name: e.target.value })} />
           </Field>
           <Field label="Mobile">
-            <Input value={form.mobile} placeholder="With country code" onChange={inp('mobile')} />
+            <Input value={form.mobile} placeholder="With country code"
+              onChange={e => setForm({ ...form, mobile: e.target.value })} />
           </Field>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="City *">
-            <Input value={form.city} placeholder="e.g. Dubai" onChange={inp('city')} />
+            <Input value={form.city} placeholder="e.g. Dubai"
+              onChange={e => setForm({ ...form, city: e.target.value })} />
           </Field>
           <Field label="Country">
-            <select value={form.country} onChange={sel('country')}
+            <select value={form.country} onChange={e => setForm({ ...form, country: e.target.value })}
               className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
               style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
               {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -323,14 +309,14 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Source">
-            <select value={form.source} onChange={sel('source')}
+            <select value={form.source} onChange={e => setForm({ ...form, source: e.target.value })}
               className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
               style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
               {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
           <Field label="Status">
-            <select value={form.status} onChange={sel('status')}
+            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}
               className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
               style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
               {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -338,27 +324,14 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
           </Field>
         </div>
 
-        {/* Assign To — admin only */}
-        {isAdmin && (
-          <Field label="Assign To">
-            <select value={form.owner} onChange={sel('owner')}
-              className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
-              style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
-              <option value="">Me ({currentUser?.name || 'yourself'})</option>
-              {employees
-                .filter(u => (u.id || u._id) !== (currentUser?.id || currentUser?._id))
-                .map(u => <option key={u.id || u._id} value={u.id || u._id}>{u.name} ({u.role})</option>)
-              }
-            </select>
-          </Field>
-        )}
-
         <Field label="Email (optional)">
-          <Input type="email" value={form.email} placeholder="contact@example.com" onChange={inp('email')} />
+          <Input type="email" value={form.email} placeholder="contact@example.com"
+            onChange={e => setForm({ ...form, email: e.target.value })} />
         </Field>
 
         <Field label="Remark (optional)">
-          <Textarea rows={2} value={form.remark} onChange={inp('remark')} />
+          <Textarea rows={2} value={form.remark}
+            onChange={e => setForm({ ...form, remark: e.target.value })} />
         </Field>
       </div>
 
@@ -366,7 +339,7 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button disabled={busy} onClick={save} style={{ background: '#015FDE', border: 'none', color: '#fff' }}>
           {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</>
-                : <><UserPlus size={13} className="mr-1.5" />Save as Lead</>}
+            : <><UserPlus size={13} className="mr-1.5" />Save as Lead</>}
         </Button>
       </div>
     </Modal>
@@ -504,70 +477,7 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
     finally { setSending(false); }
   };
 
-  // ── 24-hour WhatsApp session window ────────────────────────────────────────
-  // WhatsApp only allows free-form replies within 24 hours of the last
-  // inbound message from the customer. After that only templates work.
-  const [sessionWindow, setSessionWindow] = useState(null); // { open, expiresAt, lastInboundAt }
-  const [timeLeft, setTimeLeft]           = useState('');   // live countdown string e.g. "2h 14m left"
-
-  // Fetch session window whenever conversation changes
-  useEffect(() => {
-    if (!conv?.isLead || !conv?.leadId) { setSessionWindow(null); return; }
-    whatsappApi.getSessionWindow(conv.leadId)
-      .then(d  => setSessionWindow(d))
-      .catch(() => setSessionWindow(null));
-  }, [conv?.leadId]);
-
-  // Recalculate countdown every 30 seconds so the timer stays live
-  useEffect(() => {
-    if (!sessionWindow?.expiresAt) { setTimeLeft(''); return; }
-    const calc = () => {
-      const ms = new Date(sessionWindow.expiresAt).getTime() - Date.now();
-      if (ms <= 0) {
-        setTimeLeft('Expired');
-        setSessionWindow(s => s ? { ...s, open: false } : s);
-        return;
-      }
-      const h = Math.floor(ms / 3600000);
-      const m = Math.floor((ms % 3600000) / 60000);
-      setTimeLeft(h > 0 ? `${h}h ${m}m left` : `${m}m left`);
-    };
-    calc();
-    const t = setInterval(calc, 30000);
-    return () => clearInterval(t);
-  }, [sessionWindow?.expiresAt]);
-
-  // Reply allowed only if session window is open (null = loading, optimistically allow)
-  const sessionOpen = sessionWindow === null ? true : sessionWindow.open;
-  const canReply    = conv.isLead && sessionOpen;
-
-  // Session window banner shown at top of chat
-  const SessionBanner = () => {
-    if (!conv?.isLead || sessionWindow === null) return null;
-    if (sessionWindow.open) {
-      return (
-        <div className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-medium shrink-0"
-          style={{ background: '#f0fdf4', color: '#16a34a', borderBottom: '1px solid #bbf7d0' }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-          </svg>
-          Session window open — {timeLeft}. Free replies allowed.
-        </div>
-      );
-    }
-    return (
-      <div className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-medium shrink-0"
-        style={{ background: '#fef2f2', color: '#dc2626', borderBottom: '1px solid #fecaca' }}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/>
-        </svg>
-        24-hour window expired
-        {sessionWindow.lastInboundAt && (
-          <> — last reply {new Date(sessionWindow.lastInboundAt).toLocaleDateString(undefined, { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</>
-        )}. Send a template to re-open the conversation.
-      </div>
-    );
-  };
+  const canReply = conv.isLead;
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--bg-card)' }}>
@@ -611,13 +521,7 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
             </button>
           )}
           {/* Send Template — only for leads */}
-          {conv.isLead && !sessionOpen && (
-        <div className="px-4 py-3 text-[12px] text-center shrink-0"
-          style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
-          Reply window closed. Use <b>Send Template</b> to re-open the conversation.
-        </div>
-      )}
-      {canReply && (
+          {canReply && (
             <button onClick={() => setShowTemplateModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold border transition"
               style={{ borderColor: '#25D366', color: '#25D366' }}
@@ -628,9 +532,6 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
           )}
         </div>
       </div>
-
-      {/* 24-hour session window banner */}
-      <SessionBanner />
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3"
@@ -643,13 +544,7 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
           <div className="flex flex-col items-center justify-center h-full gap-3 opacity-60">
             <MessageSquare size={36} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
             <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>No messages yet</p>
-            {conv.isLead && !sessionOpen && (
-        <div className="px-4 py-3 text-[12px] text-center shrink-0"
-          style={{ background: '#fef2f2', color: '#dc2626', borderTop: '1px solid #fecaca' }}>
-          Reply window closed. Use <b>Send Template</b> to re-open the conversation.
-        </div>
-      )}
-      {canReply && (
+            {canReply && (
               <button onClick={() => setShowTemplateModal(true)}
                 className="px-4 py-2 rounded-xl text-[12px] font-semibold text-white"
                 style={{ background: '#25D366' }}>
@@ -712,17 +607,6 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
             style={{ background: (text.trim() || attachment) ? '#25D366' : 'var(--text-muted)' }}>
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
           </button>
-        </div>
-      ) : conv.isLead ? (
-        /* Existing lead — session window closed — prompt to send template */
-        <div className="px-4 py-3 border-t shrink-0"
-          style={{ borderColor: 'var(--border-card)', background: '#fef2f2' }}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[12px] font-medium" style={{ color: '#dc2626' }}>
-              <AlertTriangle size={13} />
-              24-hour window closed — send a template to re-open
-            </div>
-          </div>
         </div>
       ) : (
         /* Not-a-lead bottom bar */
@@ -819,24 +703,6 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const [loadingStatuses, setLoadingStatuses] = useState(false);
   const [excludeSent, setExcludeSent] = useState(false); // toggle to auto-deselect already-sent leads
 
-  // Manual count selector — how many leads to send to at once (0 = all selected)
-  const [sendCount, setSendCount] = useState(0);
-  const [countInput, setCountInput] = useState(''); // raw text in the manual input
-
-  // anyTemplateSent: true if lead has received ANY template (not just current one)
-  // Used for excludeSent when no specific template is chosen yet
-  const [anyTemplateSentIds, setAnyTemplateSentIds] = useState(new Set());
-
-  // Load "any template sent" set when modal opens
-  useEffect(() => {
-    if (!leads.length) return;
-    const allIds = leads.map(l => String(l._id || l.id));
-    // Fetch with empty templateName — server returns all template sends
-    whatsappApi.getTemplateSentStatus(allIds, '__any__')
-      .then(s => setAnyTemplateSentIds(new Set(Object.keys(s || {}))))
-      .catch(() => setAnyTemplateSentIds(new Set()));
-  }, [leads]);
-
   const onTemplateChange = name => {
     setTemplateName(name);
     const t = templates.find(t => t.name === name);
@@ -865,26 +731,10 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const onExcludeSentToggle = (checked) => {
     setExcludeSent(checked);
     if (checked) {
-      setSelected(prev => prev.filter(id => {
-        // If a specific template is selected, check that template's status
-        if (templateName && templateStatuses[String(id)]) {
-          return templateStatuses[String(id)].status !== 'sent';
-        }
-        // Otherwise exclude any lead that has received ANY template
-        return !anyTemplateSentIds.has(String(id));
-      }));
+      // Remove already-sent leads from selection immediately
+      setSelected(prev => prev.filter(id => !templateStatuses[String(id)] || templateStatuses[String(id)].status !== 'sent'));
     }
   };
-
-  // Compute effective recipient list based on sendCount cap
-  const effectiveRecipients = (() => {
-    const base = selected.filter(id => {
-      if (!excludeSent) return true;
-      if (templateName && templateStatuses[String(id)]) return templateStatuses[String(id)].status !== 'sent';
-      return !anyTemplateSentIds.has(String(id));
-    });
-    return sendCount > 0 ? base.slice(0, sendCount) : base;
-  })();
 
   const templateSentAgo = (sentAt) => {
     if (!sentAt) return '';
@@ -973,12 +823,12 @@ function BulkSendModal({ templates, onClose, onSent }) {
   };
 
   const send = async () => {
-    if (!effectiveRecipients.length && !pendingContacts.length) return show('Select at least one lead or contact.', 'error');
+    if (!selected.length && !pendingContacts.length) return show('Select at least one lead or contact.', 'error');
     if (!templateName) return show('Select a template.', 'error');
     setBusy(true);
     try {
       const results = await whatsappApi.sendTemplate({
-        leadIds: effectiveRecipients,
+        leadIds: selected,
         contacts: pendingContacts.map(c => ({ name: c.name, mobile: c.mobile, country: c.country })),
         templateName,
         variables: variableValues.map(v => v.trim()),
@@ -1152,106 +1002,46 @@ function BulkSendModal({ templates, onClose, onSent }) {
           )}
         </div>
 
-        {/* ── Bottom controls bar ── */}
-        <div className="space-y-2.5 pt-1">
-
-          {/* Selection summary */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[12px] font-medium" style={{ color: 'var(--text-secondary)' }}>
-              <span style={{ color: 'var(--text-primary)' }}>{selected.length}</span> lead(s) selected
-              {pendingContacts.length > 0 && (
-                <span className="ml-1" style={{ color: 'var(--text-muted)' }}>
-                  + {pendingContacts.length} CSV contact(s)
-                </span>
-              )}
-            </span>
-            {templateName && (() => {
+        <div className="flex items-center justify-between">
+          <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+            {selected.length} lead(s){pendingContacts.length ? ` + ${pendingContacts.length} CSV contact(s)` : ''} selected
+            {templateName && Object.keys(templateStatuses).length > 0 && (() => {
               const alreadyCount = selected.filter(id => templateStatuses[String(id)]?.status === 'sent').length;
               return alreadyCount > 0 ? (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                  style={{ background: '#FEF3C7', color: '#D97706' }}>
-                  ⚠ {alreadyCount} already received this template
+                <span className="ml-2 text-[11px] font-medium" style={{ color: '#d97706' }}>
+                  ({alreadyCount} already received this template)
                 </span>
               ) : null;
             })()}
-            {sendCount > 0 && (
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                style={{ background: '#EFF6FF', color: '#015FDE' }}>
-                Capped at {sendCount} — sending to {Math.min(sendCount, effectiveRecipients.length)}
-              </span>
-            )}
-          </div>
-
-          {/* Controls row */}
-          <div className="flex flex-wrap items-center gap-2">
-
-            {/* Exclude sent toggle */}
-            <label className="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none transition hover:bg-black/[0.02]"
-              style={{ borderColor: excludeSent ? '#25D366' : 'var(--border)', background: excludeSent ? 'rgba(37,211,102,0.06)' : 'var(--bg-input)' }}
-              title="Exclude leads that have already received any WhatsApp template">
-              <input
-                type="checkbox"
-                checked={excludeSent}
-                onChange={e => onExcludeSentToggle(e.target.checked)}
-                className="w-4 h-4 accent-[#25D366]"
-              />
-              <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: excludeSent ? '#25D366' : 'var(--text-secondary)' }}>
-                Exclude already sent
-              </span>
-            </label>
-
-            {/* Custom count selector */}
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border"
-              style={{ borderColor: sendCount > 0 ? '#015FDE' : 'var(--border)', background: sendCount > 0 ? '#EFF6FF' : 'var(--bg-input)' }}>
-              <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
-                Limit:
-              </span>
-              <select
-                value={sendCount === 0 ? 'all' : 'custom'}
-                onChange={e => {
-                  if (e.target.value === 'all') { setSendCount(0); setCountInput(''); }
-                  else { setSendCount(50); setCountInput('50'); }
-                }}
-                className="rounded border px-2 py-1 text-[12px] font-medium"
-                style={{ background: 'var(--bg-card)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}>
-                <option value="all">All selected</option>
-                <option value="custom">Custom count</option>
-              </select>
-              {sendCount > 0 && (
+          </span>
+          <div className="flex items-center gap-2">
+            {templateName && Object.keys(templateStatuses).length > 0 && (
+              <label className="flex items-center gap-1.5 cursor-pointer select-none"
+                title="When ON, leads that already received this template are excluded from selection">
                 <input
-                  type="number" min="1" max="9999"
-                  value={countInput}
-                  placeholder={String(sendCount)}
-                  onChange={e => {
-                    const raw = e.target.value;
-                    setCountInput(raw);
-                    const n = parseInt(raw, 10);
-                    if (!isNaN(n) && n > 0) setSendCount(n);
-                  }}
-                  onFocus={e => e.target.select()}
-                  className="w-20 rounded border px-2 py-1 text-[12px] font-bold text-center"
-                  style={{ background: 'var(--bg-card)', color: '#015FDE', borderColor: '#015FDE' }}
+                  type="checkbox"
+                  checked={excludeSent}
+                  onChange={e => onExcludeSentToggle(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-[#25D366]"
                 />
-              )}
-            </div>
-
-            <div className="flex items-center gap-1.5 ml-auto">
-              <Button variant="outline" size="sm" onClick={() => {
-                const ids = filtered.map(l => l.id || l._id);
-                const toSelect = excludeSent
-                  ? ids.filter(id => {
-                      if (templateName && templateStatuses[String(id)]) return templateStatuses[String(id)].status !== 'sent';
-                      return !anyTemplateSentIds.has(String(id));
-                    })
-                  : ids;
-                setSelected(toSelect);
-              }}>
-                Select all
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => { setSelected([]); setPendingContacts([]); setCsvResult(null); }}>
-                Clear
-              </Button>
-            </div>
+                <span className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  Exclude already sent
+                </span>
+              </label>
+            )}
+            <Button variant="outline" size="sm" onClick={() => {
+              const ids = filtered.map(l => l.id || l._id);
+              // If excludeSent is on, only select leads that haven't received this template
+              const toSelect = excludeSent
+                ? ids.filter(id => !templateStatuses[String(id)] || templateStatuses[String(id)].status !== 'sent')
+                : ids;
+              setSelected(toSelect);
+            }}>
+              Select all
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => { setSelected([]); setPendingContacts([]); setCsvResult(null); }}>
+              Clear
+            </Button>
           </div>
         </div>
       </div>
@@ -1260,7 +1050,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button disabled={busy} onClick={send} style={{ background: '#25D366', border: 'none', color: '#fff' }}>
           {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Sending…</>
-            : <><Send size={13} className="mr-1.5" />Send to {(Math.min(effectiveRecipients.length, sendCount > 0 ? sendCount : Infinity) + pendingContacts.length) || '?'} recipient(s)</>}
+            : <><Send size={13} className="mr-1.5" />Send to {totalRecipients || '?'} recipient(s)</>}
         </Button>
       </div>
     </Modal>
@@ -1298,25 +1088,16 @@ function ConvRow({ conv, active, onClick }) {
             {timeAgo(conv.lastSentAt || conv.lastResponseAt)}
           </span>
         </div>
-        <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center justify-between">
           <p className="text-[12px] truncate flex-1"
             style={{ color: conv.unread ? 'var(--text-primary)' : 'var(--text-muted)' }}>
             {conv.lastResponse || conv.lastTemplate || 'No messages yet'}
           </p>
-          <div className="flex items-center gap-1 shrink-0">
-            {conv.isLead && conv.ownerName && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold truncate max-w-[70px]"
-                style={{ background: 'var(--bg-tag, #EFF6FF)', color: 'var(--primary, #015FDE)' }}
-                title={`Owner: ${conv.ownerName}`}>
-                {conv.ownerName.split(' ')[0]}
-              </span>
-            )}
-            {conv.unread && (
-              <span className="w-5 h-5 rounded-full bg-[#25D366] text-white text-[10px] font-bold flex items-center justify-center">
-                1
-              </span>
-            )}
-          </div>
+          {conv.unread && (
+            <span className="ml-2 shrink-0 w-5 h-5 rounded-full bg-[#25D366] text-white text-[10px] font-bold flex items-center justify-center">
+              1
+            </span>
+          )}
         </div>
       </div>
     </button>
@@ -1334,22 +1115,11 @@ export default function Communication() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
-  const [empFilter, setEmpFilter] = useState('');  // '' = all employees
 
   const [selectedConv, setSelectedConv] = useState(null);
   const [settingsModal, setSettingsModal] = useState(false);
   const [templateModal, setTemplateModal] = useState(null);
   const [bulkModal, setBulkModal] = useState(false);
-
-  const [empList, setEmpList] = useState([]); // for employee filter dropdown
-
-  // Load employee list for filter — admin only
-  useEffect(() => {
-    if (!isAdmin) return;
-    userApi.list()
-      .then(list => setEmpList((list || []).filter(u => (u.role === 'sales' || u.role === 'admin') && (u.id || u._id))))
-      .catch(() => {});
-  }, [isAdmin]);
 
   const loadAll = async () => {
     setLoading(true);
@@ -1382,9 +1152,6 @@ export default function Communication() {
     if (filter === 'unread') return c.unread;
     if (filter === 'replied') return !!c.lastResponse;
     if (filter === 'new') return !c.isLead;
-    // Employee filter — only show conversations owned by selected employee
-    if (empFilter && c.isLead && String(c.ownerId || '') !== String(empFilter)) return false;
-    if (empFilter && !c.isLead) return false; // non-lead contacts have no owner
     return true;
   });
 
@@ -1394,7 +1161,7 @@ export default function Communication() {
   if (loading) return <Spinner label="Loading Communication…" />;
 
   return (
-    <div className="flex flex-col" style={{ background: 'var(--bg-page)', height: '100%', overflow: 'hidden' }}>
+    <div className="h-full flex flex-col" style={{ background: 'var(--bg-page)' }}>
       {/* Page title */}
       <div className="px-4 pt-4 pb-3 shrink-0">
         <PageTitle icon={<MessageSquare size={18} />}
@@ -1438,7 +1205,7 @@ export default function Communication() {
         style={{ borderColor: 'var(--border-card)' }}>
 
         {/* LEFT SIDEBAR */}
-        <div className={`flex flex-col border-r shrink-0 overflow-hidden ${selectedConv ? 'hidden sm:flex' : 'flex'} w-full sm:w-[300px] lg:w-[340px]`}
+        <div className={`flex flex-col border-r shrink-0 ${selectedConv ? 'hidden sm:flex' : 'flex'} w-full sm:w-[300px] lg:w-[340px]`}
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)' }}>
 
           {/* Sidebar header */}
@@ -1469,35 +1236,10 @@ export default function Communication() {
                 </button>
               ))}
             </div>
-
-            {/* Employee filter — admin only */}
-            {isAdmin && empList.length > 0 && (
-              <div className="flex items-center gap-2">
-                <Users size={11} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                <select
-                  value={empFilter}
-                  onChange={e => setEmpFilter(e.target.value)}
-                  className="flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium"
-                  style={{ background: 'var(--bg-input)', color: empFilter ? 'var(--text-primary)' : 'var(--text-muted)', borderColor: empFilter ? '#25D366' : 'var(--border)' }}>
-                  <option value="">All Employees</option>
-                  {empList.map(u => (
-                    <option key={u.id || u._id} value={u.id || u._id}>
-                      {u.name} {u.role === 'admin' ? '(Admin)' : ''}
-                    </option>
-                  ))}
-                </select>
-                {empFilter && (
-                  <button onClick={() => setEmpFilter('')}
-                    className="text-[10px] px-1.5 py-1 rounded font-bold"
-                    style={{ color: 'var(--text-muted)' }}
-                    title="Clear filter">✕</button>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Conversation list */}
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto">
             {filteredConvs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 p-6 opacity-60">
                 <MessageSquare size={32} strokeWidth={1.2} style={{ color: 'var(--text-muted)' }} />
