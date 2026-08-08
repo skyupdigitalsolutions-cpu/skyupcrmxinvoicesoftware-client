@@ -1211,6 +1211,12 @@ function BulkSendModal({ templates, onClose, onSent }) {
               />
               <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: excludeSent ? '#25D366' : 'var(--text-secondary)' }}>
                 Exclude already sent
+                {Object.keys(anyTemplateSentMap).length > 0 && (
+                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold"
+                    style={{ background: excludeSent ? '#25D366' : '#e5e7eb', color: excludeSent ? '#fff' : '#6b7280' }}>
+                    {Object.keys(anyTemplateSentMap).length}
+                  </span>
+                )}
               </span>
             </label>
 
