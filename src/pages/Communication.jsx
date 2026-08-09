@@ -176,6 +176,21 @@ function TemplateModal({ template, onClose, onSaved }) {
 }
 
 // ── Send Template Modal ───────────────────────────────────────────────────────
+// Real number of body variables a template needs. The admin-entered
+// `variableCount` is often left at 0 even when the body has {{1}}/{{2}}, so we
+// also scan the bodyPreview for the highest {{n}} and take whichever is larger.
+// Mirrors the same logic on the server so the UI matches what actually sends.
+function templateVarCount(t) {
+  const stored = Math.max(0, Number(t?.variableCount) || 0);
+  let detected = 0, m;
+  const re = /\{\{\s*(\d+)\s*\}\}/g;
+  while ((m = re.exec(t?.bodyPreview || '')) !== null) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > detected) detected = n;
+  }
+  return Math.max(stored, detected);
+}
+
 function SendTemplateModal({ leadId, templates, onClose, onSent }) {
   const { show } = useToast();
   const [templateName, setTemplateName] = useState(templates[0]?.name || '');
@@ -190,7 +205,7 @@ function SendTemplateModal({ leadId, templates, onClose, onSent }) {
   // runs when vars.length > 0) is skipped, and no body params are sent — so
   // templates with a {{1}} var fail. This mirrors the blast modal's behaviour.
   useEffect(() => {
-    const n = selectedTemplate?.variableCount || 0;
+    const n = templateVarCount(selectedTemplate);
     setVariableValues(Array.from({ length: n }, () => ''));
   }, [templateName]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -915,7 +930,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const onTemplateChange = name => {
     setTemplateName(name);
     const t = templates.find(t => t.name === name);
-    setVariableValues(Array.from({ length: t?.variableCount || 0 }, () => ''));
+    setVariableValues(Array.from({ length: templateVarCount(t) }, () => ''));
     if (name && leads.length) {
       setLoadingStatuses(true);
       const allIds = leads.map(l => String(l._id || l.id));
