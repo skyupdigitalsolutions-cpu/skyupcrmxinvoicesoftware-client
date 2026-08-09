@@ -179,13 +179,31 @@ function TemplateModal({ template, onClose, onSaved }) {
 function SendTemplateModal({ leadId, templates, onClose, onSent }) {
   const { show } = useToast();
   const [templateName, setTemplateName] = useState(templates[0]?.name || '');
+  const [variableValues, setVariableValues] = useState([]);
+  const [autoFillName, setAutoFillName] = useState(true);
   const [busy, setBusy] = useState(false);
+
+  const selectedTemplate = templates.find(t => t.name === templateName) || null;
+
+  // Keep the variable slots sized to the selected template. Without this the
+  // server receives an empty `variables` array, the name auto-fill (which only
+  // runs when vars.length > 0) is skipped, and no body params are sent — so
+  // templates with a {{1}} var fail. This mirrors the blast modal's behaviour.
+  useEffect(() => {
+    const n = selectedTemplate?.variableCount || 0;
+    setVariableValues(Array.from({ length: n }, () => ''));
+  }, [templateName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = async () => {
     if (!templateName) return show('Select a template.', 'error');
     setBusy(true);
     try {
-      await whatsappApi.sendTemplate({ leadIds: [leadId], templateName, variables: [], autoFillNameVar: true });
+      await whatsappApi.sendTemplate({
+        leadIds: [leadId],
+        templateName,
+        variables: variableValues.map(v => v.trim()),
+        autoFillNameVar: autoFillName,
+      });
       show('Template sent.', 'success');
       onSent(); onClose();
     } catch (e) { show(apiError(e), 'error'); }
@@ -204,6 +222,34 @@ function SendTemplateModal({ leadId, templates, onClose, onSent }) {
           {templates.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
         </select>
       </Field>
+
+      {selectedTemplate?.bodyPreview && (
+        <div className="mt-2 text-[12px] px-3 py-2 rounded-xl border"
+          style={{ borderColor: 'var(--border-card)', color: 'var(--text-secondary)', background: 'var(--bg-card-head)' }}>
+          {selectedTemplate.bodyPreview}
+        </div>
+      )}
+
+      {variableValues.length > 0 && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {variableValues.map((val, i) => (
+            <Field key={i} label={`Variable {{${i + 1}}}`}>
+              <Input value={val} disabled={i === 0 && autoFillName}
+                placeholder={i === 0 && autoFillName ? 'auto-filled with lead name' : `value for {{${i + 1}}}`}
+                onChange={e => setVariableValues(vals => vals.map((v, idx) => idx === i ? e.target.value : v))} />
+            </Field>
+          ))}
+        </div>
+      )}
+
+      {variableValues.length > 0 && (
+        <label className="mt-2 flex items-center gap-2 text-[12px] cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
+          <input type="checkbox" className="w-3.5 h-3.5 accent-[#25D366]"
+            checked={autoFillName} onChange={e => setAutoFillName(e.target.checked)} />
+          Auto-fill first variable with lead name
+        </label>
+      )}
+
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button disabled={busy} onClick={send} style={{ background: '#25D366', border: 'none', color: '#fff' }}>
