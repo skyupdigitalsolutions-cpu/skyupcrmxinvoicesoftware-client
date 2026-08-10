@@ -176,49 +176,16 @@ function TemplateModal({ template, onClose, onSaved }) {
 }
 
 // ── Send Template Modal ───────────────────────────────────────────────────────
-// Real number of body variables a template needs. The admin-entered
-// `variableCount` is often left at 0 even when the body has {{1}}/{{2}}, so we
-// also scan the bodyPreview for the highest {{n}} and take whichever is larger.
-// Mirrors the same logic on the server so the UI matches what actually sends.
-function templateVarCount(t) {
-  const stored = Math.max(0, Number(t?.variableCount) || 0);
-  let detected = 0, m;
-  const re = /\{\{\s*(\d+)\s*\}\}/g;
-  while ((m = re.exec(t?.bodyPreview || '')) !== null) {
-    const n = Number(m[1]);
-    if (Number.isFinite(n) && n > detected) detected = n;
-  }
-  return Math.max(stored, detected);
-}
-
 function SendTemplateModal({ leadId, templates, onClose, onSent }) {
   const { show } = useToast();
   const [templateName, setTemplateName] = useState(templates[0]?.name || '');
-  const [variableValues, setVariableValues] = useState([]);
-  const [autoFillName, setAutoFillName] = useState(true);
   const [busy, setBusy] = useState(false);
-
-  const selectedTemplate = templates.find(t => t.name === templateName) || null;
-
-  // Keep the variable slots sized to the selected template. Without this the
-  // server receives an empty `variables` array, the name auto-fill (which only
-  // runs when vars.length > 0) is skipped, and no body params are sent — so
-  // templates with a {{1}} var fail. This mirrors the blast modal's behaviour.
-  useEffect(() => {
-    const n = templateVarCount(selectedTemplate);
-    setVariableValues(Array.from({ length: n }, () => ''));
-  }, [templateName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = async () => {
     if (!templateName) return show('Select a template.', 'error');
     setBusy(true);
     try {
-      await whatsappApi.sendTemplate({
-        leadIds: [leadId],
-        templateName,
-        variables: variableValues.map(v => v.trim()),
-        autoFillNameVar: autoFillName,
-      });
+      await whatsappApi.sendTemplate({ leadIds: [leadId], templateName, variables: [], autoFillNameVar: true });
       show('Template sent.', 'success');
       onSent(); onClose();
     } catch (e) { show(apiError(e), 'error'); }
@@ -237,34 +204,6 @@ function SendTemplateModal({ leadId, templates, onClose, onSent }) {
           {templates.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
         </select>
       </Field>
-
-      {selectedTemplate?.bodyPreview && (
-        <div className="mt-2 text-[12px] px-3 py-2 rounded-xl border"
-          style={{ borderColor: 'var(--border-card)', color: 'var(--text-secondary)', background: 'var(--bg-card-head)' }}>
-          {selectedTemplate.bodyPreview}
-        </div>
-      )}
-
-      {variableValues.length > 0 && (
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          {variableValues.map((val, i) => (
-            <Field key={i} label={`Variable {{${i + 1}}}`}>
-              <Input value={val} disabled={i === 0 && autoFillName}
-                placeholder={i === 0 && autoFillName ? 'auto-filled with lead name' : `value for {{${i + 1}}}`}
-                onChange={e => setVariableValues(vals => vals.map((v, idx) => idx === i ? e.target.value : v))} />
-            </Field>
-          ))}
-        </div>
-      )}
-
-      {variableValues.length > 0 && (
-        <label className="mt-2 flex items-center gap-2 text-[12px] cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
-          <input type="checkbox" className="w-3.5 h-3.5 accent-[#25D366]"
-            checked={autoFillName} onChange={e => setAutoFillName(e.target.checked)} />
-          Auto-fill first variable with lead name
-        </label>
-      )}
-
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button disabled={busy} onClick={send} style={{ background: '#25D366', border: 'none', color: '#fff' }}>
@@ -500,7 +439,9 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
+    // silent=true keeps existing messages while refreshing (no spinner flash)
+    // silent=false (initial load) shows spinner until first data arrives
     try {
       if (conv.isLead) {
         const d = await whatsappApi.getThread(conv.leadId);
@@ -511,12 +452,10 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
       }
     } catch (e) {
       if (e?.response?.status === 404) {
-        // Bug 1 fix: 404 = lead deleted or no messages yet — show empty state
-        // instead of leaving the spinner stuck forever
         setData({ messages: [], lead: null, deleted: true });
       } else {
-        show(apiError(e), 'error');
-        setData({ messages: [], lead: null }); // unblock spinner on any error
+        if (!silent) show(apiError(e), 'error');
+        setData(prev => prev || { messages: [], lead: null });
       }
     }
   }, [conv]);
@@ -550,9 +489,7 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
               filename: attachment.file.name,
               caption: text,
             });
-            // Bug 6 fix: removed onRefreshList() — it called setSelectedConv(null) in parent
-            // and closed the chat window after every file send. Sidebar polls every 15s.
-            setText(''); setAttachment(null); load();
+            setText(''); setAttachment(null); load(true); onRefreshList();
           } catch (e) {
             const msg = apiError(e);
             if (msg.toLowerCase().includes('cloudinary') || msg.includes('500') || msg.includes('File upload failed')) {
@@ -571,9 +508,7 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
     setSending(true);
     try {
       await whatsappApi.sendReply({ leadId: conv.leadId, text });
-      // Bug 6 fix: removed onRefreshList() — it called setSelectedConv(null) in parent
-      // and closed the chat window after every text send. Sidebar polls every 15s.
-      setText(''); load();
+      setText(''); load(true); onRefreshList();
     } catch (e) { show(apiError(e), 'error'); }
     finally { setSending(false); }
   };
@@ -592,8 +527,7 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
       .catch(() => setSessionWindow({ open: false, expiresAt: null, lastInboundAt: null }));
   }, [conv?.leadId]);
 
-  // Live countdown — ticks every minute normally, every second under 5 minutes
-  // so the urgency feels real when time is running out
+  // Recalculate countdown every 30 seconds so the timer stays live
   useEffect(() => {
     if (!sessionWindow?.expiresAt) { setTimeLeft(''); return; }
     const calc = () => {
@@ -605,51 +539,28 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
       }
       const h = Math.floor(ms / 3600000);
       const m = Math.floor((ms % 3600000) / 60000);
-      const s = Math.floor((ms % 60000) / 1000);
-      if (ms < 5 * 60 * 1000) {
-        // Under 5 minutes — show seconds countdown
-        setTimeLeft(`${m}m ${s}s left`);
-      } else if (h > 0) {
-        setTimeLeft(`${h}h ${m}m left`);
-      } else {
-        setTimeLeft(`${m}m left`);
-      }
+      setTimeLeft(h > 0 ? `${h}h ${m}m left` : `${m}m left`);
     };
     calc();
-    // Tick every second under 5 min, every 30s otherwise
-    const ms = new Date(sessionWindow.expiresAt).getTime() - Date.now();
-    const tick = ms < 5 * 60 * 1000 ? 1000 : 30000;
-    const t = setInterval(calc, tick);
+    const t = setInterval(calc, 30000);
     return () => clearInterval(t);
-  }, [sessionWindow?.expiresAt, timeLeft]);
+  }, [sessionWindow?.expiresAt]);
 
   // Reply allowed only if session window is open (null = loading, optimistically allow)
   const sessionOpen = sessionWindow === null ? true : sessionWindow.open;
   const canReply    = conv.isLead && sessionOpen;
 
   // Session window banner shown at top of chat
-  // Colour-codes by urgency: green (>2h) → amber (<2h) → red (<30m) → expired
   const SessionBanner = () => {
     if (!conv?.isLead || sessionWindow === null) return null;
     if (sessionWindow.open) {
-      const ms        = new Date(sessionWindow.expiresAt).getTime() - Date.now();
-      const isUrgent  = ms < 30 * 60 * 1000;   // < 30 minutes
-      const isWarning = ms < 2  * 60 * 60 * 1000; // < 2 hours
-      const bg    = isUrgent ? '#fef2f2' : isWarning ? '#fffbeb' : '#f0fdf4';
-      const color = isUrgent ? '#dc2626' : isWarning ? '#d97706' : '#16a34a';
-      const border= isUrgent ? '#fecaca' : isWarning ? '#fde68a' : '#bbf7d0';
       return (
         <div className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-medium shrink-0"
-          style={{ background: bg, color, borderBottom: `1px solid ${border}` }}>
+          style={{ background: '#f0fdf4', color: '#16a34a', borderBottom: '1px solid #bbf7d0' }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
           </svg>
-          {isUrgent
-            ? <>⚠ Closing soon — <strong>{timeLeft}</strong>. Reply now or send a template!</>
-            : isWarning
-            ? <>Session closing in <strong>{timeLeft}</strong> — reply before the window expires.</>
-            : <>Session window open — <strong>{timeLeft}</strong>. Free replies allowed.</>
-          }
+          Session window open — {timeLeft}. Free replies allowed.
         </div>
       );
     }
@@ -662,7 +573,7 @@ function ChatWindow({ conv, templates, onClose, onRefreshList }) {
         24-hour window expired
         {sessionWindow.lastInboundAt && (
           <> — last reply {new Date(sessionWindow.lastInboundAt).toLocaleDateString(undefined, { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}</>
-        )}. Send a template to re-open.
+        )}. Send a template to re-open the conversation.
       </div>
     );
   };
@@ -892,7 +803,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const { show } = useToast();
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState([]);
-  const [pendingContacts, setPendingContacts] = useState([]);
+  const [pendingContacts, setPendingContacts] = useState([]); // CSV numbers not yet leads
   const [templateName, setTemplateName] = useState('');
   const [variableValues, setVariableValues] = useState([]);
   const [autoFillName, setAutoFillName] = useState(true);
@@ -906,13 +817,21 @@ function BulkSendModal({ templates, onClose, onSent }) {
 
   const selectedTemplate = templates.find(t => t.name === templateName) || null;
 
-  const [templateStatuses, setTemplateStatuses] = useState({});
+  // Track which leads already received the selected template
+  const [templateStatuses, setTemplateStatuses] = useState({});  // { leadId: { sent, sentAt, status } }
   const [loadingStatuses, setLoadingStatuses] = useState(false);
-  const [excludeSent, setExcludeSent] = useState(true);
+  const [excludeSent, setExcludeSent] = useState(true); // default ON — exclude already-sent leads
+
+  // Manual count selector — how many leads to send to at once (0 = all selected)
   const [sendCount, setSendCount] = useState(0);
-  const [countInput, setCountInput] = useState('');
+  const [countInput, setCountInput] = useState(''); // raw text in the manual input
+
+  // anyTemplateSent: true if lead has received ANY template (not just current one)
+  // Used for excludeSent when no specific template is chosen yet
+  // Map of leadId → { templateName, sentAt, status } for any template ever sent
   const [anyTemplateSentMap, setAnyTemplateSentMap] = useState({});
 
+  // Load "any template sent" map when modal opens — auto-deselect if excludeSent on
   useEffect(() => {
     if (!leads.length) return;
     const allIds = leads.map(l => String(l._id || l.id));
@@ -920,6 +839,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
       .then(s => {
         const statuses = s || {};
         setAnyTemplateSentMap(statuses);
+        // Auto-deselect leads that already received any template
         if (excludeSent) {
           setSelected(prev => prev.filter(id => !statuses[String(id)]));
         }
@@ -930,7 +850,8 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const onTemplateChange = name => {
     setTemplateName(name);
     const t = templates.find(t => t.name === name);
-    setVariableValues(Array.from({ length: templateVarCount(t) }, () => ''));
+    setVariableValues(Array.from({ length: t?.variableCount || 0 }, () => ''));
+    // Fetch sent status for all leads when template changes
     if (name && leads.length) {
       setLoadingStatuses(true);
       const allIds = leads.map(l => String(l._id || l.id));
@@ -938,6 +859,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
         .then(s => {
           const statuses = s || {};
           setTemplateStatuses(statuses);
+          // If excludeSent is on, auto-deselect leads that received ANY template
           if (excludeSent) {
             setSelected(prev => prev.filter(id => !anyTemplateSentMap[String(id)]));
           }
@@ -949,13 +871,19 @@ function BulkSendModal({ templates, onClose, onSent }) {
     }
   };
 
+  // When excludeSent toggle changes — deselect or restore sent leads accordingly
   const onExcludeSentToggle = (checked) => {
     setExcludeSent(checked);
     if (checked) {
+      // Always exclude leads that received ANY template — consistent behaviour
+      // regardless of which specific template is currently selected.
       setSelected(prev => prev.filter(id => !anyTemplateSentMap[String(id)]));
     }
   };
 
+  // Compute effective recipient list based on sendCount cap
+  // effectiveRecipients: always excludes leads that received ANY template when
+  // excludeSent is on — regardless of which specific template is currently selected.
   const effectiveRecipients = (() => {
     const base = selected.filter(id => {
       if (!excludeSent) return true;
@@ -977,6 +905,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
   };
 
   const filtered = leads.filter(l => {
+    // Skip leads with no mobile — they can't receive WhatsApp messages
     if (!l.mobile || !String(l.mobile).replace(/\D/g, '')) return false;
     const ms = !search.trim() || (l.name || '').toLowerCase().includes(search.toLowerCase()) || phoneSearchMatches(l.mobile, search);
     const mf = !stageFilter || leadStageOf(l) === stageFilter;
@@ -1077,6 +1006,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
     <Modal open onClose={onClose} title="Send WhatsApp Blast" width="sm:max-w-[560px]">
       <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
 
+        {/* Template */}
         <Field label="Template">
           <select value={templateName} onChange={e => onTemplateChange(e.target.value)}
             className="w-full rounded-lg border px-2.5 py-2 text-[13px]"
@@ -1133,18 +1063,32 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </label>
         </div>
 
+        {/* CSV result summary */}
         {csvResult && (
           <div className="px-3 py-2.5 rounded-xl border text-[12px] space-y-1"
             style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
-            <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>CSV: {csvResult.total} row(s) read</p>
-            {csvResult.matched.length > 0 && <p className="text-[#25D366]">✓ {csvResult.matched.length} matched existing leads — auto-selected</p>}
-            {csvResult.notFound.length > 0 && <p className="text-[#FF8B15]">→ {csvResult.notFound.length} new contact(s) — will send directly</p>}
-            {csvResult.duplicates.length > 0 && <p style={{ color: 'var(--text-muted)' }}>⚠ {csvResult.duplicates.length} duplicate(s) skipped</p>}
-            {csvResult.missingCode.length > 0 && <p className="text-red-500">✗ {csvResult.missingCode.length} missing/short country code</p>}
-            {csvResult.scientificNotation.length > 0 && <p className="text-red-500">✗ {csvResult.scientificNotation.length} corrupted by Excel (scientific notation)</p>}
+            <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+              CSV: {csvResult.total} row(s) read
+            </p>
+            {csvResult.matched.length > 0 && (
+              <p className="text-[#25D366]">✓ {csvResult.matched.length} matched existing leads — auto-selected</p>
+            )}
+            {csvResult.notFound.length > 0 && (
+              <p className="text-[#FF8B15]">→ {csvResult.notFound.length} new contact(s) — will send directly</p>
+            )}
+            {csvResult.duplicates.length > 0 && (
+              <p style={{ color: 'var(--text-muted)' }}>⚠ {csvResult.duplicates.length} duplicate(s) skipped</p>
+            )}
+            {csvResult.missingCode.length > 0 && (
+              <p className="text-red-500">✗ {csvResult.missingCode.length} missing/short country code</p>
+            )}
+            {csvResult.scientificNotation.length > 0 && (
+              <p className="text-red-500">✗ {csvResult.scientificNotation.length} corrupted by Excel (scientific notation)</p>
+            )}
           </div>
         )}
 
+        {/* Pending CSV contacts (not yet leads) */}
         {pendingContacts.length > 0 && (
           <div>
             <p className="text-[11px] font-bold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
@@ -1167,6 +1111,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
           </div>
         )}
 
+        {/* Lead search + list */}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
@@ -1187,6 +1132,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
             const tStatus = templateName ? templateStatuses[String(id)] : null;
             const alreadySent = !!tStatus;
             const sentOk = alreadySent && tStatus.status === 'sent';
+            // Always use anyTemplateSentMap for exclude — same behaviour for all templates
             const excludedByAny = excludeSent && !!anyTemplateSentMap[String(id)];
             return (
               <label key={id}
@@ -1201,6 +1147,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
                 <div className="flex flex-col min-w-0 flex-1">
                   <span className="font-medium text-[13px]" style={{ color: 'var(--text-primary)' }}>{l.name}</span>
                   {(() => {
+                    // Show specific template status if selected, otherwise show last-sent-any info
                     const display = tStatus || anyTemplateSentMap[String(id)];
                     if (!display) return null;
                     const ok = display.status === 'sent';
@@ -1224,11 +1171,15 @@ function BulkSendModal({ templates, onClose, onSent }) {
 
         {/* ── Bottom controls bar ── */}
         <div className="space-y-2.5 pt-1">
+
+          {/* Selection summary */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[12px] font-medium" style={{ color: 'var(--text-secondary)' }}>
               <span style={{ color: 'var(--text-primary)' }}>{selected.length}</span> lead(s) selected
               {pendingContacts.length > 0 && (
-                <span className="ml-1" style={{ color: 'var(--text-muted)' }}>+ {pendingContacts.length} CSV contact(s)</span>
+                <span className="ml-1" style={{ color: 'var(--text-muted)' }}>
+                  + {pendingContacts.length} CSV contact(s)
+                </span>
               )}
             </span>
             {templateName && (() => {
@@ -1248,13 +1199,19 @@ function BulkSendModal({ templates, onClose, onSent }) {
             )}
           </div>
 
+          {/* Controls row */}
           <div className="flex flex-wrap items-center gap-2">
+
+            {/* Exclude sent toggle */}
             <label className="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer select-none transition hover:bg-black/[0.02]"
               style={{ borderColor: excludeSent ? '#25D366' : 'var(--border)', background: excludeSent ? 'rgba(37,211,102,0.06)' : 'var(--bg-input)' }}
               title="Exclude leads that have already received any WhatsApp template">
-              <input type="checkbox" checked={excludeSent}
+              <input
+                type="checkbox"
+                checked={excludeSent}
                 onChange={e => onExcludeSentToggle(e.target.checked)}
-                className="w-4 h-4 accent-[#25D366]" />
+                className="w-4 h-4 accent-[#25D366]"
+              />
               <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: excludeSent ? '#25D366' : 'var(--text-secondary)' }}>
                 Exclude already sent
                 {Object.keys(anyTemplateSentMap).length > 0 && (
@@ -1266,10 +1223,14 @@ function BulkSendModal({ templates, onClose, onSent }) {
               </span>
             </label>
 
+            {/* Custom count selector */}
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg border"
               style={{ borderColor: sendCount > 0 ? '#015FDE' : 'var(--border)', background: sendCount > 0 ? '#EFF6FF' : 'var(--bg-input)' }}>
-              <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>Limit:</span>
-              <select value={sendCount === 0 ? 'all' : 'custom'}
+              <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                Limit:
+              </span>
+              <select
+                value={sendCount === 0 ? 'all' : 'custom'}
                 onChange={e => {
                   if (e.target.value === 'all') { setSendCount(0); setCountInput(''); }
                   else { setSendCount(50); setCountInput('50'); }
@@ -1280,7 +1241,9 @@ function BulkSendModal({ templates, onClose, onSent }) {
                 <option value="custom">Custom count</option>
               </select>
               {sendCount > 0 && (
-                <input type="number" min="1" max="9999" value={countInput}
+                <input
+                  type="number" min="1" max="9999"
+                  value={countInput}
                   placeholder={String(sendCount)}
                   onChange={e => {
                     const raw = e.target.value;
@@ -1290,16 +1253,22 @@ function BulkSendModal({ templates, onClose, onSent }) {
                   }}
                   onFocus={e => e.target.select()}
                   className="w-20 rounded border px-2 py-1 text-[12px] font-bold text-center"
-                  style={{ background: 'var(--bg-card)', color: '#015FDE', borderColor: '#015FDE' }} />
+                  style={{ background: 'var(--bg-card)', color: '#015FDE', borderColor: '#015FDE' }}
+                />
               )}
             </div>
 
             <div className="flex items-center gap-1.5 ml-auto">
               <Button variant="outline" size="sm" onClick={() => {
                 const ids = filtered.map(l => l.id || l._id);
-                const toSelect = excludeSent ? ids.filter(id => !anyTemplateSentMap[String(id)]) : ids;
+                // Always exclude any-template-sent leads when excludeSent is on
+                const toSelect = excludeSent
+                  ? ids.filter(id => !anyTemplateSentMap[String(id)])
+                  : ids;
                 setSelected(toSelect);
-              }}>Select all</Button>
+              }}>
+                Select all
+              </Button>
               <Button variant="outline" size="sm" onClick={() => { setSelected([]); setPendingContacts([]); setCsvResult(null); }}>
                 Clear
               </Button>
@@ -1320,7 +1289,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
 }
 
 // ── Conversation Row ──────────────────────────────────────────────────────────
-function ConvRow({ conv, active, onClick }) {
+function ConvRow({ conv, active, onClick, showOwner = false }) {
   return (
     <button onClick={onClick}
       className={`w-full flex items-center gap-3 px-4 py-3 border-b text-left transition ${active ? 'bg-[#25D366]/8' : 'hover:bg-black/[0.02]'}`}
@@ -1356,41 +1325,17 @@ function ConvRow({ conv, active, onClick }) {
             {conv.lastResponse || conv.lastTemplate || 'No messages yet'}
           </p>
           <div className="flex items-center gap-1 shrink-0">
-            {conv.isLead && conv.ownerName && (
+            {showOwner && conv.isLead && conv.ownerName && (
               <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold truncate max-w-[70px]"
                 style={{ background: 'var(--bg-tag, #EFF6FF)', color: 'var(--primary, #015FDE)' }}
                 title={`Owner: ${conv.ownerName}`}>
                 {conv.ownerName.split(' ')[0]}
               </span>
             )}
-            {/* Session window urgency pill — shown in sidebar so agent knows to act fast */}
-            {(() => {
-              if (!conv.isLead || !conv.lastResponseAt) return null;
-              const ms = new Date(conv.lastResponseAt).getTime() + 24*60*60*1000 - Date.now();
-              if (ms <= 0) return (
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap"
-                  style={{ background: '#fee2e2', color: '#dc2626' }} title="24h session expired">
-                  Expired
-                </span>
-              );
-              if (ms < 2 * 60 * 60 * 1000) {
-                const h = Math.floor(ms / 3600000);
-                const m = Math.floor((ms % 3600000) / 60000);
-                const label = h > 0 ? `${h}h ${m}m` : `${m}m`;
-                const urgent = ms < 30 * 60 * 1000;
-                return (
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap"
-                    style={{ background: urgent ? '#fee2e2' : '#fef9c3', color: urgent ? '#dc2626' : '#b45309' }}
-                    title={`Session window closes in ${label}`}>
-                    ⏱ {label}
-                  </span>
-                );
-              }
-              return null; // > 2h left — no urgency pill needed
-            })()}
-            {/* Bug 5 fix: server sends boolean unread (not a count) — show dot, not hardcoded "1" */}
             {conv.unread && (
-              <span className="w-2.5 h-2.5 rounded-full bg-[#25D366]" title="Unread" />
+              <span className="w-5 h-5 rounded-full bg-[#25D366] text-white text-[10px] font-bold flex items-center justify-center">
+                1
+              </span>
             )}
           </div>
         </div>
@@ -1410,15 +1355,16 @@ export default function Communication() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
-  const [empFilter, setEmpFilter] = useState('');
+  const [empFilter, setEmpFilter] = useState('');  // '' = all employees
 
   const [selectedConv, setSelectedConv] = useState(null);
   const [settingsModal, setSettingsModal] = useState(false);
   const [templateModal, setTemplateModal] = useState(null);
   const [bulkModal, setBulkModal] = useState(false);
 
-  const [empList, setEmpList] = useState([]);
+  const [empList, setEmpList] = useState([]); // for employee filter dropdown
 
+  // Load employee list for filter — admin only
   useEffect(() => {
     if (!isAdmin) return;
     userApi.list()
@@ -1426,8 +1372,8 @@ export default function Communication() {
       .catch(() => {});
   }, [isAdmin]);
 
-  const loadAll = async () => {
-    setLoading(true);
+  const loadAll = async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     const [sRes, tRes, cRes] = await Promise.allSettled([
       whatsappApi.getSettings(),
       whatsappApi.listTemplates(),
@@ -1436,20 +1382,21 @@ export default function Communication() {
     if (sRes.status === 'fulfilled') setSettings(sRes.value);
     if (tRes.status === 'fulfilled') setTemplates(tRes.value);
     if (cRes.status === 'fulfilled') setConversations(cRes.value);
-    else show('Could not load conversations.', 'error');
-    setLoading(false);
+    else if (showSpinner) show('Could not load conversations.', 'error');
+    if (showSpinner) setLoading(false);
   };
 
   useEffect(() => { loadAll(); }, []);
 
-  // Auto-refresh conversations list every 15s silently (no setLoading flicker)
+  // Auto-refresh conversations only every 15s — does NOT reload settings/templates
+  // so the page doesn't flicker. Uses a silent fetch without setLoading.
   useEffect(() => {
     const t = setInterval(async () => {
       try {
         const convs = await whatsappApi.listConversations();
         setConversations(convs);
-      } catch { /* silent — manual Refresh available */ }
-    }, 15000);
+      } catch { /* silent */ }
+    }, 30000);
     return () => clearInterval(t);
   }, []);
 
@@ -1468,8 +1415,9 @@ export default function Communication() {
     if (filter === 'unread') return c.unread;
     if (filter === 'replied') return !!c.lastResponse;
     if (filter === 'new') return !c.isLead;
+    // Employee filter — only show conversations owned by selected employee
     if (empFilter && c.isLead && String(c.ownerId || '') !== String(empFilter)) return false;
-    if (empFilter && !c.isLead) return false;
+    if (empFilter && !c.isLead) return false; // non-lead contacts have no owner
     return true;
   });
 
@@ -1502,6 +1450,7 @@ export default function Communication() {
           Communication
         </PageTitle>
 
+        {/* Connection status */}
         <div className="flex items-center gap-2 mt-2 px-1">
           <span className={`w-2 h-2 rounded-full ${settings.enabled && settings.hasAuthKey ? 'bg-[#25D366]' : 'bg-red-400'}`} />
           <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
@@ -1517,6 +1466,7 @@ export default function Communication() {
         </div>
       </div>
 
+      {/* Main layout — flex-1 min-h-0 forces it to fill remaining space */}
       <div className="flex-1 min-h-0 flex overflow-hidden mx-4 mb-4 rounded-2xl border shadow-sm"
         style={{ borderColor: 'var(--border-card)' }}>
 
@@ -1524,6 +1474,7 @@ export default function Communication() {
         <div className={`flex flex-col border-r shrink-0 overflow-hidden ${selectedConv ? 'hidden sm:flex' : 'flex'} w-full sm:w-[300px] lg:w-[340px]`}
           style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card)' }}>
 
+          {/* Sidebar header */}
           <div className="px-3 py-3 border-b shrink-0 space-y-2"
             style={{ borderColor: 'var(--border-card)', background: 'var(--bg-card-head)' }}>
             <div className="relative">
@@ -1533,6 +1484,7 @@ export default function Communication() {
                 className="w-full pl-8 pr-3 py-2 rounded-xl border text-[13px] focus:outline-none transition"
                 style={{ background: 'var(--bg-input)', borderColor: 'var(--border)', color: 'var(--text-primary)' }} />
             </div>
+            {/* Filter tabs */}
             <div className="flex gap-1">
               {[
                 ['all', 'All'],
@@ -1555,7 +1507,9 @@ export default function Communication() {
             {isAdmin && empList.length > 0 && (
               <div className="flex items-center gap-2">
                 <Users size={11} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                <select value={empFilter} onChange={e => setEmpFilter(e.target.value)}
+                <select
+                  value={empFilter}
+                  onChange={e => setEmpFilter(e.target.value)}
                   className="flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium"
                   style={{ background: 'var(--bg-input)', color: empFilter ? 'var(--text-primary)' : 'var(--text-muted)', borderColor: empFilter ? '#25D366' : 'var(--border)' }}>
                   <option value="">All Employees</option>
@@ -1575,6 +1529,7 @@ export default function Communication() {
             )}
           </div>
 
+          {/* Conversation list */}
           <div className="flex-1 min-h-0 overflow-y-auto">
             {filteredConvs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-3 p-6 opacity-60">
@@ -1588,11 +1543,13 @@ export default function Communication() {
                 <ConvRow key={conv.key || conv.leadId || conv.contactNumber}
                   conv={conv}
                   active={selectedConv?.key === conv.key}
-                  onClick={() => setSelectedConv(conv)} />
+                  onClick={() => setSelectedConv(conv)}
+                  showOwner={isAdmin && !empFilter} />
               ))
             )}
           </div>
 
+          {/* Templates panel */}
           {isAdmin && (
             <div className="border-t shrink-0" style={{ borderColor: 'var(--border-card)' }}>
               <div className="px-3 py-2.5 flex items-center justify-between">
@@ -1638,11 +1595,7 @@ export default function Communication() {
               conv={selectedConv}
               templates={templates}
               onClose={() => setSelectedConv(null)}
-              onRefreshList={() => {
-                // Bug 6 fix: removed setSelectedConv(null) — was closing the chat window
-                // after every send. Sidebar already auto-refreshes via 15s poll above.
-                loadAll();
-              }}
+              onRefreshList={() => { whatsappApi.listConversations().then(setConversations).catch(() => {}); }}
             />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-60"
