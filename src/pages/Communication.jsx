@@ -832,14 +832,18 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const [anyTemplateSentMap, setAnyTemplateSentMap] = useState({});
 
   // Load "any template sent" map when modal opens — auto-deselect if excludeSent on
+  // Chunks IDs into batches of 200 to avoid URL length limits (1000+ leads
+  // would exceed the ~8KB URL limit when sent as a query param string).
   useEffect(() => {
     if (!leads.length) return;
     const allIds = leads.map(l => String(l._id || l.id));
-    whatsappApi.getTemplateSentStatus(allIds, '__any__')
-      .then(s => {
-        const statuses = s || {};
+    const CHUNK = 200;
+    const chunks = [];
+    for (let i = 0; i < allIds.length; i += CHUNK) chunks.push(allIds.slice(i, i + CHUNK));
+    Promise.all(chunks.map(ids => whatsappApi.getTemplateSentStatus(ids, '__any__').catch(() => ({}))))
+      .then(results => {
+        const statuses = Object.assign({}, ...results);
         setAnyTemplateSentMap(statuses);
-        // Auto-deselect leads that already received any template
         if (excludeSent) {
           setSelected(prev => prev.filter(id => !statuses[String(id)]));
         }
@@ -855,11 +859,13 @@ function BulkSendModal({ templates, onClose, onSent }) {
     if (name && leads.length) {
       setLoadingStatuses(true);
       const allIds = leads.map(l => String(l._id || l.id));
-      whatsappApi.getTemplateSentStatus(allIds, name)
-        .then(s => {
-          const statuses = s || {};
+      const CHUNK = 200;
+      const chunks = [];
+      for (let i = 0; i < allIds.length; i += CHUNK) chunks.push(allIds.slice(i, i + CHUNK));
+      Promise.all(chunks.map(ids => whatsappApi.getTemplateSentStatus(ids, name).catch(() => ({}))))
+        .then(results => {
+          const statuses = Object.assign({}, ...results);
           setTemplateStatuses(statuses);
-          // If excludeSent is on, auto-deselect leads that received ANY template
           if (excludeSent) {
             setSelected(prev => prev.filter(id => !anyTemplateSentMap[String(id)]));
           }
