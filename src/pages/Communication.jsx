@@ -813,7 +813,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
   const [csvResult, setCsvResult] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { leadApi.list().then(setLeads).catch(() => setLeads([])); }, []);
+  useEffect(() => { leadApi.list({ fields: '_id,name,mobile,stage,status,country' }).then(setLeads).catch(() => setLeads([])); }, []);
 
   const selectedTemplate = templates.find(t => t.name === templateName) || null;
 
@@ -1131,17 +1131,18 @@ function BulkSendModal({ templates, onClose, onSent }) {
             const id = l.id || l._id;
             const tStatus = templateName ? templateStatuses[String(id)] : null;
             const alreadySent = !!tStatus;
-            const sentOk = alreadySent && tStatus.status === 'sent';
+            const sentOk = alreadySent && ['sent','delivered','read','replied'].includes(tStatus.status);
             // Always use anyTemplateSentMap for exclude — same behaviour for all templates
             const excludedByAny = excludeSent && !!anyTemplateSentMap[String(id)];
             return (
               <label key={id}
                 className={`flex items-center gap-2.5 px-3 py-2.5 border-b last:border-0 transition ${(excludeSent && sentOk) || excludedByAny ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-[rgba(0,0,0,0.02)]'}`}
-                style={{ borderColor: 'var(--border-card)', background: alreadySent && !excludeSent ? 'rgba(37,211,102,0.04)' : undefined }}>
+                style={{ borderColor: 'var(--border-card)', background: alreadySent && !excludeSent ? 'rgba(37,211,102,0.04)' : undefined }}
+                onClick={e => { if ((excludeSent && sentOk) || excludedByAny) e.preventDefault(); }}>
                 <input type="checkbox" className="w-3.5 h-3.5 accent-[#25D366]"
                   checked={selected.includes(id)}
                   disabled={(excludeSent && sentOk) || excludedByAny}
-                  onChange={() => !((excludeSent && sentOk) || excludedByAny) && toggle(id)}
+                  onChange={() => { if (!((excludeSent && sentOk) || excludedByAny)) toggle(id); }}
                   title={(excludeSent && sentOk) || excludedByAny ? 'Excluded — already received a template' : undefined}
                 />
                 <div className="flex flex-col min-w-0 flex-1">
@@ -1150,7 +1151,7 @@ function BulkSendModal({ templates, onClose, onSent }) {
                     // Show specific template status if selected, otherwise show last-sent-any info
                     const display = tStatus || anyTemplateSentMap[String(id)];
                     if (!display) return null;
-                    const ok = display.status === 'sent';
+                    const ok = ['sent','delivered','read','replied'].includes(display.status);
                     return (
                       <span className="text-[10px] font-medium mt-0.5" style={{ color: ok ? '#16a34a' : '#dc2626' }}>
                         {ok

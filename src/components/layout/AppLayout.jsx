@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Target, ClipboardList, FilePlus,
   Receipt, Truck, BarChart2, CalendarDays, Users, Clock,
   LogOut, Sun, Moon, Menu, X, Building2, Bell, Check, CheckCheck, MessageSquare,
-  Trash2, AlertCircle, ArrowRight, Banknote,
+  Trash2, AlertCircle, ArrowRight, Banknote, AlertTriangle, Ban,
 } from 'lucide-react';
 import { notificationApi, chatApi } from '../../api/endpoints.js';
 import TermsViewerModal from '../TermsViewerModal.jsx';
@@ -404,8 +404,40 @@ function SidebarNav({ isAdmin, isDeveloper, onNavigate, handleLogout, chatUnread
   );
 }
 
+
+// ── GlobalExpiryBanner ────────────────────────────────────────────────────────
+// Shows on every page (inside AppLayout) when subscription is within 5 days
+// of expiry or already expired. Only visible to admins.
+function GlobalExpiryBanner({ subscription, isAdmin }) {
+  if (!isAdmin || !subscription?.renewalDate) return null;
+  if (subscription.status === 'Cancelled') return null;
+  const renewal  = new Date(subscription.renewalDate);
+  const daysLeft = Math.ceil((renewal.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+  if (daysLeft > 5) return null;
+  const expired = daysLeft <= 0 || subscription.status === 'Expired' || subscription.status === 'Past Due';
+  const label   = expired
+    ? 'Your subscription has expired. Contact support to renew.'
+    : daysLeft === 0
+      ? 'Your subscription expires today — please renew now.'
+      : `Your subscription expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${renewal.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}).`;
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 text-xs font-semibold"
+      style={{
+        background: expired ? 'rgba(220,38,38,.10)' : 'rgba(217,119,6,.10)',
+        borderBottom: `1px solid ${expired ? '#FCA5A5' : '#FCD34D'}`,
+        color: expired ? '#DC2626' : '#B45309',
+      }}>
+      {expired ? <Ban size={14} className="shrink-0" /> : <AlertTriangle size={14} className="shrink-0" />}
+      <span>{label}</span>
+      <a href="/dashboard" className="ml-auto shrink-0 underline underline-offset-2 hover:opacity-80">
+        View details
+      </a>
+    </div>
+  );
+}
+
 export default function AppLayout({ children }) {
-  const { user, isAdmin, isDeveloper, logout, branding } = useAuth();
+  const { user, isAdmin, isDeveloper, logout, branding, subscription } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -461,6 +493,7 @@ export default function AppLayout({ children }) {
           </div>
         </div>
       </header>
+      <GlobalExpiryBanner subscription={subscription} isAdmin={isAdmin} />
 
       <div className="flex h-[calc(100vh-52px)] items-stretch overflow-hidden">
         <aside className="hidden w-[200px] flex-shrink-0 self-stretch border-r lg:block"
