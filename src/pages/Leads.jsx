@@ -62,6 +62,9 @@ const leadSchema = Yup.object({
   remark: Yup.string().trim().max(300, 'Too long'),
 });
 
+// Max leads per CSV import — must match BULK_MAX in server lead.controller.js
+const IMPORT_MAX = 2000;
+
 // ── Minimal CSV parser ────────────────────────────────────────────────────────
 function parseCSV(text) {
   const rows = [];
@@ -143,6 +146,7 @@ function rowsToLeads(parsed, existingLeads = []) {
     const obj = emptyLead();
     header.forEach((key, c) => { if (key) obj[key] = (cells[c] || '').trim(); });
     if (!obj.name) { errors.push(`Row ${r + 1}: missing name — skipped.`); continue; }
+    if (!obj.city) { errors.push(`Row ${r + 1}: missing city (${obj.name}) — skipped.`); continue; }
 
     // Country Code column: resolve a country name from the dial code when given.
     // If the code is unknown, prepend it onto the mobile so it isn't lost.
@@ -472,28 +476,43 @@ export default function Leads() {
     setImportResult(null);
     const reader = new FileReader();
     reader.onload = () => {
-      try { setImportRows(rowsToLeads(parseCSV(String(reader.result)), leads || [])); }
+      try {
+        const result = rowsToLeads(parseCSV(String(reader.result)), leads || []);
+        if (result.leads.length > IMPORT_MAX) {
+          result.tooMany = true;
+          result.errors = [
+            `Import limit exceeded: you can import at most ${IMPORT_MAX} leads at a time, but this file has ${result.leads.length} new leads. Split it into smaller files.`,
+            ...result.errors,
+          ];
+        }
+        setImportRows(result);
+      }
       catch { setImportRows({ leads: [], dupExisting: [], dupInFile: [], errors: ['Could not read this file as CSV.'] }); }
     };
     reader.readAsText(file);
     e.target.value = '';
   };
 
+  // The whole file goes to POST /leads/bulk in ONE request (max IMPORT_MAX
+  // rows), so the server can check the company lead limit for the full file
+  // at once and the 300-requests/15-min rate limit is never an issue.
   const runImport = async () => {
-    if (!importRows?.leads.length) return;
+    if (!importRows?.leads.length || importRows.leads.length > IMPORT_MAX) return;
     setImportBusy(true);
-    let created = 0, skipped = 0, failed = 0;
-    for (const lead of importRows.leads) {
-      try { await leadApi.create(lead); created++; }
-      catch (err) {
-        if (err?.response?.status === 409) skipped++;
-        else failed++;
-      }
+    try {
+      const r = await leadApi.bulkCreate(importRows.leads);
+      const reasons = (r.errors || []).map((e) => e.replace(/^Row (\d+)/, 'Lead #$1'));
+      setImportResult({ created: r.created || 0, skipped: r.skipped || 0, failed: r.failed || 0, reasons });
+      show(`Import done — ${r.created || 0} added, ${r.skipped || 0} duplicates, ${r.failed || 0} failed.`, r.failed ? 'error' : 'success');
+      refetch();
+    } catch (err) {
+      // Nothing was imported — show the server's exact reason (e.g. lead limit exceeded)
+      const msg = apiError(err);
+      setImportResult({ created: 0, skipped: 0, failed: importRows.leads.length, reasons: [msg], blocked: true });
+      show(msg, 'error');
+    } finally {
+      setImportBusy(false);
     }
-    setImportBusy(false);
-    setImportResult({ created, skipped, failed });
-    show(`Import done — ${created} added, ${skipped} duplicates, ${failed} failed.`, failed ? 'error' : 'success');
-    refetch();
   };
 
   const subTotal = useMemo(() => items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0), [items]);
@@ -874,16 +893,22 @@ export default function Leads() {
           </div>
         )}
 
-        {importResult && (
+        {importResult && !importResult.blocked && (
           <div className="mt-3 flex items-center gap-2 rounded-md bg-ok-light px-3 py-2 text-xs text-ok">
             <CheckCircle size={14} />
             Imported {importResult.created} · {importResult.skipped} duplicates skipped · {importResult.failed} failed.
           </div>
         )}
+        {importResult?.reasons?.length > 0 && (
+          <div className={`mt-2 max-h-40 overflow-y-auto rounded-md bg-danger-light px-3 py-2 text-danger ${importResult.blocked ? 'text-xs font-bold' : 'text-[11px]'}`}>
+            {importResult.reasons.slice(0, 50).map((r, i) => <div key={i}>{r}</div>)}
+            {importResult.reasons.length > 50 && <div>…and {importResult.reasons.length - 50} more.</div>}
+          </div>
+        )}
 
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setImportOpen(false)}>Close</Button>
-          <Button disabled={importBusy || !importRows?.leads.length} onClick={runImport}>
+          <Button disabled={importBusy || !importRows?.leads.length || importRows?.tooMany} onClick={runImport}>
             {importBusy
               ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Importing…</>
               : <><Upload size={13} className="mr-1.5" />Import {importRows?.leads.length || 0} Lead{importRows?.leads.length === 1 ? '' : 's'}</>
