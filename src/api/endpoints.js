@@ -84,6 +84,7 @@ export const leadApi = {
     list: (params) => api.get('/leads', { params }).then((r) => r.data.leads),
     get: (id) => api.get(`/leads/${id}`).then((r) => r.data), // returns { lead, isOwner, canEdit, canContribute }
     create: (body) => api.post('/leads', body).then((r) => r.data.lead),
+    bulkCreate: (leads) => api.post('/leads/bulk', { leads }).then((r) => r.data), // { created, skipped, failed, errors }
     update: (id, body) => api.put(`/leads/${id}`, body).then((r) => r.data.lead),
     setStatus: (id, body) => api.patch(`/leads/${id}/status`, body).then((r) => r.data.lead),
     logCall: (id, body) => api.post(`/leads/${id}/call`, body).then((r) => r.data.lead),
