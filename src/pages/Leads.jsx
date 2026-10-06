@@ -53,7 +53,7 @@ const leadSchema = Yup.object({
   altMobile: Yup.string().trim()
     .matches(/^[0-9+\-\s]*$/, 'Digits only')
     .test('len', 'Enter a valid number', (v) => !v || v.replace(/\D/g, '').length >= 5),
-  city: Yup.string().trim().required('City is required').max(60, 'Too long'),
+  city: Yup.string().trim().max(60, 'Too long'), // optional
   country: Yup.string().required('Country is required'),
   source: Yup.string().required('Source is required'),
   stage: Yup.string().oneOf(CREATE_STAGES).required('Stage is required'),
@@ -146,7 +146,6 @@ function rowsToLeads(parsed, existingLeads = []) {
     const obj = emptyLead();
     header.forEach((key, c) => { if (key) obj[key] = (cells[c] || '').trim(); });
     if (!obj.name) { errors.push(`Row ${r + 1}: missing name — skipped.`); continue; }
-    if (!obj.city) { errors.push(`Row ${r + 1}: missing city (${obj.name}) — skipped.`); continue; }
 
     // Country Code column: resolve a country name from the dial code when given.
     // If the code is unknown, prepend it onto the mobile so it isn't lost.
@@ -517,7 +516,9 @@ export default function Leads() {
 
   const subTotal = useMemo(() => items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0), [items]);
 
-  if (loading) return <Spinner label="Loading leads…" />;
+  // Full-page spinner only on first load — a refetch (e.g. after an import)
+  // must not replace the page, or the import modal and its results vanish.
+  if (loading && !leads) return <Spinner label="Loading leads…" />;
 
   return (
     // Fixed-height flex column — header + filters are static, table scrolls
