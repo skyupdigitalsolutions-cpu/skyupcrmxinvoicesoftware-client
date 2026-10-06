@@ -247,7 +247,6 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
 
   const save = async () => {
     if (!form.name.trim()) return show('Name is required.', 'error');
-    if (!form.city.trim()) return show('City is required.', 'error');
     setBusy(true);
     try {
       const payload = {
@@ -309,7 +308,7 @@ function SaveLeadModal({ conv, onClose, onSaved }) {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="City *">
+          <Field label="City">
             <Input value={form.city} placeholder="e.g. Dubai" onChange={inp('city')} />
           </Field>
           <Field label="Country">
