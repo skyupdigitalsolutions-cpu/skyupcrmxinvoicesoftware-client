@@ -1,4 +1,4 @@
-﻿import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { fmtN } from '../utils/format.js';
 
 // Product categories replace the old free-text description + brand fields.
