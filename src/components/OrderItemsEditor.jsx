@@ -23,7 +23,7 @@ const PCS_PER_BOX = [12, 24, 36, 60, 72];
 
 // Reusable line-item editor used by both the order form and invoice editing.
 // Controlled: parent owns `items`; this calls onChange with the next array.
-export default function OrderItemsEditor({ items, onChange, currency = 'DHS', compact = false, poPriceMap }) {
+export default function OrderItemsEditor({ items, onChange, currency = 'DHS', compact = false, poPriceMap = {} }) {
   const update = (i, patch) => onChange(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   const add = () => onChange([...items, blankItem()]);
   const remove = (i) => onChange(items.filter((_, idx) => idx !== i));
@@ -180,4 +180,5 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
 }
 
 export { blankItem, CATEGORIES, SIZES };
+
 
