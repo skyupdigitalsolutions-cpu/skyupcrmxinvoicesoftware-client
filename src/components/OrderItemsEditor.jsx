@@ -180,3 +180,4 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
 }
 
 export { blankItem, CATEGORIES, SIZES };
+
