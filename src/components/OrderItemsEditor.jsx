@@ -11,11 +11,11 @@ const CATEGORIES = [
   'Kids Slipper',
 ];
 
-// `description` keeps its field name so orders/invoices/PDF stay compatible â€”
+// `description` keeps its field name so orders/invoices/PDF stay compatible —
 // it now holds the selected category instead of free text. `brand` is dropped.
 const blankItem = () => ({ modelCode: '', description: '', size: '', unit: 'PAIR', qty: 1, pieces: 0, price: 0 });
 
-// Standard footwear size ranges â€” shown as a dropdown on each item row.
+// Standard footwear size ranges — shown as a dropdown on each item row.
 const SIZES = ['16to20', '20-25', '25-30', '31-36', '36-40', '40-45', '44-48'];
 
 // Common pieces-per-box values for footwear cartons (used as datalist hints).
@@ -55,14 +55,80 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
           </div>
 
           {/* Rows */}
-          <div className="rounded-b-lg border border-t-0"
+          <div className="rounded-b-lg border border-t-0" style={{ borderColor: 'var(--border-card)' }}>
+            {items.map((it, i) => {
+              const legacy = it.description && !CATEGORIES.includes(it.description);
+              return (
+                <div
+                  key={i}
+                  className={`grid ${cols} items-center gap-2 border-b px-3 py-2 transition-colors odd:bg-black/[0.015] hover:bg-gold-pale`}
+                  style={{ borderColor: 'var(--border-card)' }}
+                >
+                  <span className="flex h-6 w-6 items-center justify-center justify-self-center rounded-full bg-navy text-[11px] font-bold text-white">
+                    {i + 1}
+                  </span>
+
+                  <input
+                    className="li"
+                    value={it.modelCode}
+                    placeholder="e.g. SS-4421"
+                    onChange={(e) => update(i, { modelCode: e.target.value })}
+                  />
+
+                  <select
+                    className="li"
+                    value={it.description || ''}
+                    onChange={(e) => update(i, { description: e.target.value })}
+                    style={{ color: it.description ? 'var(--text-primary)' : 'var(--text-muted, #9aa1ab)' }}
+                  >
+                    <option value="">Select category…</option>
+                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {legacy && <option value={it.description}>{it.description}</option>}
+                  </select>
+
+                  <select
+                    className="li"
+                    value={it.size || ''}
+                    onChange={(e) => update(i, { size: e.target.value })}
+                    style={{ color: it.size ? 'var(--text-primary)' : 'var(--text-muted, #9aa1ab)' }}
+                  >
+                    <option value="">Select size…</option>
+                    {SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                    {it.size && !SIZES.includes(it.size) && <option value={it.size}>{it.size}</option>}
+                  </select>
+
+                  <input
+                    className="li text-center"
+                    type="number"
+                    min="0"
+                    value={it.qty}
+                    onChange={(e) => update(i, { qty: Number(e.target.value) })}
+                  />
+
+                  <input
+                    className="li text-center"
+                    type="number"
+                    min="0"
+                    list="pcs-per-box"
+                    placeholder="pcs/box"
+                    value={it.pieces || 0}
+                    onChange={(e) => update(i, { pieces: Number(e.target.value) })}
+                  />
+
+                  <input
+                    className="li text-right"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={it.price}
+                    onChange={(e) => update(i, { price: Number(e.target.value) })}
                   />
 
                   <div
                     className="rounded-md border px-2 py-1.5 text-right text-[12px] font-bold"
-                   
-                      return null;
-                    })()}
+                    style={{ borderColor: 'var(--border-card)', backgroundColor: 'var(--bg-card-head)', color: 'var(--text-primary)' }}
+                  >
+                    {fmtN((it.qty || 0) * (it.price || 0))}
                   </div>
 
                   <button
@@ -99,7 +165,3 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
 }
 
 export { blankItem, CATEGORIES, SIZES };
-
-
-
-
