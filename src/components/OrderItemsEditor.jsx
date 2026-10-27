@@ -23,7 +23,7 @@ const PCS_PER_BOX = [12, 24, 36, 60, 72];
 
 // Reusable line-item editor used by both the order form and invoice editing.
 // Controlled: parent owns `items`; this calls onChange with the next array.
-export default function OrderItemsEditor({ items, onChange, currency = 'DHS', compact = false, poPriceMap = {} }) {
+export default function OrderItemsEditor({ items, onChange, currency = 'DHS', compact = false }) {
   const update = (i, patch) => onChange(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   const add = () => onChange([...items, blankItem()]);
   const remove = (i) => onChange(items.filter((_, idx) => idx !== i));
@@ -55,93 +55,12 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
           </div>
 
           {/* Rows */}
-          <div className="rounded-b-lg border border-t-0" style={{ borderColor: 'var(--border-card)' }}>
-            {items.map((it, i) => {
-              const legacy = it.description && !CATEGORIES.includes(it.description);
-              return (
-                <div
-                  key={i}
-                  className={`grid ${cols} items-center gap-2 border-b px-3 py-2 transition-colors odd:bg-black/[0.015] hover:bg-gold-pale`}
-                  style={{ borderColor: 'var(--border-card)' }}
-                >
-                  <span className="flex h-6 w-6 items-center justify-center justify-self-center rounded-full bg-navy text-[11px] font-bold text-white">
-                    {i + 1}
-                  </span>
-
-                  <input
-                    className="li"
-                    value={it.modelCode}
-                    placeholder="e.g. SS-4421"
-                    onChange={(e) => update(i, { modelCode: e.target.value })}
-                  />
-
-                  <select
-                    className="li"
-                    value={it.description || ''}
-                    onChange={(e) => update(i, { description: e.target.value })}
-                    style={{ color: it.description ? 'var(--text-primary)' : 'var(--text-muted, #9aa1ab)' }}
-                  >
-                    <option value="">Select categoryâ€¦</option>
-                    {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    {legacy && <option value={it.description}>{it.description}</option>}
-                  </select>
-
-                  <select
-                    className="li"
-                    value={it.size || ''}
-                    onChange={(e) => update(i, { size: e.target.value })}
-                    style={{ color: it.size ? 'var(--text-primary)' : 'var(--text-muted, #9aa1ab)' }}
-                  >
-                    <option value="">Select sizeâ€¦</option>
-                    {SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    {it.size && !SIZES.includes(it.size) && <option value={it.size}>{it.size}</option>}
-                  </select>
-
-                  <input
-                    className="li text-center"
-                    type="number"
-                    min="0"
-                    value={it.qty}
-                    onChange={(e) => update(i, { qty: Number(e.target.value) })}
-                  />
-
-                  <input
-                    className="li text-center"
-                    type="number"
-                    min="0"
-                    list="pcs-per-box"
-                    placeholder="pcs/box"
-                    value={it.pieces || 0}
-                    onChange={(e) => update(i, { pieces: Number(e.target.value) })}
-                  />
-
-                  <input
-                    className="li text-right"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={it.price}
-                    onChange={(e) => update(i, { price: Number(e.target.value) })}
-                    style={(() => {
-                      const key = (it.modelCode || '').trim().toLowerCase();
-                      const po = poPriceMap[key];
-                      return po !== undefined && Number(it.price) < po
-                        ? { borderColor: '#ef4444', background: '#fef2f2' }
-                        : {};
-                    })()}
+          <div className="rounded-b-lg border border-t-0" style={}
                   />
 
                   <div
                     className="rounded-md border px-2 py-1.5 text-right text-[12px] font-bold"
-                    style={{ borderColor: 'var(--border-card)', backgroundColor: 'var(--bg-card-head)', color: 'var(--text-primary)' }}
-                  >
-                    {fmtN((it.qty || 0) * (it.price || 0))}
-                    {(() => {
-                      const key = (it.modelCode || '').trim().toLowerCase();
-                      const po = poPriceMap[key];
-                      if (po !== undefined && Number(it.price) < po) {
-                        return <div style={{ color: '#ef4444', fontSize: 10, marginTop: 2 }}>âš  Below PO price ({fmtN(po)})</div>;
-                      }
+                    style={}
                       return null;
                     })()}
                   </div>
@@ -180,5 +99,6 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
 }
 
 export { blankItem, CATEGORIES, SIZES };
+
 
 
