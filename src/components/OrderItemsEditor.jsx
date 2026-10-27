@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react';
+﻿import { Plus, Trash2 } from 'lucide-react';
 import { fmtN } from '../utils/format.js';
 
 // Product categories replace the old free-text description + brand fields.
@@ -11,11 +11,11 @@ const CATEGORIES = [
   'Kids Slipper',
 ];
 
-// `description` keeps its field name so orders/invoices/PDF stay compatible —
+// `description` keeps its field name so orders/invoices/PDF stay compatible â€”
 // it now holds the selected category instead of free text. `brand` is dropped.
 const blankItem = () => ({ modelCode: '', description: '', size: '', unit: 'PAIR', qty: 1, pieces: 0, price: 0 });
 
-// Standard footwear size ranges — shown as a dropdown on each item row.
+// Standard footwear size ranges â€” shown as a dropdown on each item row.
 const SIZES = ['16to20', '20-25', '25-30', '31-36', '36-40', '40-45', '44-48'];
 
 // Common pieces-per-box values for footwear cartons (used as datalist hints).
@@ -81,7 +81,7 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
                     onChange={(e) => update(i, { description: e.target.value })}
                     style={{ color: it.description ? 'var(--text-primary)' : 'var(--text-muted, #9aa1ab)' }}
                   >
-                    <option value="">Select category…</option>
+                    <option value="">Select categoryâ€¦</option>
                     {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                     {legacy && <option value={it.description}>{it.description}</option>}
                   </select>
@@ -92,7 +92,7 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
                     onChange={(e) => update(i, { size: e.target.value })}
                     style={{ color: it.size ? 'var(--text-primary)' : 'var(--text-muted, #9aa1ab)' }}
                   >
-                    <option value="">Select size…</option>
+                    <option value="">Select sizeâ€¦</option>
                     {SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
                     {it.size && !SIZES.includes(it.size) && <option value={it.size}>{it.size}</option>}
                   </select>
@@ -140,7 +140,7 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
                       const key = (it.modelCode || '').trim().toLowerCase();
                       const po = poPriceMap[key];
                       if (po !== undefined && Number(it.price) < po) {
-                        return <div style={{ color: '#ef4444', fontSize: 10, marginTop: 2 }}>⚠ Below PO price ({fmtN(po)})</div>;
+                        return <div style={{ color: '#ef4444', fontSize: 10, marginTop: 2 }}>âš  Below PO price ({fmtN(po)})</div>;
                       }
                       return null;
                     })()}
