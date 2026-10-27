@@ -55,12 +55,12 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
           </div>
 
           {/* Rows */}
-          <div className="rounded-b-lg border border-t-0" style={}
+          <div className="rounded-b-lg border border-t-0"
                   />
 
                   <div
                     className="rounded-md border px-2 py-1.5 text-right text-[12px] font-bold"
-                    style={}
+                   
                       return null;
                     })()}
                   </div>
@@ -99,6 +99,7 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
 }
 
 export { blankItem, CATEGORIES, SIZES };
+
 
 
 
