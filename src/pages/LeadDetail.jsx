@@ -1,6 +1,6 @@
 import { Target, History } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { leadApi } from '../api/endpoints.js';
 import { useToast } from '../context/ToastContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -15,6 +15,7 @@ import { formatDate, fmtDateTime, leadStatusClass, LEAD_STATUSES, fmtMobile } fr
 export default function LeadDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { show } = useToast();
   const { isAdmin } = useAuth();
 
@@ -33,7 +34,7 @@ export default function LeadDetail() {
       setPayload(data);
     } catch (e) {
       show(apiError(e), 'error');
-      navigate('/leads');
+      navigate(location.state?.from || '/leads');
     } finally { setLoading(false); }
   };
 
@@ -88,9 +89,9 @@ export default function LeadDetail() {
       <PageTitle icon={<Target size={18} />}
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => navigate('/leads')}>← Back to Leads</Button>
+            <Button variant="outline" onClick={() => { if (location.state?.from) navigate(location.state.from); else navigate(-1); }}>← Back to Leads</Button>
             {canEdit && !lead.converted && (
-              <Button onClick={() => navigate('/leads', { state: { editId: id } })}>✏️ Edit Lead</Button>
+              <Button onClick={() => navigate(location.state?.from || '/leads', { state: { editId: id } })}>✏️ Edit Lead</Button>
             )}
           </div>
         }>

@@ -10,7 +10,7 @@ import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Input } from '../components/ui/Field.jsx';
 import { exportTableCsv } from '../utils/exportPdf.js';
-import { fmtDateTime, fmtMobile } from '../utils/format.js';
+import { fmtDateTime, fmtMobile, phoneSearchMatches } from '../utils/format.js';
 
 // Admin-only reference report: contact numbers that were retained when their
 // lead was deleted. Data comes from the append-only DeletedContact archive on
@@ -25,7 +25,8 @@ export default function DeletedContacts() {
     const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter((c) =>
-      [c.name, c.mobile, c.city, c.email, c.country].some((v) => (v || '').toLowerCase().includes(q))
+      [c.name, c.city, c.email, c.country].some((v) => (v || '').toLowerCase().includes(q)) ||
+      phoneSearchMatches(c.mobile, search)
     );
   }, [contacts, search]);
 

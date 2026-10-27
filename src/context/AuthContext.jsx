@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { PauseCircle } from 'lucide-react';
 import { api, setAccessToken, onAuthFailure, onAccountPaused } from '../api/client.js';
 import { authApi, termsApi } from '../api/endpoints.js';
@@ -89,7 +89,18 @@ export function AuthProvider({ children }) {
   if (pausedMsg && !isDeveloper) {
     return (
       <AuthContext.Provider value={{ user, loading, login, logout, isAdmin, isDeveloper, company, branding, currency, subscription, paused: true }}>
-        <AccountPausedScreen message={pausedMsg} onLogout={logout} brandName={branding?.headerName} />
+        <AccountPausedScreen
+          message={pausedMsg}
+          onLogout={logout}
+          brandName={branding?.headerName}
+          onResume={(newUser, newToken) => {
+            // Called by AccountPausedScreen when it detects the subscription
+            // has been renewed. Clear the paused state and restore the session.
+            setAccessToken(newToken);
+            setUser(newUser);
+            setPausedMsg(null);
+          }}
+        />
       </AuthContext.Provider>
     );
   }
@@ -113,7 +124,42 @@ export function AuthProvider({ children }) {
 }
 
 // Full-screen blocking notice shown when a company's subscription is paused.
-function AccountPausedScreen({ message, onLogout, brandName }) {
+// Polls /auth/refresh every 30s — when the developer renews the subscription
+// the refresh succeeds (no longer 402) and onResume() is called to restore
+// the session without requiring a manual page refresh or re-login.
+function AccountPausedScreen({ message, onLogout, brandName, onResume }) {
+  const [checking, setChecking] = React.useState(false);
+  const [checkMsg, setCheckMsg] = React.useState('');
+
+  // Try a silent refresh to see if the subscription has been renewed.
+  const tryResume = React.useCallback(async (silent = false) => {
+    if (!silent) setChecking(true);
+    try {
+      const { data } = await api.post('/auth/refresh');
+      // If this succeeds without a 402, the account is no longer paused.
+      if (data?.accessToken && data?.user) {
+        onResume(data.user, data.accessToken);
+      }
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 402) {
+        // Still paused — expected, no error to show
+        if (!silent) setCheckMsg('Account is still paused. Please contact support.');
+      } else {
+        if (!silent) setCheckMsg('Could not connect. Please try again.');
+      }
+    } finally {
+      if (!silent) setChecking(false);
+    }
+  }, [onResume]);
+
+  // Auto-poll every 30s so access resumes as soon as the developer renews
+  // the subscription — without the user having to do anything.
+  React.useEffect(() => {
+    const t = setInterval(() => tryResume(true), 30_000);
+    return () => clearInterval(t);
+  }, [tryResume]);
+
   return (
     <div
       style={{
@@ -139,17 +185,33 @@ function AccountPausedScreen({ message, onLogout, brandName }) {
         </p>
         <p style={{ fontSize: 12, color: 'var(--text-muted, #888)', margin: '0 0 22px' }}>
           Access will resume automatically once the subscription is renewed and the
-          payment status is updated.
+          payment status is updated. This page checks every 30 seconds.
         </p>
-        <button
-          onClick={onLogout}
-          style={{
-            padding: '10px 22px', borderRadius: 8, border: 'none', cursor: 'pointer',
-            background: 'var(--primary, #6D28D9)', color: '#fff', fontWeight: 700, fontSize: 14,
-          }}
-        >
-          Sign out
-        </button>
+        {checkMsg && (
+          <p style={{ fontSize: 12, color: '#dc2626', margin: '0 0 14px' }}>{checkMsg}</p>
+        )}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => { setCheckMsg(''); tryResume(false); }}
+            disabled={checking}
+            style={{
+              padding: '10px 22px', borderRadius: 8, border: '1.5px solid var(--primary, #6D28D9)',
+              cursor: checking ? 'not-allowed' : 'pointer', opacity: checking ? 0.6 : 1,
+              background: 'transparent', color: 'var(--primary, #6D28D9)', fontWeight: 700, fontSize: 14,
+            }}
+          >
+            {checking ? 'Checking…' : 'Check now'}
+          </button>
+          <button
+            onClick={onLogout}
+            style={{
+              padding: '10px 22px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              background: 'var(--primary, #6D28D9)', color: '#fff', fontWeight: 700, fontSize: 14,
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </div>
   );

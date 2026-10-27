@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
-import { FileText, Pencil, Trash2, MessageCircle, Download, RefreshCw, Save, FolderOpen, X } from 'lucide-react';
+import { FileText, Pencil, Trash2, MessageCircle, Download, RefreshCw, Save, FolderOpen, X, Receipt, PlusCircle, Banknote } from 'lucide-react';
+import { buildReceiptPdfBlob } from '../utils/receiptPdf.js';
 import { invoiceApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -7,11 +8,11 @@ import { useToast } from '../context/ToastContext.jsx';
 import { apiError, api } from '../api/client.js';
 import PageTitle from '../components/layout/PageTitle.jsx';
 import { Card } from '../components/ui/Card.jsx';
-import Button from '../components/ui/Button.jsx';
 import Modal from '../components/ui/Modal.jsx';
+import { Field, Input, Select, Textarea } from '../components/ui/Field.jsx';
+import Button from '../components/ui/Button.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
-import { Input, Select } from '../components/ui/Field.jsx';
 import OrderItemsEditor, { blankItem } from '../components/OrderItemsEditor.jsx';
 import { fmtAED, formatDate } from '../utils/format.js';
 import { invoiceWhatsAppUrl } from '../utils/whatsapp.js';
@@ -22,7 +23,7 @@ import {
 } from '../utils/pdfSaver.js';
 
 export default function Invoices() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, branding } = useAuth();
   const { show } = useToast();
   const { data: invoices, loading, error, refetch } = useFetch(() => invoiceApi.list(), []);
   const { data: users } = useFetch(() => (isAdmin ? userApi.list() : Promise.resolve([])), [isAdmin]);
@@ -34,6 +35,11 @@ export default function Invoices() {
   const [items, setItems] = useState([]);
   const [pdfBusy, setPdfBusy] = useState(null); // invoiceId being regenerated
   const [dlBusy, setDlBusy] = useState(null);   // invoiceId being downloaded
+  const [receiptBusy, setReceiptBusy] = useState(null);
+  const [payModal, setPayModal] = useState(null); // invoice being paid
+  const [payForm, setPayForm] = useState({ amount: '', method: 'Cash', date: '', note: '' });
+  const [payBusy, setPayBusy] = useState(false);
+  const [viewPayments, setViewPayments] = useState(null); // invoice whose payments to view
 
   const filtered = useMemo(() => {
     if (!invoices) return [];
@@ -160,6 +166,44 @@ export default function Invoices() {
     await clearDownloadFolder();
     setPdfFolder(null);
     show('Save folder cleared — PDFs will use normal browser downloads.');
+  };
+
+  const downloadReceipt = async (invoice, payment) => {
+    setReceiptBusy(invoice._id);
+    try {
+      const { blob, filename } = await buildReceiptPdfBlob(invoice, payment, branding);
+      const url = URL.createObjectURL(blob);
+      Object.assign(document.createElement('a'), { href: url, download: filename }).click();
+      URL.revokeObjectURL(url);
+      show(`${filename} downloaded.`, 'success');
+    } catch (e) { show('Could not generate receipt.', 'error'); }
+    finally { setReceiptBusy(null); }
+  };
+
+  const openPayModal = (v) => {
+    setPayModal(v);
+    setPayForm({ amount: String(Math.max(0, v.due ?? (v.total - (v.payments || []).reduce((s,p)=>s+p.amount,0)))), method: 'Cash', date: new Date().toISOString().slice(0,10), note: '' });
+  };
+
+  const recordPayment = async () => {
+    if (!payForm.amount || Number(payForm.amount) <= 0) { show('Enter a valid amount.', 'error'); return; }
+    setPayBusy(true);
+    try {
+      await api.post(`/invoices/${payModal._id}/payments`, payForm);
+      show('Payment recorded.', 'success');
+      setPayModal(null);
+      refetch();
+    } catch(e) { show(apiError(e), 'error'); }
+    finally { setPayBusy(false); }
+  };
+
+  const deletePayment = async (invoiceId, paymentId) => {
+    if (!confirm('Delete this payment record?')) return;
+    try {
+      await api.delete(`/invoices/${invoiceId}/payments/${paymentId}`);
+      show('Payment deleted.', 'success');
+      refetch();
+    } catch(e) { show(apiError(e), 'error'); }
   };
 
   const downloadPdf = async (v) => {
@@ -312,11 +356,22 @@ export default function Invoices() {
                           <MessageCircle size={13} />
                         </a>
 
+                        {/* Record Payment */}
+                        <Button size="sm" variant="outline" title="Record Payment" onClick={() => openPayModal(v)}>
+                          <PlusCircle size={13} />
+                        </Button>
+                        {/* View Receipts */}
+                        {(v.payments?.length > 0) && (
+                          <Button size="sm" variant="outline" title={`${v.payments.length} payment(s)`} onClick={() => setViewPayments(v)}>
+                            <Receipt size={13} />
+                          </Button>
+                        )}
+
                         {/* Download PDF — fetched with auth; works across origins */}
                         <Button
                           size="sm"
                           variant="outline"
-                          title="Download PDF"
+                          title="Download Invoice PDF"
                           disabled={dlBusy === v._id}
                           onClick={() => downloadPdf(v)}
                         >
@@ -378,6 +433,68 @@ export default function Invoices() {
           </Button>
         </div>
       </Modal>
+
+      {/* ── Record Payment Modal ── */}
+      {payModal && (
+        <Modal open onClose={() => setPayModal(null)} title={`Record Payment — INV-${payModal.invoiceNo}`} width="sm:max-w-md">
+          <div className="space-y-3 p-4">
+            <Field label="Amount *">
+              <Input type="number" min="0" step="0.01" value={payForm.amount} onChange={(e) => setPayForm(f=>({...f,amount:e.target.value}))} />
+            </Field>
+            <Field label="Payment Method">
+              <Select value={payForm.method} onChange={(e) => setPayForm(f=>({...f,method:e.target.value}))}>
+                {['Cash','Bank Transfer','Cheque','Card','Online','Other'].map(m=><option key={m}>{m}</option>)}
+              </Select>
+            </Field>
+            <Field label="Payment Date">
+              <Input type="date" value={payForm.date} onChange={(e) => setPayForm(f=>({...f,date:e.target.value}))} />
+            </Field>
+            <Field label="Note (optional)">
+              <Input value={payForm.note} onChange={(e) => setPayForm(f=>({...f,note:e.target.value}))} placeholder="e.g. Bank ref, cheque no..." />
+            </Field>
+            <div className="flex gap-2 pt-2">
+              <Button className="flex-1" onClick={recordPayment} disabled={payBusy}>
+                {payBusy ? 'Saving…' : 'Record Payment'}
+              </Button>
+              <Button variant="outline" onClick={() => setPayModal(null)}>Cancel</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── View Payments / Download Receipts Modal ── */}
+      {viewPayments && (
+        <Modal open onClose={() => setViewPayments(null)} title={`Payments — INV-${viewPayments.invoiceNo}`} width="sm:max-w-lg">
+          <div className="p-4 space-y-2">
+            {(viewPayments.payments || []).length === 0 && (
+              <p className="text-sm text-gray-500">No payments recorded.</p>
+            )}
+            {(viewPayments.payments || []).map((p) => (
+              <div key={p._id} className="flex items-center justify-between rounded-lg border p-3 text-[12px]">
+                <div>
+                  <div className="font-bold">Receipt #{p.receiptNo} — {p.method}</div>
+                  <div className="text-ink-3">{new Date(p.date).toLocaleDateString()} · {p.recordedBy}</div>
+                  {p.note && <div className="text-ink-3 italic">{p.note}</div>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-green-700">{(p.amount||0).toLocaleString('en-AE',{style:'currency',currency:'AED'})}</span>
+                  <Button size="sm" variant="outline" title="Download Receipt"
+                    disabled={receiptBusy === viewPayments._id}
+                    onClick={() => downloadReceipt(viewPayments, p)}>
+                    <Receipt size={12} />
+                  </Button>
+                  {isAdmin && (
+                    <Button size="sm" variant="outline" title="Delete" onClick={() => deletePayment(viewPayments._id, p._id)}>
+                      <Trash2 size={12} className="text-red-500" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+
     </div>
   );
 }

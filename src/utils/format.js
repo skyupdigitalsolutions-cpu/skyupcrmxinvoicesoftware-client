@@ -64,81 +64,64 @@ export const formatDate = (d) => {
 };
 export const todayStr = () => new Date().toISOString().slice(0, 10);
 
+// ── World country dial codes ─────────────────────────────────────────────────
+// Complete list — kept in sync with server/src/models/Lead.js DIAL map
+// and server/src/utils/phone.js DIAL_CODES.
+// Users can still type any country not listed using the "Other" option in
+// CountrySelect — their custom entry is remembered in localStorage and
+// shown in the dropdown for that browser only.
 export const COUNTRY_CODES = {
     // Gulf / Middle East
-    UAE: '971',
-    'Saudi Arabia': '966',
-    Kuwait: '965',
-    Qatar: '974',
-    Bahrain: '973',
-    Oman: '968',
-    Iran: '98',
-    Iraq: '964',
-    Syria: '963',
-    Yemen: '967',
-    Lebanon: '961',
-    Georgia: '995',
+    UAE: '971', 'Saudi Arabia': '966', Kuwait: '965', Qatar: '974', Bahrain: '973',
+    Oman: '968', Iran: '98', Iraq: '964', Syria: '963', Yemen: '967', Lebanon: '961',
+    Jordan: '962', Palestine: '970', Israel: '972', Turkey: '90',
+    // Central Asia
+    Georgia: '995', Armenia: '374', Azerbaijan: '994', Kazakhstan: '7',
+    Uzbekistan: '998', Turkmenistan: '993', Tajikistan: '992', Kyrgyzstan: '996',
+    Afghanistan: '93', Pakistan: '92',
     // South Asia
-    India: '91',
-    'Sri Lanka': '94',
+    India: '91', 'Sri Lanka': '94', Bangladesh: '880', Nepal: '977',
+    Bhutan: '975', Maldives: '960',
+    // Southeast Asia
+    Indonesia: '62', Malaysia: '60', Philippines: '63', Thailand: '66',
+    Vietnam: '84', Singapore: '65', Myanmar: '95', Cambodia: '855',
+    Laos: '856', Brunei: '673',
+    // East Asia
+    China: '86', Japan: '81', 'South Korea': '82', Mongolia: '976',
+    Taiwan: '886', 'Hong Kong': '852', Macau: '853',
     // Europe
-    'United Kingdom': '44',
+    'United Kingdom': '44', Germany: '49', France: '33', Italy: '39',
+    Spain: '34', Portugal: '351', Netherlands: '31', Belgium: '32',
+    Switzerland: '41', Austria: '43', Sweden: '46', Norway: '47',
+    Denmark: '45', Finland: '358', Ireland: '353', Greece: '30',
+    Poland: '48', 'Czech Republic': '420', Slovakia: '421', Hungary: '36',
+    Romania: '40', Bulgaria: '359', Croatia: '385', Serbia: '381',
+    Slovenia: '386', Albania: '355', Ukraine: '380', Belarus: '375',
+    Moldova: '373', Russia: '7', Estonia: '372', Latvia: '371',
+    Lithuania: '370', Luxembourg: '352', Iceland: '354', Malta: '356', Cyprus: '357',
+    // Americas
+    USA: '1', Canada: '1', Mexico: '52', Brazil: '55', Argentina: '54',
+    Colombia: '57', Chile: '56', Peru: '51', Venezuela: '58', Ecuador: '593',
+    Bolivia: '591', Paraguay: '595', Uruguay: '598', Guyana: '592',
+    Suriname: '597', Panama: '507', 'Costa Rica': '506', Guatemala: '502',
+    Honduras: '504', 'El Salvador': '503', Nicaragua: '505', Cuba: '53', Haiti: '509',
     // Africa
-    Egypt: '20',
-    Sudan: '249',
-    'South Sudan': '211',
-    Libya: '218',
-    Algeria: '213',
-    Morocco: '212',
-    Tunisia: '216',
-    Angola: '244',
-    Benin: '229',
-    Botswana: '267',
-    'Burkina Faso': '226',
-    Burundi: '257',
-    Cameroon: '237',
-    'Cape Verde': '238',
-    'Central African Republic': '236',
-    Chad: '235',
-    Comoros: '269',
-    'Congo (Republic)': '242',
-    'Congo (DRC)': '243',
-    Djibouti: '253',
-    'Equatorial Guinea': '240',
-    Eritrea: '291',
-    Eswatini: '268',
-    Ethiopia: '251',
-    Gabon: '241',
-    Gambia: '220',
-    Ghana: '233',
-    Guinea: '224',
-    'Guinea-Bissau': '245',
-    'Ivory Coast': '225',
-    Kenya: '254',
-    Lesotho: '266',
-    Liberia: '231',
-    Madagascar: '261',
-    Malawi: '265',
-    Mali: '223',
-    Mauritania: '222',
-    Mauritius: '230',
-    Mozambique: '258',
-    Namibia: '264',
-    Niger: '227',
-    Nigeria: '234',
-    Rwanda: '250',
-    'Sao Tome and Principe': '239',
-    Senegal: '221',
-    Seychelles: '248',
-    'Sierra Leone': '232',
-    Somalia: '252',
-    'South Africa': '27',
-    Tanzania: '255',
-    Togo: '228',
-    Uganda: '256',
-    Zambia: '260',
-    Zimbabwe: '263',
-    // Fallback — pick this to type a country not listed above
+    Egypt: '20', Sudan: '249', 'South Sudan': '211', Libya: '218', Algeria: '213',
+    Morocco: '212', Tunisia: '216', Angola: '244', Benin: '229', Botswana: '267',
+    'Burkina Faso': '226', Burundi: '257', Cameroon: '237', 'Cape Verde': '238',
+    'Central African Republic': '236', Chad: '235', Comoros: '269',
+    'Congo (Republic)': '242', 'Congo (DRC)': '243', Djibouti: '253',
+    'Equatorial Guinea': '240', Eritrea: '291', Eswatini: '268', Ethiopia: '251',
+    Gabon: '241', Gambia: '220', Ghana: '233', Guinea: '224', 'Guinea-Bissau': '245',
+    'Ivory Coast': '225', Kenya: '254', Lesotho: '266', Liberia: '231',
+    Madagascar: '261', Malawi: '265', Mali: '223', Mauritania: '222', Mauritius: '230',
+    Mayotte: '262', Mozambique: '258', Namibia: '264', Niger: '227', Nigeria: '234',
+    Rwanda: '250', 'Sao Tome and Principe': '239', Senegal: '221', Seychelles: '248',
+    'Sierra Leone': '232', Somalia: '252', 'South Africa': '27', Tanzania: '255',
+    Togo: '228', Uganda: '256', Zambia: '260', Zimbabwe: '263',
+    // Oceania
+    Australia: '61', 'New Zealand': '64', Fiji: '679', 'Papua New Guinea': '675',
+    // Fallback — user types a country not listed above via CountrySelect
     Other: '',
 };
 // ── Custom countries (user-added, remembered in the browser) ──────────────────
@@ -212,6 +195,71 @@ export const cleanPhone = (num, country) => {
     return p;
 };
 
+// ── Phone-aware free-text search ─────────────────────────────────────────────
+// A plain `mobile.includes(searchText)` breaks the moment either side has a
+// country code, a leading trunk zero, or different punctuation (+, spaces,
+// dashes) than the other — e.g. typing "+971 554252850" would never match a
+// stored "0554252850". These mirror the server's phoneSearchCandidates
+// (server/src/utils/phone.js) so every search box behaves consistently.
+//
+// phoneSearchDigits(raw) reduces free-typed text to every plausible digit
+// variant: as typed, with a leading "00"/"0" stripped, and with any known
+// country dial code stripped — repeated until nothing new turns up, so
+// combinations (e.g. "00" + a country code together) reduce fully too.
+export function phoneSearchDigits(raw) {
+    const digits = String(raw || '').replace(/\D/g, '');
+    if (!digits) return [];
+    const variants = new Set([digits]);
+    let grew = true;
+    while (grew) {
+        grew = false;
+        for (const v of [...variants]) {
+            const candidates = [];
+            if (v.startsWith('00')) candidates.push(v.slice(2));
+            if (v.startsWith('0')) candidates.push(v.slice(1));
+            Object.values(EFFECTIVE_CODES).forEach((code) => {
+                if (code && v.startsWith(code) && v.length > code.length) candidates.push(v.slice(code.length));
+            });
+            for (const c of candidates) {
+                if (c && !variants.has(c)) { variants.add(c); grew = true; }
+            }
+        }
+    }
+    return [...variants];
+}
+
+// True if `mobile` (a stored number, possibly with punctuation and/or a
+// country code) matches free-typed `rawSearch` — regardless of which side
+// has the country code, the leading zero, or how it's punctuated.
+//
+// NOTE: This function is for country-code-aware matching of full numbers
+// (>= 7 digits). For partial number searches (< 7 digits), the caller
+// should use a plain raw mobile text match (mobile.includes(search)) which
+// is faster and already handles partial searches correctly.
+//
+// Returns false when search has < 7 digits — partial searches are handled
+// by the raw mobile text match in the filter (name/email/city/mobile).
+export function phoneSearchMatches(mobile, rawSearch) {
+    const searchDigits = String(rawSearch || '').replace(/\D/g, '');
+    // For partial searches (< 7 digits), skip — raw mobile.includes() handles it.
+    // This also prevents short stripped variants from causing false positives.
+    if (searchDigits.length < 7) return false;
+    const mobileDigits = String(mobile || '').replace(/\D/g, '');
+    if (!mobileDigits) return false;
+    const searchVariants = phoneSearchDigits(rawSearch);
+    const mobileVariants = phoneSearchDigits(mobile);
+    // sv must be >= 7 digits to avoid short stripped variants (e.g. stripping
+    // country code 98 from '989364613911' gives '9364613911' — fine at 10 digits,
+    // but further stripping must not produce < 7 digit fragments that match
+    // as substrings of completely unrelated stored numbers).
+    return searchVariants.some((sv) =>
+        mobileVariants.some((mv) =>
+            (sv.length >= 7 && mv.includes(sv)) ||
+            (sv.length >= 7 && mv.length >= 7 && sv.includes(mv))
+        )
+    );
+}
+
 export const ORDER_STATUSES = ['Pending', 'Confirmed', 'Packed', 'Market Delay', 'Out for Delivery', 'Delivered', 'Cancelled'];
 export const ALL_STATUSES = [...ORDER_STATUSES.slice(0, 1), 'Confirmed', 'Packed', 'Market Delay', 'Out for Delivery', 'Delivered', 'Invoiced', 'Cancelled'];
 // Delivery stages selectable on an already-Invoiced order — its `status`
@@ -272,12 +320,22 @@ export const leadStageOf = (l) => {
     return 'Lead'; // New / Lost / anything else
 };
 
-export const leadStageClass = (s) => ({
-    Lead: 'bg-gray-100 text-gray-600',
-    Opportunity: 'bg-warn-light text-warn',
-    Enquiry: 'bg-info-light text-info',
-    Buyer: 'bg-ok-light text-ok',
-}[s] || 'bg-gray-100 text-gray-600');
+// leadStageClass accepts the stage string plus an optional lead object.
+// When the lead was auto-reset by the monthly scheduler (monthlyReset: true),
+// Opportunity badges render green instead of orange so the team can instantly
+// identify freshly-reset leads. The green clears as soon as the salesperson
+// manually changes the status.
+export const leadStageClass = (s, lead) => {
+    if (s === 'Opportunity' && lead && lead.monthlyReset) {
+        return 'bg-ok-light text-ok'; // green — monthly auto-reset
+    }
+    return {
+        Lead: 'bg-gray-100 text-gray-600',
+        Opportunity: 'bg-warn-light text-warn',
+        Enquiry: 'bg-info-light text-info',
+        Buyer: 'bg-ok-light text-ok',
+    }[s] || 'bg-gray-100 text-gray-600';
+};
 
 export const fmtDateTime = (d) => {
     if (!d) return '';

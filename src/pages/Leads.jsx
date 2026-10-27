@@ -1,11 +1,11 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Formik, Form } from 'formik';
 import * as Yup from 'yup';
 import {
   Plus, Upload, Download, Eye, ShoppingCart, Pencil, Trash2,
   Target, Users, Percent, AlertTriangle, Phone, MessageCircle,
-  FileText, ArrowRight, Loader2, CheckCircle,
+  FileText, ArrowRight, Loader2, CheckCircle, GitMerge, StickyNote, RefreshCw,
 } from 'lucide-react';
 import { leadApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -25,7 +25,7 @@ import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 import {
   formatDate, fmtAED, fmtDateTime, leadStatusClass,
   LEAD_STATUSES, LEAD_SOURCES, ALL_COUNTRY_NAMES, dialFor, cleanPhone, fmtMobile,
-  LEAD_STAGES, leadStageOf, leadStageClass, getCountryCodes,
+  LEAD_STAGES, leadStageOf, leadStageClass, getCountryCodes, phoneSearchMatches,
 } from '../utils/format.js';
 
 const emptyLead = () => ({
@@ -53,7 +53,7 @@ const leadSchema = Yup.object({
   altMobile: Yup.string().trim()
     .matches(/^[0-9+\-\s]*$/, 'Digits only')
     .test('len', 'Enter a valid number', (v) => !v || v.replace(/\D/g, '').length >= 5),
-  city: Yup.string().trim().required('City is required').max(60, 'Too long'),
+  city: Yup.string().trim().max(60, 'Too long'), // optional
   country: Yup.string().required('Country is required'),
   source: Yup.string().required('Source is required'),
   stage: Yup.string().oneOf(CREATE_STAGES).required('Stage is required'),
@@ -61,6 +61,9 @@ const leadSchema = Yup.object({
   interest: Yup.string().trim().required('Interest is required').max(200, 'Too long'),
   remark: Yup.string().trim().max(300, 'Too long'),
 });
+
+// Max leads per CSV import — must match BULK_MAX in server lead.controller.js
+const IMPORT_MAX = 2000;
 
 // ── Minimal CSV parser ────────────────────────────────────────────────────────
 function parseCSV(text) {
@@ -203,22 +206,214 @@ function WhatsAppButton({ mobile, country }) {
   );
 }
 
+// ── Inline duplicate-lead group (used by the "Duplicates" panel below) ───────
+// One group = leads that share the exact same phone number. Pick which one to
+// keep; merging combines call logs/notes/edit history into it, reassigns any
+// cheques or WhatsApp messages that pointed at the removed lead(s), archives
+// the removed lead(s) to Deleted Contacts, and deletes them.
+function DuplicateGroup({ group, onMerged }) {
+  const { show } = useToast();
+  const [keepId, setKeepId] = useState(group.leads[0].id);
+  const [busy, setBusy] = useState(false);
+
+  const merge = async () => {
+    const mergeIds = group.leads.map((l) => l.id).filter((id) => id !== keepId);
+    if (!mergeIds.length) return;
+    if (!confirm(`Merge ${mergeIds.length} duplicate lead(s) into the selected one? This can't be undone.`)) return;
+    setBusy(true);
+    try {
+      const res = await leadApi.merge({ keepId, mergeIds });
+      show(res.message || 'Leads merged.', 'success');
+      onMerged();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Card className="mb-3">
+      <div className="card-head flex items-center justify-between">
+        <h2>{fmtMobile(group.leads[0].mobile, group.leads[0].country) || group.mobileKey}</h2>
+        <span className="text-[10px] font-normal text-ink-3">{group.leads.length} leads share this number</span>
+      </div>
+      <div className="card-body space-y-2">
+        {group.leads.map((l) => (
+          <label
+            key={l.id}
+            className="flex cursor-pointer items-center gap-3 rounded-md border p-2.5"
+            style={{ borderColor: keepId === l.id ? 'var(--gold-700, #a16207)' : 'var(--border-card)', backgroundColor: keepId === l.id ? 'var(--bg-card-head)' : 'transparent' }}
+          >
+            <input type="radio" name={`keep-${group.mobileKey}`} className="h-4 w-4 accent-purple-500" checked={keepId === l.id} onChange={() => setKeepId(l.id)} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+                {l.name}
+                {keepId === l.id && <span className="rounded-full bg-ok-light px-2 py-0.5 text-[10px] font-bold text-ok">Keep this one</span>}
+                {l.converted && <span className="rounded-full bg-gold-light px-2 py-0.5 text-[10px] font-bold text-navy-700">Converted — Order #{l.orderNo}</span>}
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                <span>Owner: <strong>{l.ownerName || '—'}</strong></span>
+                <span>Status: {l.status}</span>
+                <span>City: {l.city || '—'}</span>
+                <span className="flex items-center gap-1"><MessageCircle size={11} />{l.callLogCount} calls</span>
+                <span className="flex items-center gap-1"><StickyNote size={11} />{l.noteCount} notes</span>
+                <span>Added {fmtDateTime(l.createdAt)}</span>
+              </div>
+            </div>
+          </label>
+        ))}
+        <div className="flex justify-end pt-1">
+          <Button disabled={busy} onClick={merge}>
+            {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Merging…</> : <><GitMerge size={13} className="mr-1.5" />Merge into selected</>}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+
+// ── Reconstruct lead status/stage at a given date using editHistory ───────────
+// Replays the editHistory backwards to find what 'status' was on targetDate.
+// Falls back to current status if no history or lead didn't exist yet.
+function statusAtDate(lead, targetDate) {
+  if (!targetDate) return lead.status;
+  const target = new Date(targetDate + 'T23:59:59');
+  const history = lead.editHistory || [];
+  // Sort history oldest-first
+  const sorted = [...history].sort((a, b) => new Date(a.at) - new Date(b.at));
+  // Start from the lead's initial status (before any edits) — which we derive
+  // by rewinding: find the first status change and take its 'from' value,
+  // or use current status if no status change exists.
+  let statusChanges = sorted
+    .flatMap(h => (h.changes || []).filter(ch => ch.field === 'status').map(ch => ({ at: h.at, from: ch.from, to: ch.to })));
+
+  if (!statusChanges.length) return lead.status; // no history, use current
+
+  // The initial status is the 'from' of the first change
+  let statusOnDate = statusChanges[0].from || 'New';
+  // Apply each change that happened ON or BEFORE the target date
+  for (const ch of statusChanges) {
+    if (new Date(ch.at) <= target) statusOnDate = ch.to;
+    else break;
+  }
+  return statusOnDate || lead.status;
+}
+
+
+// ── Reusable multi-select dropdown ───────────────────────────────────────────
+function MultiSelect({ label, options, selected, onChange, valueKey, labelKey }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const getVal = (o) => valueKey ? o[valueKey] : o;
+  const getLabel = (o) => labelKey ? o[labelKey] : o;
+  const isSelected = (o) => selected.includes(getVal(o));
+
+  const toggle = (o) => {
+    const v = getVal(o);
+    onChange(isSelected(o) ? selected.filter((s) => s !== v) : [...selected, v]);
+  };
+
+  const displayText = selected.length === 0
+    ? `All ${label}`
+    : selected.length === 1
+      ? (options.find((o) => getVal(o) === selected[0]) ? getLabel(options.find((o) => getVal(o) === selected[0])) : selected[0])
+      : `${label}: ${selected.length} selected`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium whitespace-nowrap"
+        style={{
+          borderColor: selected.length ? 'var(--gold-600, #ca8a04)' : 'var(--input-border)',
+          background: selected.length ? 'var(--gold-50, #fefce8)' : 'var(--input-bg)',
+          color: selected.length ? 'var(--gold-700, #a16207)' : 'var(--text-primary)',
+          minWidth: '110px',
+        }}
+      >
+        <span className="flex-1 text-left truncate max-w-[130px]">{displayText}</span>
+        {selected.length > 0 && (
+          <span
+            onClick={(e) => { e.stopPropagation(); onChange([]); }}
+            className="ml-1 text-[10px] font-bold opacity-60 hover:opacity-100"
+            title="Clear"
+          >✕</span>
+        )}
+        <svg width="10" height="10" viewBox="0 0 10 10" style={{ opacity: 0.5, flexShrink: 0 }}>
+          <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          className="absolute z-50 mt-1 rounded-lg border shadow-lg overflow-y-auto"
+          style={{
+            minWidth: '180px', maxHeight: '260px',
+            background: 'var(--bg-card)',
+            borderColor: 'var(--border-card)',
+            top: '100%', left: 0,
+          }}
+        >
+          {/* Select all / clear all */}
+          <div className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border-card)' }}>
+            <button type="button" className="text-[11px] font-bold" style={{ color: 'var(--gold-600, #ca8a04)' }}
+              onClick={() => onChange(options.map(getVal))}>All</button>
+            <span style={{ color: 'var(--text-muted)' }}>·</span>
+            <button type="button" className="text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}
+              onClick={() => onChange([])}>None</button>
+          </div>
+          {options.map((o) => (
+            <label key={getVal(o)} className="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-opacity-50 text-[12px]"
+              style={{ background: isSelected(o) ? 'var(--bg-card-head)' : 'transparent', color: 'var(--text-primary)' }}>
+              <input type="checkbox" checked={isSelected(o)} onChange={() => toggle(o)}
+                className="accent-yellow-500" style={{ width: 13, height: 13 }} />
+              {getLabel(o)}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Leads() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin, user } = useAuth();
   const { show } = useToast();
   const { data: leads, loading, refetch } = useFetch(() => leadApi.list(), []);
 
   const [f, setF] = useState({
-    search: '',
-    status: searchParams.get('status') || '',
-    source: searchParams.get('source') || '',
-    stage: searchParams.get('stage') || '',
-    country: searchParams.get('country') || '',
-    campaign: searchParams.get('campaign') || '',
-    employee: '',
+    search:   searchParams.get('search')   || '',
+    status:   searchParams.get('status')   ? searchParams.get('status').split(',')   : [],
+    source:   searchParams.get('source')   ? searchParams.get('source').split(',')   : [],
+    stage:    searchParams.get('stage')    ? searchParams.get('stage').split(',')    : [],
+    country:  searchParams.get('country')  ? searchParams.get('country').split(',')  : [],
+    campaign: searchParams.get('campaign') ? searchParams.get('campaign').split(',') : [],
+    employee: searchParams.get('employee') ? searchParams.get('employee').split(',') : [],
+    dateFrom: searchParams.get('dateFrom') || '',
+    dateTo:   searchParams.get('dateTo')   || '',
   });
+
+  // Sync every filter change into the URL so browser Back restores it exactly.
+  const updateFilter = (patch) => {
+    const next = { ...f, ...patch };
+    setF(next);
+    const params = {};
+    Object.entries(next).forEach(([k, v]) => {
+      if (Array.isArray(v)) { if (v.length) params[k] = v.join(','); }
+      else if (v) params[k] = v;
+    });
+    setSearchParams(params, { replace: true });
+  };
   const [sales, setSales] = useState([]);
   const [form, setForm] = useState(null);
   const [convert, setConvert] = useState(null);
@@ -229,6 +424,26 @@ export default function Leads() {
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
+
+  // ── Inline "Duplicates" panel (admin only) ──────────────────────────────────
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dupGroups, setDupGroups] = useState(null);
+  const [dupLoading, setDupLoading] = useState(false);
+
+  const loadDuplicates = async () => {
+    setDupLoading(true);
+    try { setDupGroups(await leadApi.listDuplicates()); }
+    catch (e) { show(apiError(e), 'error'); }
+    finally { setDupLoading(false); }
+  };
+
+  const toggleDuplicates = () => {
+    const next = !dupOpen;
+    setDupOpen(next);
+    if (next && dupGroups === null) loadDuplicates();
+  };
 
   useEffect(() => {
     if (isAdmin) userApi.list()
@@ -236,27 +451,78 @@ export default function Leads() {
       .catch(() => {});
   }, [isAdmin]);
 
+  // Reset to page 1 whenever filter values change
+  const fKey = JSON.stringify(f);
+  useEffect(() => { setPage(1); }, [fKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const filtered = useMemo(() => {
     if (!leads) return [];
     return leads.filter((l) => {
-      if (f.status && l.status !== f.status) return false;
-      if (f.source && l.source !== f.source) return false;
-      if (f.stage && leadStageOf(l) !== f.stage) return false;
-      if (f.country && l.country !== f.country) return false;
-      if (f.campaign && (l.campaign || '') !== f.campaign) return false;
-      if (f.employee && String(l.owner) !== String(f.employee)) return false;
+      // When date filter is active, compare against the status the lead HAD on that date
+      const effectiveStatus = (f.dateFrom || f.dateTo)
+        ? statusAtDate(l, f.dateTo || f.dateFrom)
+        : l.status;
+      if (f.status.length   && !f.status.includes(effectiveStatus)) return false;
+      if (f.source.length   && !f.source.includes(l.source || '')) return false;
+      if (f.stage.length    && !f.stage.includes(leadStageOf({ ...l, status: effectiveStatus }))) return false;
+      if (f.country.length  && !f.country.map(x=>x.toLowerCase()).includes((l.country||'').trim().toLowerCase())) return false;
+      if (f.campaign.length && !f.campaign.includes(l.campaign || '')) return false;
+      if (f.employee.length && !f.employee.includes(String(l.owner))) return false;
+      if (f.dateFrom || f.dateTo) {
+        const d = new Date(l.createdAt);
+        if (f.dateFrom && d < new Date(f.dateFrom + 'T00:00:00')) return false;
+        if (f.dateTo   && d > new Date(f.dateTo   + 'T23:59:59')) return false;
+      }
       if (f.search) {
         const q = f.search.toLowerCase();
-        if (!([l.name, l.mobile, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q)))) return false;
+        const qDigits = f.search.replace(/\D/g, '');
+
+        // 1. Text match on name, email, city
+        const textMatch = [l.name, l.email, l.city].some((v) => (v || '').toLowerCase().includes(q));
+
+        // 2. Raw mobile digit match — strip non-digits from both sides.
+        const mobileDigits = (l.mobile || '').replace(/\D/g, '');
+        const altMobileDigits = (l.altMobile || '').replace(/\D/g, '');
+        // Also build the full E164 number (country code + stored digits) for matching.
+        // This handles "+971" matching UAE leads whose stored mobile is "506731305" (no code).
+        const dialCode = dialFor(l.country) || '';
+        const fullMobileDigits = dialCode ? dialCode + mobileDigits : mobileDigits;
+        const fullAltMobileDigits = dialCode ? dialCode + altMobileDigits : altMobileDigits;
+
+        const rawMobileMatch = qDigits.length >= 2 && (
+          mobileDigits.includes(qDigits) ||
+          altMobileDigits.includes(qDigits) ||
+          fullMobileDigits.includes(qDigits) ||
+          fullAltMobileDigits.includes(qDigits)
+        );
+
+        // 3. Phone-aware match: handles country code stripping for full numbers (>= 7 digits)
+        const phoneMatch = phoneSearchMatches(l.mobile, f.search) || phoneSearchMatches(l.altMobile, f.search);
+
+        if (!textMatch && !rawMobileMatch && !phoneMatch) return false;
       }
       return true;
     });
   }, [leads, f]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, page, PAGE_SIZE]);
+
   // Derive sorted unique country list from actual leads data
   const countryOptions = useMemo(() => {
     if (!leads) return [];
-    return [...new Set(leads.map((l) => l.country).filter(Boolean))].sort();
+    // Normalize casing so 'iran' and 'Iran' don't appear as two separate options
+    const seen = new Map();
+    leads.forEach((l) => {
+      if (!l.country) return;
+      const norm = l.country.trim();
+      const key = norm.toLowerCase();
+      if (!seen.has(key)) seen.set(key, norm);
+    });
+    return [...seen.values()].sort();
   }, [leads]);
 
   // Campaign filter is optional — only leads that were actually tagged with
@@ -286,15 +552,38 @@ export default function Leads() {
   }, [sales, leads]);
 
   const buildExport = () => {
-    const empName = f.employee ? employeeOptions.find((u) => String(u.id) === String(f.employee))?.name : 'All';
+    const empName = f.employee.length === 1 ? (employeeOptions.find((u) => String(u.id) === f.employee[0])?.name || 'All') : f.employee.length > 1 ? `${f.employee.length} Employees` : 'All';
     return {
       title: 'Leads Report',
-      columns: ['Sl. No', 'Name', 'Mobile', 'Source', 'Interest', 'Owner', 'Country', 'Stage', 'Status', 'Order #'],
-      rows: filtered.map((l, idx) => [
-        idx + 1,
-        l.name, fmtMobile(l.mobile, l.country) || '—', l.source || '—', l.interest || '—', l.ownerName || '—',
-        l.country || '—', leadStageOf(l), l.status, l.orderNo ? `#${l.orderNo}` : '—',
-      ]),
+      columns: [
+        'Sl. No', 'Name', 'Mobile', 'Email', 'Source', 'Campaign',
+        'Interest', 'City', 'Country', 'Owner', 'Stage', 'Status',
+        'Remark', 'Notes', 'Order #', 'Date',
+      ],
+      rows: filtered.map((l, idx) => {
+        // Combine all notes into one cell
+        const notesText = (l.notes || [])
+          .map((n) => `[${new Date(n.at).toLocaleDateString()} ${n.byName || ''}] ${n.text || ''}`)
+          .join(' | ') || '—';
+        return [
+          idx + 1,
+          l.name,
+          fmtMobile(l.mobile, l.country) || '—',
+          l.email || '—',
+          l.source || '—',
+          l.campaign || '—',
+          l.interest || '—',
+          l.city || '—',
+          l.country || '—',
+          l.ownerName || '—',
+          leadStageOf(l),
+          (f.dateFrom || f.dateTo) ? statusAtDate(l, f.dateTo || f.dateFrom) : l.status,
+          l.remark || '—',
+          notesText,
+          l.orderNo ? `#${l.orderNo}` : '—',
+          new Date(l.createdAt).toLocaleDateString(),
+        ];
+      }),
       meta: { Employee: empName || 'All', Records: filtered.length },
     };
   };
@@ -311,14 +600,24 @@ export default function Leads() {
   };
 
   const stats = useMemo(() => {
-    const list = leads || [];
+    // KPIs reflect the currently filtered leads, not all leads
+    const list = filtered;
+    const total = list.length;
+    const enquiry = list.filter((l) => {
+      const st = (f.dateFrom || f.dateTo) ? statusAtDate(l, f.dateTo || f.dateFrom) : l.status;
+      return leadStageOf({ ...l, status: st }) === 'Enquiry';
+    }).length;
+    const converted = list.filter((l) => {
+      const st = (f.dateFrom || f.dateTo) ? statusAtDate(l, f.dateTo || f.dateFrom) : l.status;
+      return st === 'Won' || l.converted;
+    }).length;
     return {
-      total: list.length,
-      enquiry: list.filter((l) => leadStageOf(l) === 'Enquiry').length,
-      converted: list.filter((l) => l.status === 'Won' || l.converted).length,
-      rate: list.length ? Math.round((list.filter((l) => l.status === 'Won' || l.converted).length / list.length) * 100) : 0,
+      total,
+      enquiry,
+      converted,
+      rate: total ? Math.round((converted / total) * 100) : 0,
     };
-  }, [leads]);
+  }, [filtered, f.dateFrom, f.dateTo]);
 
   const doConvert = async () => {
     const valid = items.filter((it) => it.modelCode.trim());
@@ -346,33 +645,50 @@ export default function Leads() {
     setImportResult(null);
     const reader = new FileReader();
     reader.onload = () => {
-      try { setImportRows(rowsToLeads(parseCSV(String(reader.result)), leads || [])); }
+      try {
+        const result = rowsToLeads(parseCSV(String(reader.result)), leads || []);
+        if (result.leads.length > IMPORT_MAX) {
+          result.tooMany = true;
+          result.errors = [
+            `Import limit exceeded: you can import at most ${IMPORT_MAX} leads at a time, but this file has ${result.leads.length} new leads. Split it into smaller files.`,
+            ...result.errors,
+          ];
+        }
+        setImportRows(result);
+      }
       catch { setImportRows({ leads: [], dupExisting: [], dupInFile: [], errors: ['Could not read this file as CSV.'] }); }
     };
     reader.readAsText(file);
     e.target.value = '';
   };
 
+  // The whole file goes to POST /leads/bulk in ONE request (max IMPORT_MAX
+  // rows), so the server can check the company lead limit for the full file
+  // at once and the 300-requests/15-min rate limit is never an issue.
   const runImport = async () => {
-    if (!importRows?.leads.length) return;
+    if (!importRows?.leads.length || importRows.leads.length > IMPORT_MAX) return;
     setImportBusy(true);
-    let created = 0, skipped = 0, failed = 0;
-    for (const lead of importRows.leads) {
-      try { await leadApi.create(lead); created++; }
-      catch (err) {
-        if (err?.response?.status === 409) skipped++;
-        else failed++;
-      }
+    try {
+      const r = await leadApi.bulkCreate(importRows.leads);
+      const reasons = (r.errors || []).map((e) => e.replace(/^Row (\d+)/, 'Lead #$1'));
+      setImportResult({ created: r.created || 0, skipped: r.skipped || 0, failed: r.failed || 0, reasons });
+      show(`Import done — ${r.created || 0} added, ${r.skipped || 0} duplicates, ${r.failed || 0} failed.`, r.failed ? 'error' : 'success');
+      refetch();
+    } catch (err) {
+      // Nothing was imported — show the server's exact reason (e.g. lead limit exceeded)
+      const msg = apiError(err);
+      setImportResult({ created: 0, skipped: 0, failed: importRows.leads.length, reasons: [msg], blocked: true });
+      show(msg, 'error');
+    } finally {
+      setImportBusy(false);
     }
-    setImportBusy(false);
-    setImportResult({ created, skipped, failed });
-    show(`Import done — ${created} added, ${skipped} duplicates, ${failed} failed.`, failed ? 'error' : 'success');
-    refetch();
   };
 
   const subTotal = useMemo(() => items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0), [items]);
 
-  if (loading) return <Spinner label="Loading leads…" />;
+  // Full-page spinner only on first load — a refetch (e.g. after an import)
+  // must not replace the page, or the import modal and its results vanish.
+  if (loading && !leads) return <Spinner label="Loading leads…" />;
 
   return (
     // Fixed-height flex column — header + filters are static, table scrolls
@@ -383,6 +699,7 @@ export default function Leads() {
         badge={filtered.length}
         actions={
           <div className="flex gap-2">
+          
             <Button variant="outline" onClick={openImport}>
               <Upload size={14} className="mr-1.5" />Import CSV
             </Button>
@@ -395,6 +712,33 @@ export default function Leads() {
         Leads
       </PageTitle>
 
+      {dupOpen && (
+        <>
+          <p className="mb-3 text-[12px] text-ink-2">
+            Leads that share the exact same phone number are grouped below — e.g. the same customer
+            auto-created twice from the Order Form under two different salespeople. Pick which one to keep,
+            then merge: call logs, notes, and edit history are combined, and any cheques or WhatsApp messages
+            linked to the removed lead(s) move to the kept one. Removed leads are archived to Deleted Contacts.
+          </p>
+          {dupLoading ? (
+            <Spinner label="Scanning for duplicate leads…" />
+          ) : !dupGroups || !dupGroups.length ? (
+            <Card><div className="card-body"><EmptyState title="No duplicates found" hint="Every lead in this company has a unique phone number." /></div></Card>
+          ) : (
+            <>
+              <div className="mb-2 flex justify-end">
+                <Button variant="outline" size="sm" onClick={loadDuplicates}><RefreshCw size={13} className="mr-1.5" />Rescan</Button>
+              </div>
+              {dupGroups.map((g) => (
+                <DuplicateGroup key={g.mobileKey} group={g} onMerged={loadDuplicates} />
+              ))}
+            </>
+          )}
+        </>
+      )}
+
+      {!dupOpen && (
+      <>
       {/* ── Stats strip ─────────────────────────────────────────────────────── */}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 flex-shrink-0">
         {[
@@ -419,43 +763,39 @@ export default function Leads() {
           className="!w-52"
           placeholder="Search name / mobile / email…"
           value={f.search}
-          onChange={(e) => setF({ ...f, search: e.target.value })}
+          onChange={(e) => updateFilter({ search: e.target.value })}
         />
-        <Select className="!w-auto" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
-          <option value="">All Statuses</option>
-          {LEAD_STATUSES.map((s) => <option key={s}>{s}</option>)}
-        </Select>
-        <Select className="!w-auto" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
-          <option value="">All Sources</option>
-          {LEAD_SOURCES.map((s) => <option key={s}>{s}</option>)}
-        </Select>
-        <Select className="!w-auto" value={f.stage} onChange={(e) => setF({ ...f, stage: e.target.value })}>
-          <option value="">All Stages</option>
-          {LEAD_STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </Select>
-        {/* Country filter — populated from actual lead data */}
-        <Select className="!w-auto" value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>
-          <option value="">All Countries</option>
-          {countryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-        </Select>
-        {/* Campaign filter — optional; only appears meaningful once at least
-            one lead has been tagged with a campaign. */}
+        <MultiSelect label="Statuses" options={LEAD_STATUSES} selected={f.status} onChange={(v) => updateFilter({ status: v })} />
+        <MultiSelect label="Sources"  options={LEAD_SOURCES}  selected={f.source}  onChange={(v) => updateFilter({ source: v })} />
+        <MultiSelect label="Stages"   options={LEAD_STAGES}   selected={f.stage}   onChange={(v) => updateFilter({ stage: v })} />
+        <MultiSelect label="Countries" options={countryOptions} selected={f.country} onChange={(v) => updateFilter({ country: v })} />
         {campaignOptions.length > 0 && (
-          <Select className="!w-auto" value={f.campaign} onChange={(e) => setF({ ...f, campaign: e.target.value })}>
-            <option value="">All Campaigns</option>
-            {campaignOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-          </Select>
+          <MultiSelect label="Campaigns" options={campaignOptions} selected={f.campaign} onChange={(v) => updateFilter({ campaign: v })} />
         )}
         {isAdmin && (
-          <Select className="!w-auto" value={f.employee} onChange={(e) => setF({ ...f, employee: e.target.value })}>
-            <option value="">All Employees</option>
-            {employeeOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </Select>
+          <MultiSelect label="Employees" options={employeeOptions} selected={f.employee} onChange={(v) => updateFilter({ employee: v })} valueKey="id" labelKey="name" />
         )}
+        <input
+          type="date"
+          value={f.dateFrom}
+          onChange={(e) => updateFilter({ dateFrom: e.target.value })}
+          className="rounded-lg border px-2.5 py-1.5 text-[12px]"
+          style={{ borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+          title="From date"
+        />
+        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>–</span>
+        <input
+          type="date"
+          value={f.dateTo}
+          onChange={(e) => updateFilter({ dateTo: e.target.value })}
+          className="rounded-lg border px-2.5 py-1.5 text-[12px]"
+          style={{ borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+          title="To date"
+        />
         <Button
           variant="outline"
           size="sm"
-          onClick={() => setF({ search: '', status: '', source: '', stage: '', country: '', campaign: '', employee: '' })}
+          onClick={() => updateFilter({ search: '', status: [], source: [], stage: [], country: [], campaign: [], employee: [], dateFrom: '', dateTo: '' })}
         >
           Clear
         </Button>
@@ -488,7 +828,7 @@ export default function Leads() {
             <table className="w-full min-w-[920px] border-collapse">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-navy-800 text-white">
-                  {['Sl. No', 'Name', 'Contact', 'Source', 'Interest', 'Owner', 'Country', 'Stage', 'Status', 'Order', 'Actions'].map((h) => (
+                  {['Sl. No', 'Name', 'Contact', 'Source', 'Interest', 'City', 'Remark', 'Owner', 'Country', 'Stage', 'Status', 'Order', 'Actions'].map((h) => (
                     <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
                       {h}
                     </th>
@@ -496,16 +836,16 @@ export default function Leads() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((l, idx) => (
+                {paginated.map((l, idx) => (
                   <tr key={l._id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale [&>td]:align-middle">
-                    <td className="px-2.5 py-2 text-xs text-ink-3">{idx + 1}</td>
+                    <td className="px-2.5 py-2 text-xs text-ink-3">{(page - 1) * PAGE_SIZE + idx + 1}</td>
                     <td className="px-2.5 py-2 text-xs font-bold">
                       <div className="flex items-center gap-2">
                         <WhatsAppButton mobile={l.mobile} country={l.country} />
                         <div className="min-w-0">
                           <button
                             className="text-left text-navy-700 hover:text-gold hover:underline"
-                            onClick={() => navigate(`/leads/${l._id}`)}
+                            onClick={() => navigate(`/leads/${l._id}`, { state: { from: location.pathname + location.search } })}
                           >
                             {l.name}
                           </button>
@@ -524,13 +864,32 @@ export default function Leads() {
                       {l.campaign ? <div className="text-[10px] text-ink-3">{l.campaign}</div> : null}
                     </td>
                     <td className="px-2.5 py-2 text-xs">{l.interest || '—'}</td>
+                    <td className="px-2.5 py-2 text-xs whitespace-nowrap">{l.city || '—'}</td>
+                    <td className="px-2.5 py-2 text-xs max-w-[140px]"><span className="block truncate" title={l.remark || ''}>{l.remark || '—'}</span></td>
                     <td className="px-2.5 py-2 text-xs">{l.ownerName || '—'}</td>
                     <td className="px-2.5 py-2 text-xs whitespace-nowrap">{l.country || '—'}</td>
                     <td className="px-2.5 py-2">
-                      <span className={`status ${leadStageClass(leadStageOf(l))}`}>{leadStageOf(l)}</span>
+                      {(() => {
+                        const effStatus = (f.dateFrom || f.dateTo) ? statusAtDate(l, f.dateTo || f.dateFrom) : l.status;
+                        const effL = { ...l, status: effStatus };
+                        return <span className={`status ${leadStageClass(leadStageOf(effL), effL)}`}>{leadStageOf(effL)}</span>;
+                      })()}
                     </td>
                     <td className="px-2.5 py-2">
-                      <span className={`status ${leadStatusClass(l.status)}`}>{l.status}</span>
+                      {(f.dateFrom || f.dateTo) && (() => {
+                        const hist = statusAtDate(l, f.dateTo || f.dateFrom);
+                        return hist !== l.status ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className={`status ${leadStatusClass(hist)}`} title={`Status on ${f.dateTo || f.dateFrom}`}>{hist}</span>
+                            <span className="text-[10px] text-ink-3">now: {l.status}</span>
+                          </div>
+                        ) : (
+                          <span className={`status ${leadStatusClass(hist)}`}>{hist}</span>
+                        );
+                      })()}
+                      {!(f.dateFrom || f.dateTo) && (
+                        <span className={`status ${leadStatusClass(l.status)}`}>{l.status}</span>
+                      )}
                     </td>
                     <td className="px-2.5 py-2 text-xs">
                       {l.orderNo ? <span className="font-bold text-ok">#{l.orderNo}</span> : '—'}
@@ -541,7 +900,7 @@ export default function Leads() {
                           size="sm"
                           variant="outline"
                           title="View"
-                          onClick={() => navigate(`/leads/${l._id}`)}
+                          onClick={() => navigate(`/leads/${l._id}`, { state: { from: location.pathname + location.search } })}
                         >
                           <Eye size={13} />
                         </Button>
@@ -574,7 +933,68 @@ export default function Leads() {
             </table>
           </div>
         )}
+        {/* ── Pagination bar ───────────────────────────────────────────── */}
+        {filtered.length > PAGE_SIZE && (
+          <div className="flex flex-shrink-0 items-center justify-between border-t px-4 py-2.5" style={{ borderColor: 'var(--border-card)' }}>
+            <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                disabled={page === 1}
+                onClick={() => setPage(1)}
+                className="rounded px-2 py-1 text-[11px] font-bold disabled:opacity-30"
+                style={{ color: 'var(--text-secondary)' }}
+                title="First page"
+              >«</button>
+              <button
+                disabled={page === 1}
+                onClick={() => setPage((p) => p - 1)}
+                className="rounded px-2 py-1 text-[11px] font-bold disabled:opacity-30"
+                style={{ color: 'var(--text-secondary)' }}
+                title="Previous page"
+              >‹</button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                .reduce((acc, p, i, arr) => {
+                  if (i > 0 && p - arr[i - 1] > 1) acc.push('…');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === '…' ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      className="min-w-[28px] rounded px-2 py-1 text-[11px] font-bold"
+                      style={p === page
+                        ? { backgroundColor: 'var(--navy, #1e3a5f)', color: '#fff' }
+                        : { color: 'var(--text-secondary)' }}
+                    >{p}</button>
+                  )
+                )}
+              <button
+                disabled={page === totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                className="rounded px-2 py-1 text-[11px] font-bold disabled:opacity-30"
+                style={{ color: 'var(--text-secondary)' }}
+                title="Next page"
+              >›</button>
+              <button
+                disabled={page === totalPages}
+                onClick={() => setPage(totalPages)}
+                className="rounded px-2 py-1 text-[11px] font-bold disabled:opacity-30"
+                style={{ color: 'var(--text-secondary)' }}
+                title="Last page"
+              >»</button>
+            </div>
+          </div>
+        )}
       </Card>
+      </>
+      )}
 
       {/* ── Add / Edit modal ─────────────────────────────────────────────────── */}
       <LeadFormModal
@@ -585,7 +1005,7 @@ export default function Leads() {
         sales={sales}
         onClose={() => setForm(null)}
         onSaved={refetch}
-        onOpenExisting={(lid) => { setForm(null); navigate(`/leads/${lid}`); }}
+        onOpenExisting={(lid) => { setForm(null); navigate(`/leads/${lid}`, { state: { from: location.pathname + location.search } }); }}
       />
 
       {/* ── Import CSV modal ─────────────────────────────────────────────────── */}
@@ -659,16 +1079,22 @@ export default function Leads() {
           </div>
         )}
 
-        {importResult && (
+        {importResult && !importResult.blocked && (
           <div className="mt-3 flex items-center gap-2 rounded-md bg-ok-light px-3 py-2 text-xs text-ok">
             <CheckCircle size={14} />
             Imported {importResult.created} · {importResult.skipped} duplicates skipped · {importResult.failed} failed.
           </div>
         )}
+        {importResult?.reasons?.length > 0 && (
+          <div className={`mt-2 max-h-40 overflow-y-auto rounded-md bg-danger-light px-3 py-2 text-danger ${importResult.blocked ? 'text-xs font-bold' : 'text-[11px]'}`}>
+            {importResult.reasons.slice(0, 50).map((r, i) => <div key={i}>{r}</div>)}
+            {importResult.reasons.length > 50 && <div>…and {importResult.reasons.length - 50} more.</div>}
+          </div>
+        )}
 
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setImportOpen(false)}>Close</Button>
-          <Button disabled={importBusy || !importRows?.leads.length} onClick={runImport}>
+          <Button disabled={importBusy || !importRows?.leads.length || importRows?.tooMany} onClick={runImport}>
             {importBusy
               ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Importing…</>
               : <><Upload size={13} className="mr-1.5" />Import {importRows?.leads.length || 0} Lead{importRows?.leads.length === 1 ? '' : 's'}</>
@@ -883,16 +1309,16 @@ export function LeadFormModal({ open, lead, isAdmin, currentUser, sales, onClose
                     placeholder="e.g. 506731305"
                     onChange={handleChange}
                     onBlur={handleBlur}
-                    readOnly={isEdit}
-                    title={isEdit ? "Mobile number can't be changed after a lead is created" : undefined}
+                    readOnly={isEdit && !isAdmin}
+                    title={isEdit && !isAdmin ? "Only admins can edit the mobile number" : undefined}
                     style={
-                      isEdit
+                      isEdit && !isAdmin
                         ? { backgroundColor: 'var(--bg-card-head)', cursor: 'not-allowed' }
                         : dupe ? { borderColor: '#DC2626' } : undefined
                     }
                   />
                 </div>
-                {isEdit && <span className="mt-1 block text-[10px]" style={{ color: 'var(--text-muted)' }}>Mobile number can't be edited after creation.</span>}
+                {isEdit && !isAdmin && <span className="mt-1 block text-[10px]" style={{ color: 'var(--text-muted)' }}>Only admins can edit the mobile number.</span>}
               </FieldRow>
               <FieldRow label="Alternate Country (optional)" name="altCountry" error={touched.altCountry && errors.altCountry}>
                 <CountrySelect value={values.altCountry} onChange={(v) => setFieldValue('altCountry', v)} />

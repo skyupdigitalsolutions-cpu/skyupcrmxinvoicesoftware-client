@@ -23,7 +23,7 @@ const PCS_PER_BOX = [12, 24, 36, 60, 72];
 
 // Reusable line-item editor used by both the order form and invoice editing.
 // Controlled: parent owns `items`; this calls onChange with the next array.
-export default function OrderItemsEditor({ items, onChange, currency = 'DHS', compact = false }) {
+export default function OrderItemsEditor({ items, onChange, currency = 'DHS', compact = false, poPriceMap = {} }) {
   const update = (i, patch) => onChange(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   const add = () => onChange([...items, blankItem()]);
   const remove = (i) => onChange(items.filter((_, idx) => idx !== i));
@@ -122,6 +122,13 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
                     step="0.01"
                     value={it.price}
                     onChange={(e) => update(i, { price: Number(e.target.value) })}
+                    style={(() => {
+                      const key = (it.modelCode || '').trim().toLowerCase();
+                      const po = poPriceMap[key];
+                      return po !== undefined && Number(it.price) < po
+                        ? { borderColor: '#ef4444', background: '#fef2f2' }
+                        : {};
+                    })()}
                   />
 
                   <div
@@ -129,6 +136,14 @@ export default function OrderItemsEditor({ items, onChange, currency = 'DHS', co
                     style={{ borderColor: 'var(--border-card)', backgroundColor: 'var(--bg-card-head)', color: 'var(--text-primary)' }}
                   >
                     {fmtN((it.qty || 0) * (it.price || 0))}
+                    {(() => {
+                      const key = (it.modelCode || '').trim().toLowerCase();
+                      const po = poPriceMap[key];
+                      if (po !== undefined && Number(it.price) < po) {
+                        return <div style={{ color: '#ef4444', fontSize: 10, marginTop: 2 }}>⚠ Below PO price ({fmtN(po)})</div>;
+                      }
+                      return null;
+                    })()}
                   </div>
 
                   <button

@@ -72,6 +72,8 @@ function PrintOrderForm({ order, branding }) {
   const addr = [b.addressLine1, b.addressLine2, b.city].filter(Boolean).join(', ');
   const subTotal = order.items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0);
   const grandTotal = order.grandTotal === undefined || order.grandTotal === null ? subTotal : order.grandTotal;
+  const totalQty = order.items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
+  const totalPcs = order.items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.pieces) || 0), 0);
 
   return createPortal(
     <div id="print-order-form" style={{ display: 'none' }}>
@@ -153,6 +155,9 @@ function PrintOrderForm({ order, branding }) {
           .pof-table tbody td { padding: 1.6mm 1.8mm; font-size: 10px; border: 1px solid #000; overflow: hidden; text-overflow: ellipsis; word-break: break-word; }
           .pof-table tbody td:last-child, .pof-table tbody td:nth-last-child(2) { text-align: right; }
           .pof-table tbody td.bold { font-weight: 700; }
+          .pof-table tfoot td { padding: 1.6mm 1.8mm; font-size: 10px; font-weight: 700; border: 1px solid #000; background: #ececec; }
+          .pof-table tfoot td.bold { font-weight: 700; }
+          .pof-col-total-label { text-align: right; text-transform: uppercase; letter-spacing: 0.3px; }
           /* Narrow columns get a fixed share so Description/Art No keep most of the
              width — and there's still headroom to add more columns later. */
           .pof-col-sno   { width: 6%; }
@@ -276,6 +281,15 @@ function PrintOrderForm({ order, branding }) {
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr>
+            <td className="pof-col-total-label" colSpan={4}>TOTAL</td>
+            <td className="pof-col-pcs bold">{totalPcs}</td>
+            <td className="pof-col-qty bold">{totalQty}</td>
+            <td className="pof-col-price" />
+            <td className="pof-col-amt" />
+          </tr>
+        </tfoot>
       </table>
 
       {/* ── Amount in words (left) + totals (right) in ONE row ─────────────── */}
@@ -466,21 +480,56 @@ export default function Orders() {
   };
 
   const [exporting, setExporting] = useState(false);
+  const fmt2 = (n) => Number(n || 0).toFixed(2);
   const buildExport = () => {
     const empMatch = f.employee ? (users || []).find((u) => String(u.id || u._id) === String(f.employee)) : null;
     const empName = f.employee ? (empMatch ? empMatch.name : undefined) : 'All';
+    // One row per item for full item detail
+    const rows = [];
+    filtered.forEach((o, idx) => {
+      const items = o.items || [];
+      if (!items.length) {
+        rows.push([idx + 1, `#${o.orderNo}`, formatDate(o.date), o.customer,
+          fmtMobile(o.mobile, o.country) || '—', o.city || '—', o.country,
+          o.salespersonName || '—', o.payTerms || '—', o.status,
+          '—', '—', '—', '—', '', '', fmt2(o.grandTotal), fmt2(o.due || 0)]);
+      } else {
+        items.forEach((it, iIdx) => {
+          const lineAmt = fmt2((it.qty || 0) * (it.price || it.rate || 0));
+          rows.push([
+            iIdx === 0 ? idx + 1 : '',
+            iIdx === 0 ? `#${o.orderNo}` : '',
+            iIdx === 0 ? formatDate(o.date) : '',
+            iIdx === 0 ? o.customer : '',
+            iIdx === 0 ? (fmtMobile(o.mobile, o.country) || '—') : '',
+            iIdx === 0 ? (o.city || '—') : '',
+            iIdx === 0 ? o.country : '',
+            iIdx === 0 ? (o.salespersonName || '—') : '',
+            iIdx === 0 ? (o.payTerms || '—') : '',
+            iIdx === 0 ? o.status : '',
+            it.modelCode || it.sku || '—',
+            it.description || it.name || '—',
+            it.size || '—',
+            it.color || '—',
+            it.qty ?? '',
+            lineAmt,
+            iIdx === 0 ? fmt2(o.grandTotal) : '',
+            iIdx === 0 ? fmt2(o.due || 0) : '',
+          ]);
+        });
+      }
+    });
     return {
       title: 'Orders Report',
-      columns: ['Sl. No', 'Order #', 'Date', 'Customer', 'City', 'Country', 'Salesperson', 'Items', 'Amount (AED)', 'Status'],
-      rows: filtered.map((o, idx) => [
-        idx + 1,
-        `#${o.orderNo}`, formatDate(o.date), o.customer, o.city || '—', o.country,
-        o.salespersonName || '—', o.items.length, fmtAED(o.grandTotal), o.status,
-      ]),
+      columns: ['Sl. No', 'Order #', 'Date', 'Customer', 'Mobile', 'City', 'Country',
+        'Salesperson', 'Pay Terms', 'Status',
+        'Article No.', 'Description', 'Size', 'Color', 'Qty', 'Line Amt (AED)',
+        'Order Total (AED)', 'Due (AED)'],
+      rows,
       meta: {
         Employee: empName || 'All',
         Records: filtered.length,
-        'Total Value': fmtAED(filtered.reduce((s, o) => s + (o.grandTotal || 0), 0)),
+        'Total Value (AED)': fmt2(filtered.reduce((s, o) => s + (o.grandTotal || 0), 0)),
       },
     };
   };
@@ -504,7 +553,9 @@ export default function Orders() {
       {printOrder && <PrintOrderForm order={printOrder} branding={branding} />}
 
       <PageTitle icon={<ClipboardList size={18} />} badge={filtered.length}
-        actions={<IconBtn icon={Plus} label="New Order" onClick={() => navigate('/orders/new')} />}>All Orders</PageTitle>
+        actions={<IconBtn icon={Plus} label="New Order" onClick={() => navigate('/orders/new')} />}>
+        {f.status ? `${f.status} Orders` : 'All Orders'}
+      </PageTitle>
 
       <div
         className="mb-3.5 flex flex-wrap items-center gap-2 rounded-lg border p-2.5"
@@ -562,6 +613,16 @@ export default function Orders() {
         )}
       </div>
 
+      <div className="mb-3.5 flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
+        <span>
+          Total {f.status || 'Orders'}: <strong style={{ color: 'var(--text-primary)' }}>{filtered.length}</strong>
+        </span>
+        <span>·</span>
+        <span>
+          Value: <strong style={{ color: 'var(--text-primary)' }}>{fmtAED(filtered.reduce((s, o) => s + (o.grandTotal || 0), 0))}</strong>
+        </span>
+      </div>
+
       <Card className="overflow-x-auto">
         {error ? (
           <EmptyState title="Couldn't load orders" hint={error}
@@ -572,33 +633,46 @@ export default function Orders() {
         ) : (
           <table className="w-full min-w-[820px] border-collapse">
             <thead><tr className="bg-navy-800 text-white">
-              {['Sl. No', 'Order #', 'Date', 'Customer', 'Country', 'Salesperson', 'Items', 'Amount (AED)', 'Status', 'Actions'].map((h) => (
-                <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">{h}</th>
-              ))}
+              <th className="px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide">Sl. No</th>
+              <th className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">Order #</th>
+              <th className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">Date</th>
+              <th className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">Customer</th>
+              <th className="px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide">Country</th>
+              <th className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide">Salesperson</th>
+              <th className="px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide">Items / Qty</th>
+              <th className="px-2.5 py-2 text-right text-[11px] font-bold uppercase tracking-wide">Amount (AED)</th>
+              <th className="px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide">Status</th>
+              <th className="px-2.5 py-2 text-center text-[11px] font-bold uppercase tracking-wide">Actions</th>
             </tr></thead>
             <tbody>
               {filtered.map((o, idx) => (
-                <tr key={o._id} className="border-b border-gray-100 last:border-0 hover:bg-gold-pale">
-                  <td className="px-2.5 py-2 text-xs text-ink-3">{idx + 1}</td>
-                  <td className="px-2.5 py-2 text-xs font-bold">#{o.orderNo}</td>
-                  <td className="px-2.5 py-2 text-xs">{formatDate(o.date)}</td>
-                  <td className="px-2.5 py-2 text-xs">{o.customer}<div className="text-[10px] text-ink-3">{o.city}</div></td>
-                  <td className="px-2.5 py-2 text-xs">{o.country}</td>
+                <tr key={o._id} className="border-b border-gray-100 align-middle last:border-0 hover:bg-gold-pale">
+                  <td className="px-2.5 py-2 text-center text-xs tabular-nums text-ink-3">{idx + 1}</td>
+                  <td className="px-2.5 py-2 text-xs font-bold tabular-nums">#{o.orderNo}</td>
+                  <td className="px-2.5 py-2 text-xs whitespace-nowrap">{formatDate(o.date)}</td>
+                  <td className="px-2.5 py-2 text-xs">
+                    <div className="font-medium">{o.customer}</div>
+                    <div className="text-[10px] text-ink-3">{o.city}</div>
+                  </td>
+                  <td className="px-2.5 py-2 text-center text-xs">{o.country}</td>
                   <td className="px-2.5 py-2 text-xs">{o.salespersonName || '—'}</td>
-                  <td className="px-2.5 py-2 text-xs">{o.items.length}</td>
-                  <td className="px-2.5 py-2 text-xs font-bold text-navy-700">{fmtAED(o.grandTotal)}</td>
-                  <td className="px-2.5 py-2"><StatusBadge status={o.status} /></td>
+                  <td className="px-2.5 py-2 text-center text-xs tabular-nums">
+                    {o.items.length}
+                    <div className="text-[10px] text-ink-3">Qty: {o.items.reduce((s, it) => s + (Number(it.qty) || 0), 0)}</div>
+                  </td>
+                  <td className="px-2.5 py-2 text-right text-xs font-bold tabular-nums text-navy-700 whitespace-nowrap">{fmtAED(o.grandTotal)}</td>
+                  <td className="px-2.5 py-2 text-center"><StatusBadge status={o.status} /></td>
                   <td className="px-2.5 py-2">
-                    <div className="flex flex-wrap gap-1">
-                      <IconBtn icon={Eye}      label="View"    size="sm" variant="outline" onClick={() => setViewOrder(o)} />
-                      <IconBtn icon={Pencil}   label="Edit"    size="sm" variant="gold"    onClick={() => navigate(`/orders/${o._id}/edit`)} />
-                      <IconBtn icon={Truck}    label="Status"  size="sm" variant="blue"    onClick={() => openStatus(o)} />
-                      <a className="btn-green btn-sm flex items-center gap-1" href={orderWhatsAppUrl(o)} target="_blank" rel="noreferrer">
-                        <MessageCircle size={14} /> WhatsApp
+                    <div className="flex flex-nowrap items-center justify-center gap-1">
+                      <IconBtn icon={Eye}      size="sm" variant="outline" title="View"    onClick={() => setViewOrder(o)} />
+                      <IconBtn icon={Pencil}   size="sm" variant="gold"    title="Edit"    onClick={() => navigate(`/orders/${o._id}/edit`)} />
+                      <IconBtn icon={Truck}    size="sm" variant="blue"    title="Update Status" onClick={() => openStatus(o)} />
+                      <a className="btn-green btn-sm flex items-center justify-center" title="WhatsApp" href={orderWhatsAppUrl(o)} target="_blank" rel="noreferrer">
+                        <MessageCircle size={14} />
                       </a>
-                      <IconBtn icon={Download} label={pdfBusy === o._id ? '…' : 'PDF'} size="sm" variant="outline" disabled={pdfBusy === o._id} onClick={() => downloadOrderPdf(o)} />
-                      {o.status !== 'Cancelled' && o.status !== 'Invoiced' && !o.invoiceId && <IconBtn icon={FileText} label="Invoice" size="sm" variant="outline" onClick={() => convert(o)} />}
-                      {isAdmin && <IconBtn icon={Trash2} label="Del" size="sm" variant="red" onClick={() => del(o)} />}
+                      <IconBtn icon={Download} size="sm" variant="outline" title={pdfBusy === o._id ? 'Preparing PDF…' : 'Download PDF'} disabled={pdfBusy === o._id} onClick={() => downloadOrderPdf(o)} />
+                      {o.status !== 'Cancelled' && o.status !== 'Invoiced' && !o.invoiceId && <IconBtn icon={FileText} size="sm" variant="outline" title="Convert to Invoice" onClick={() => convert(o)} />}
+                      {isAdmin && <IconBtn icon={Trash2} size="sm" variant="red" title="Delete" onClick={() => del(o)} />}
                     </div>
                   </td>
                 </tr>

@@ -18,6 +18,32 @@ export const orderApi = {
     remove: (id) => api.delete(`/orders/${id}`).then((r) => r.data),
 };
 
+export const whatsappApi = {
+    getSettings: () => api.get('/whatsapp/settings').then((r) => r.data.msg91),
+    setSettings: (body) => api.put('/whatsapp/settings', body).then((r) => r.data.msg91),
+    listTemplates: () => api.get('/whatsapp/templates').then((r) => r.data.templates),
+    createTemplate: (body) => api.post('/whatsapp/templates', body).then((r) => r.data.template),
+    updateTemplate: (id, body) => api.put(`/whatsapp/templates/${id}`, body).then((r) => r.data.template),
+    deleteTemplate: (id) => api.delete(`/whatsapp/templates/${id}`).then((r) => r.data),
+    sendTemplate: (body) => api.post('/whatsapp/send-template', body).then((r) => r.data.results),
+    sendReply: (body) => api.post('/whatsapp/reply', body).then((r) => r.data),
+    sendMedia: (body) => api.post('/whatsapp/send-media', body).then((r) => r.data),
+    listConversations: () => api.get('/whatsapp/conversations').then((r) => r.data.conversations),
+    getThread: (leadId) => api.get(`/whatsapp/thread/${leadId}`).then((r) => r.data),
+    getThreadByNumber: (contactNumber) => api.get(`/whatsapp/thread-by-number/${encodeURIComponent(contactNumber)}`).then((r) => r.data),
+    relinkContact: (body) => api.post('/whatsapp/relink-contact', body).then((r) => r.data),
+    getSessionWindow: (leadId) => api.get(`/whatsapp/session-window/${leadId}`).then((r) => r.data),
+    getTemplateSentStatus: (leadIds, templateName) =>
+        api.get('/whatsapp/template-status', { params: { leadIds: leadIds.join(','), templateName } })
+            .then((r) => r.data.statuses)
+            .catch(() =>
+                // Fallback for older server deployments that used a different route name
+                api.get('/whatsapp/template-sent-status', { params: { leadIds: leadIds.join(','), templateName } })
+                    .then((r) => r.data.statuses)
+                    .catch(() => ({}))
+            ),
+};
+
 export const chequeApi = {
     list: (params) => api.get('/cheques', { params }).then((r) => r.data.cheques),
     get: (id) => api.get(`/cheques/${id}`).then((r) => r.data.cheque),
@@ -58,14 +84,18 @@ export const leadApi = {
     list: (params) => api.get('/leads', { params }).then((r) => r.data.leads),
     get: (id) => api.get(`/leads/${id}`).then((r) => r.data), // returns { lead, isOwner, canEdit, canContribute }
     create: (body) => api.post('/leads', body).then((r) => r.data.lead),
+    bulkCreate: (leads) => api.post('/leads/bulk', { leads }).then((r) => r.data), // { created, skipped, failed, errors }
     update: (id, body) => api.put(`/leads/${id}`, body).then((r) => r.data.lead),
     setStatus: (id, body) => api.patch(`/leads/${id}/status`, body).then((r) => r.data.lead),
     logCall: (id, body) => api.post(`/leads/${id}/call`, body).then((r) => r.data.lead),
     addNote: (id, body) => api.post(`/leads/${id}/note`, body).then((r) => r.data.lead),
     convert: (id, body) => api.post(`/leads/${id}/convert`, body).then((r) => r.data),
+    markBuyer: (id, body) => api.post(`/leads/${id}/mark-buyer`, body).then((r) => r.data),
     remove: (id) => api.delete(`/leads/${id}`).then((r) => r.data),
     lookup: (mobile, country) => api.get('/leads/lookup', { params: { mobile, country } }).then((r) => r.data),
     deletedContacts: (params) => api.get('/leads/deleted/report', { params }).then((r) => r.data.contacts),
+    listDuplicates: () => api.get('/leads/duplicates').then((r) => r.data.groups),
+    merge: (body) => api.post('/leads/merge', body).then((r) => r.data),
 };
 
 export const attendanceApi = {

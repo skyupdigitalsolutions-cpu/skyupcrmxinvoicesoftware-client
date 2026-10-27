@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import Orders from './pages/Orders.jsx';
 import OrderForm from './pages/OrderForm.jsx';
 import ChequeCalendar from './pages/ChequeCalendar.jsx';
+import Communication from './pages/Communication.jsx';
 import Invoices from './pages/Invoices.jsx';
 import Tracker from './pages/Tracker.jsx';
 import Reports from './pages/Reports.jsx';
@@ -21,6 +22,8 @@ import Attendance from './pages/Attendance.jsx';
 import DeveloperDashboard from './pages/DeveloperDashboard.jsx';
 import Developer from './pages/Developer.jsx';
 import Subscription from './pages/Subscription.jsx';
+import SensySettings from './pages/SensySettings.jsx';
+import PurchaseOrders from './pages/PurchaseOrders.jsx';
 
 const Shell = ({ children, admin }) => (
   <ProtectedRoute adminOnly={admin}><AppLayout>{children}</AppLayout></ProtectedRoute>
@@ -48,6 +51,7 @@ export default function App() {
       <Route path="/dashboard"        element={<Shell><Dashboard /></Shell>} />
       <Route path="/orders"           element={<Shell><Orders /></Shell>} />
       <Route path="/cheques"          element={<Shell><ChequeCalendar /></Shell>} />
+      <Route path="/communication"    element={<Shell><Communication /></Shell>} />
       <Route path="/orders/new"       element={<Shell><OrderForm /></Shell>} />
       <Route path="/orders/:id/edit"  element={<Shell><OrderForm /></Shell>} />
       <Route path="/invoices"         element={<Shell><Invoices /></Shell>} />
@@ -60,6 +64,8 @@ export default function App() {
       <Route path="/users"            element={<Shell admin><Users /></Shell>} />
       <Route path="/attendance"       element={<Shell><Attendance /></Shell>} />
       <Route path="/chat"             element={<Shell><Chat /></Shell>} />
+      <Route path="/purchase-orders"    element={<Shell><PurchaseOrders /></Shell>} />
+      <Route path="/integrations/sensy" element={<Shell admin><SensySettings /></Shell>} />
       <Route path="*"                 element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

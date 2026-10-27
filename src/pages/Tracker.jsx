@@ -68,7 +68,7 @@ export default function Tracker() {
   const { isAdmin } = useAuth();
   const { data: orders, loading, refetch } = useFetch(() => orderApi.list(), []);
   const { data: users } = useFetch(() => (isAdmin ? userApi.list() : Promise.resolve([])), [isAdmin]);
-  const [f, setF] = useState({ search: '', status: '', employee: '' });
+  const [f, setF] = useState({ search: '', status: '', employee: '', from: '', to: '' });
   const [statusModal, setStatusModal] = useState(null);
   const [statusForm, setStatusForm] = useState({ status: 'Confirmed', note: '' });
 
@@ -80,6 +80,11 @@ export default function Tracker() {
       if (f.search) {
         const q = f.search.toLowerCase();
         if (!(`${o.orderNo}`.includes(q) || o.customer.toLowerCase().includes(q))) return false;
+      }
+      if (f.from || f.to) {
+        const d = new Date(o.date || o.createdAt);
+        if (f.from && d < new Date(f.from + 'T00:00:00')) return false;
+        if (f.to   && d > new Date(f.to   + 'T23:59:59')) return false;
       }
       return true;
     });
@@ -120,8 +125,17 @@ export default function Tracker() {
             {(users || []).map((u) => <option key={u._id} value={u._id}>{u.name}</option>)}
           </Select>
         )}
-        {(f.search || f.status || f.employee) && (
-          <Button variant="outline" size="sm" onClick={() => setF({ search: '', status: '', employee: '' })}>
+        <input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })}
+          className="rounded border px-2 py-1.5 text-[12px]"
+          style={{ borderColor: 'var(--border-card)', color: 'var(--text-primary)', background: 'var(--bg-card)' }}
+          title="From date" />
+        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>–</span>
+        <input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })}
+          className="rounded border px-2 py-1.5 text-[12px]"
+          style={{ borderColor: 'var(--border-card)', color: 'var(--text-primary)', background: 'var(--bg-card)' }}
+          title="To date" />
+        {(f.search || f.status || f.employee || f.from || f.to) && (
+          <Button variant="outline" size="sm" onClick={() => setF({ search: '', status: '', employee: '', from: '', to: '' })}>
             <span className="flex items-center gap-1.5"><X size={13} />Clear Filter</span>
           </Button>
         )}
