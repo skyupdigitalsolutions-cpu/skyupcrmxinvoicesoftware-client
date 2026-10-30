@@ -534,18 +534,21 @@ export default function AppLayout({ children }) {
 
         <main className="min-w-0 flex-1 overflow-hidden p-3 sm:p-5"
           style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {/* Page area fills the space left above the footer. Pages that manage
+              their own scrolling (Leads, Invoices) use h-full to fit exactly;
+              everything else scrolls here. */}
           <div className="flex-1 min-h-0 overflow-y-auto">
             {children}
-            <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-3 pb-1 text-[11px]"
-              style={{ borderColor: 'var(--header-border)', color: 'var(--text-muted)' }}>
-              <span>&copy; {new Date().getFullYear()} SkyUp CRM Software</span>
-              <span aria-hidden>·</span>
-              <button type="button" onClick={() => setShowTerms(true)}
-                className="underline-offset-2 hover:underline" style={{ color: 'var(--text-muted)' }}>
-                Terms &amp; Conditions
-              </button>
-            </footer>
           </div>
+          <footer className="flex flex-shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-2 text-[11px]"
+            style={{ borderColor: 'var(--header-border)', color: 'var(--text-muted)' }}>
+            <span>&copy; {new Date().getFullYear()} SkyUp CRM Software</span>
+            <span aria-hidden>·</span>
+            <button type="button" onClick={() => setShowTerms(true)}
+              className="underline-offset-2 hover:underline" style={{ color: 'var(--text-muted)' }}>
+              Terms &amp; Conditions
+            </button>
+          </footer>
         </main>
       </div>
       <TermsViewerModal open={showTerms} onClose={() => setShowTerms(false)} />

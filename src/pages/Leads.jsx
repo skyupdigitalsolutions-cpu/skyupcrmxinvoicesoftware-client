@@ -22,6 +22,7 @@ import { Field, Input, Select, Textarea } from '../components/ui/Field.jsx';
 import CountrySelect from '../components/ui/CountrySelect.jsx';
 import OrderItemsEditor, { blankItem } from '../components/OrderItemsEditor.jsx';
 import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
+import { exportLeadsForUpdate, buildUpdatePlan, UPDATE_CHUNK } from '../utils/leadBulkUpdate.js';
 import {
   formatDate, fmtAED, fmtDateTime, leadStatusClass,
   LEAD_STATUSES, LEAD_SOURCES, ALL_COUNTRY_NAMES, dialFor, cleanPhone, fmtMobile,
@@ -424,6 +425,12 @@ export default function Leads() {
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [exporting, setExporting] = useState(false);
+  // Bulk update (export → edit → re-upload) — admin only
+  const [updOpen, setUpdOpen] = useState(false);
+  const [updPlan, setUpdPlan] = useState(null);
+  const [updBusy, setUpdBusy] = useState(false);
+  const [updProgress, setUpdProgress] = useState('');
+  const [updResult, setUpdResult] = useState(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
 
@@ -689,6 +696,54 @@ export default function Leads() {
     }
   };
 
+  // ── Bulk update: export → edit in Excel → re-upload ────────────────────────
+  const openUpdate = () => { setUpdPlan(null); setUpdResult(null); setUpdProgress(''); setUpdOpen(true); };
+
+  const onUpdateFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUpdResult(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { setUpdPlan(buildUpdatePlan(String(reader.result), leads || [])); }
+      catch { setUpdPlan({ updates: [], preview: [], total: 0, unchanged: 0, errors: ['Could not read this file as CSV.'] }); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // Sends only the changed rows, in chunks, so a 7,000-lead file never hits the
+  // request-size or rate limits. A chunk that fails is reported; the rest continue.
+  const runUpdate = async () => {
+    if (!updPlan?.updates.length) return;
+    setUpdBusy(true);
+    const total = { updated: 0, unchanged: 0, failed: 0, errors: [] };
+    const rows = updPlan.updates;
+    try {
+      for (let i = 0; i < rows.length; i += UPDATE_CHUNK) {
+        setUpdProgress(`Updating ${Math.min(i + UPDATE_CHUNK, rows.length)} of ${rows.length}…`);
+        try {
+          const r = await leadApi.bulkUpdate(rows.slice(i, i + UPDATE_CHUNK));
+          total.updated += r.updated || 0;
+          total.unchanged += r.unchanged || 0;
+          total.failed += r.failed || 0;
+          total.errors.push(...(r.errors || []));
+        } catch (err) {
+          const n = Math.min(UPDATE_CHUNK, rows.length - i);
+          total.failed += n;
+          total.errors.push(`Leads ${i + 1}–${i + n} were not updated: ${apiError(err)}`);
+        }
+      }
+      setUpdResult(total);
+      setUpdPlan(null);
+      show(`Update done — ${total.updated} updated, ${total.failed} failed.`, total.failed ? 'error' : 'success');
+      refetch();
+    } finally {
+      setUpdBusy(false);
+      setUpdProgress('');
+    }
+  };
+
   const subTotal = useMemo(() => items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0), [items]);
 
   // Full-page spinner only on first load — a refetch (e.g. after an import)
@@ -697,7 +752,7 @@ export default function Leads() {
 
   return (
     // Fixed-height flex column — header + filters are static, table scrolls
-    <div className="flex h-[calc(100vh-56px)] flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
 
       <PageTitle
         icon={<Target size={18} />}
@@ -806,7 +861,19 @@ export default function Leads() {
           Clear
         </Button>
         {isAdmin && (
-          <Button variant="outline" size="sm" className="ml-auto" disabled={!filtered.length} onClick={exportCsv}>
+          <Button variant="outline" size="sm" className="ml-auto" disabled={!filtered.length}
+            title="Download the leads below as an editable file (includes Lead ID)"
+            onClick={() => exportLeadsForUpdate(filtered)}>
+            <span className="flex items-center gap-1.5"><Download size={13} />Export for Update</span>
+          </Button>
+        )}
+        {isAdmin && (
+          <Button variant="outline" size="sm" title="Upload an edited export to update existing leads" onClick={openUpdate}>
+            <span className="flex items-center gap-1.5"><Upload size={13} />Upload Updates</span>
+          </Button>
+        )}
+        {isAdmin && (
+          <Button variant="outline" size="sm" disabled={!filtered.length} onClick={exportCsv}>
             <span className="flex items-center gap-1.5"><Download size={13} />Export CSV</span>
           </Button>
         )}
@@ -1105,6 +1172,83 @@ export default function Leads() {
               ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Importing…</>
               : <><Upload size={13} className="mr-1.5" />Import {importRows?.leads.length || 0} Lead{importRows?.leads.length === 1 ? '' : 's'}</>
             }
+          </Button>
+        </div>
+      </Modal>
+
+      {/* ── Bulk update modal (admin) ───────────────────────────────────────── */}
+      <Modal open={updOpen} onClose={() => !updBusy && setUpdOpen(false)} title="Update Leads from File" width="min-w-[600px]">
+        <ol className="list-decimal space-y-1 pl-4 text-[11px] text-ink-3">
+          <li>Click <strong>Export for Update</strong> (it exports the leads currently shown, so filter first if you only want some).</li>
+          <li>Edit the cells in Excel. <strong>Do not change or delete the Lead ID column</strong> — it is how each row finds its lead.</li>
+          <li>Save as <strong>CSV</strong> and upload it here. You'll see every change before anything is saved.</li>
+        </ol>
+        <p className="mt-2 text-[11px] text-ink-3">
+          Editable: Name, Mobile, Country, Email, City, Source, Campaign, Interest, Remark, Delivery, Status, Owner (user name), Follow-up Date (YYYY-MM-DD).
+          Blank Email / City / Campaign / Remark / Delivery / Follow-up clears that field; blank in any other column leaves it unchanged.
+          Rows you delete from the file are left untouched. Stage and Created are read-only.
+        </p>
+
+        <div className="mt-3">
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-xs font-bold text-ink-2 hover:border-gold hover:bg-gold-pale">
+            <input type="file" accept=".csv,text/csv" className="hidden" disabled={updBusy} onChange={onUpdateFile} />
+            <FileText size={16} />Choose edited CSV file…
+          </label>
+        </div>
+
+        {updPlan && (
+          <div className="mt-3 space-y-2 text-xs">
+            <div className="rounded-md bg-gray-50 px-3 py-2">
+              <strong>{updPlan.updates.length}</strong> lead{updPlan.updates.length !== 1 ? 's' : ''} will be updated ·{' '}
+              {updPlan.unchanged} unchanged · {updPlan.errors.length} skipped (of {updPlan.total} rows).
+            </div>
+            {updPlan.errors.length > 0 && (
+              <div className="max-h-28 overflow-y-auto rounded-md bg-warn-light px-3 py-2 text-[11px] text-warn">
+                {updPlan.errors.slice(0, 30).map((er, i) => <div key={i}>{er}</div>)}
+                {updPlan.errors.length > 30 && <div>…and {updPlan.errors.length - 30} more.</div>}
+              </div>
+            )}
+            {updPlan.preview.length > 0 && (
+              <div className="max-h-52 overflow-y-auto rounded-md border border-gray-100">
+                {updPlan.preview.slice(0, 25).map((p, i) => (
+                  <div key={i} className="border-b border-gray-100 px-3 py-1.5 last:border-0">
+                    <div className="font-bold">{p.name}</div>
+                    {p.diffs.map((d, j) => (
+                      <div key={j} className="text-[11px] text-ink-3">
+                        {d.label}: <span className="line-through">{d.from || '(empty)'}</span> → <strong className="text-ink-1">{d.to || '(empty)'}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                {updPlan.preview.length > 25 && (
+                  <div className="px-3 py-1.5 text-[10px] text-ink-3">…and {updPlan.preview.length - 25} more leads (all will be updated).</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {updResult && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-1.5 rounded-md bg-ok-light px-3 py-2 text-xs font-bold text-ok">
+              <CheckCircle size={14} />{updResult.updated} updated · {updResult.unchanged} unchanged · {updResult.failed} failed.
+            </div>
+            {updResult.errors.length > 0 && (
+              <div className="max-h-40 overflow-y-auto rounded-md bg-danger-light px-3 py-2 text-[11px] text-danger">
+                {updResult.errors.slice(0, 50).map((er, i) => <div key={i}>{er}</div>)}
+                {updResult.errors.length > 50 && <div>…and {updResult.errors.length - 50} more.</div>}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center justify-end gap-2">
+          {updProgress && <span className="mr-auto text-[11px] text-ink-3">{updProgress}</span>}
+          <Button variant="outline" disabled={updBusy} onClick={() => setUpdOpen(false)}>Close</Button>
+          <Button disabled={updBusy || !updPlan?.updates.length} onClick={runUpdate}>
+            {updBusy
+              ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Updating…</>
+              : <><Upload size={13} className="mr-1.5" />Update {updPlan?.updates.length || 0} Lead{updPlan?.updates.length === 1 ? '' : 's'}</>}
           </Button>
         </div>
       </Modal>

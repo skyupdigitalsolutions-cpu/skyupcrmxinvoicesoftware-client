@@ -180,6 +180,19 @@ export default function Invoices() {
     finally { setReceiptBusy(null); }
   };
 
+  // Blank receipt voucher (same template, no data) — print and fill by hand.
+  const downloadBlankReceipt = async () => {
+    setReceiptBusy('blank');
+    try {
+      const { blob, filename } = await buildReceiptPdfBlob(null, null, branding, { blank: true });
+      const url = URL.createObjectURL(blob);
+      Object.assign(document.createElement('a'), { href: url, download: filename }).click();
+      URL.revokeObjectURL(url);
+      show(`${filename} downloaded.`, 'success');
+    } catch (e) { show('Could not generate the receipt template.', 'error'); }
+    finally { setReceiptBusy(null); }
+  };
+
   const openPayModal = (v) => {
     setPayModal(v);
     setPayForm({ amount: String(Math.max(0, v.due ?? (v.total - (v.payments || []).reduce((s,p)=>s+p.amount,0)))), method: 'Cash', date: new Date().toISOString().slice(0,10), note: '' });
@@ -226,7 +239,7 @@ export default function Invoices() {
   if (loading) return <Spinner label="Loading invoices…" />;
 
   return (
-    <div className="flex h-[calc(100vh-56px)] flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <PageTitle icon={<FileText size={18} />} badge={filtered.length}>
         Invoices
       </PageTitle>
@@ -269,6 +282,10 @@ export default function Invoices() {
         )}
         {isAdmin && (
           <div className="ml-auto flex gap-2">
+            <Button variant="outline" size="sm" disabled={receiptBusy === 'blank'} onClick={downloadBlankReceipt}
+              title="Download the empty receipt voucher (A4) to print and fill by hand">
+              <span className="flex items-center gap-1.5"><Receipt size={13} />{receiptBusy === 'blank' ? 'Preparing…' : 'Receipt Template'}</span>
+            </Button>
             <Button variant="outline" size="sm" disabled={!filtered.length} onClick={exportCsv}>
               <span className="flex items-center gap-1.5"><Download size={13} />CSV</span>
             </Button>
