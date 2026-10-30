@@ -430,7 +430,6 @@ function OrderItemsCard({ form, set, subTotal, grandTotal }) {
         <OrderItemsEditor
           items={form.items}
           onChange={(items) => set('items', items)}
-          poPriceMap={poPriceMap}
         />
         <OrderTotalsBar
           subTotal={subTotal}

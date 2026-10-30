@@ -70,10 +70,10 @@ function PrintOrderForm({ order, branding }) {
   const logoSrc = b.receiptLogoUrl || b.logoUrl || '';
   const companyEn = b.legalName || b.headerName || 'Company Name';
   const addr = [b.addressLine1, b.addressLine2, b.city].filter(Boolean).join(', ');
-  const subTotal = order.items.reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0);
+  const subTotal = (order.items || []).reduce((s, it) => s + (it.qty || 0) * (it.price || 0), 0);
   const grandTotal = order.grandTotal === undefined || order.grandTotal === null ? subTotal : order.grandTotal;
-  const totalQty = order.items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
-  const totalPcs = order.items.reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.pieces) || 0), 0);
+  const totalQty = (order.items || []).reduce((s, it) => s + (Number(it.qty) || 0), 0);
+  const totalPcs = (order.items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.pieces) || 0), 0);
 
   return createPortal(
     <div id="print-order-form" style={{ display: 'none' }}>
@@ -268,7 +268,7 @@ function PrintOrderForm({ order, branding }) {
           </tr>
         </thead>
         <tbody>
-          {order.items.filter((it) => (it.modelCode || '').trim()).map((it, i) => (
+          {(order.items || []).filter((it) => (it.modelCode || '').trim()).map((it, i) => (
             <tr key={i}>
               <td className="pof-col-sno">{i + 1}</td>
               <td className="pof-col-art bold">{it.modelCode}</td>
@@ -656,8 +656,8 @@ export default function Orders() {
                   <td className="px-2.5 py-2 text-center text-xs">{o.country}</td>
                   <td className="px-2.5 py-2 text-xs">{o.salespersonName || '—'}</td>
                   <td className="px-2.5 py-2 text-center text-xs tabular-nums">
-                    {o.items.length}
-                    <div className="text-[10px] text-ink-3">Qty: {o.items.reduce((s, it) => s + (Number(it.qty) || 0), 0)}</div>
+                    {(o.items || []).length}
+                    <div className="text-[10px] text-ink-3">Qty: {(o.items || []).reduce((s, it) => s + (Number(it.qty) || 0), 0)}</div>
                   </td>
                   <td className="px-2.5 py-2 text-right text-xs font-bold tabular-nums text-navy-700 whitespace-nowrap">{fmtAED(o.grandTotal)}</td>
                   <td className="px-2.5 py-2 text-center"><StatusBadge status={o.status} /></td>
@@ -704,7 +704,7 @@ export default function Orders() {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {viewOrder.items.map((it, i) => (
+                  {(viewOrder.items || []).map((it, i) => (
                     <tr key={i} className="border-b border-gray-100 last:border-0">
                       <td className="px-2.5 py-1.5">{i + 1}</td>
                       <td className="px-2.5 py-1.5 font-bold">{it.modelCode}</td>

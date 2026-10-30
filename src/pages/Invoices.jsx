@@ -105,7 +105,7 @@ export default function Invoices() {
   };
 
   const openEdit = (v) => {
-    setItems(v.items.length ? v.items : [blankItem()]);
+    setItems(v.items && v.items.length ? v.items : [blankItem()]);
     setEdit(v);
   };
 
