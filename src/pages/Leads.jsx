@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Formik, Form } from 'formik';
 import * as Yup from 'yup';
@@ -433,6 +433,9 @@ export default function Leads() {
   const [updResult, setUpdResult] = useState(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
+  // Whole page scrolls (no inner table scrollbar); jump back to the top when the page changes.
+  const topRef = useRef(null);
+  useEffect(() => { topRef.current?.scrollIntoView({ block: 'start' }); }, [page]);
 
   // ── Inline "Duplicates" panel (admin only) ──────────────────────────────────
   const [dupOpen, setDupOpen] = useState(false);
@@ -751,8 +754,8 @@ export default function Leads() {
   if (loading && !leads) return <Spinner label="Loading leads…" />;
 
   return (
-    // Fixed-height flex column — header + filters are static, table scrolls
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    // Normal-flow page: title, filters, then all 50 rows of the current page; the page itself scrolls
+    <div ref={topRef} className="flex flex-col">
 
       <PageTitle
         icon={<Target size={18} />}
@@ -884,8 +887,8 @@ export default function Leads() {
         )}
       </div>
 
-      {/* ── Table — takes remaining height and scrolls internally ────────────── */}
-      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* ── Table — full height (all rows of the current page), horizontal scroll only ────────────── */}
+      <Card className="flex flex-col overflow-hidden">
         {filtered.length === 0 ? (
           <EmptyState
             title="No leads yet"
@@ -897,9 +900,9 @@ export default function Leads() {
             }
           />
         ) : (
-          <div className="flex-1 overflow-auto">
+          <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] border-collapse">
-              <thead className="sticky top-0 z-10">
+              <thead>
                 <tr className="bg-navy-800 text-white">
                   {['Sl. No', 'Name', 'Contact', 'Source', 'Interest', 'City', 'Remark', 'Owner', 'Country', 'Stage', 'Status', 'Order', 'Actions'].map((h) => (
                     <th key={h} className="px-2.5 py-2 text-left text-[11px] font-bold uppercase tracking-wide whitespace-nowrap">
