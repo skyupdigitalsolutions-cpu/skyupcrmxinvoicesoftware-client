@@ -1,9 +1,9 @@
-﻿// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 // OrderForm.jsx
 // Create or edit a sales order. Mobile number is used as the CRM primary key:
 // an existing lead auto-fills the form; a new number triggers lead creation on
 // save.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─────────────────────────────────────────────────────────────────────────────
 
 import { Pencil, Plus, Save, UserCheck, UserPlus, Loader2, AlertCircle } from 'lucide-react';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
@@ -25,7 +25,7 @@ import Modal from '../components/ui/Modal.jsx';
 import OrderItemsEditor, { blankItem } from '../components/OrderItemsEditor.jsx';
 
 
-// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const PAY_TERMS = [
   'Cash on Delivery',
@@ -36,7 +36,7 @@ const PAY_TERMS = [
   'Cash',
 ];
 
-// Terms where payment is already received in full at the time of the order â€”
+// Terms where payment is already received in full at the time of the order —
 // Due Amount auto-resets to 0 when one of these is selected. Every other term
 // implies payment is still outstanding, so Due auto-fills with the full
 // Grand Total (i.e. fully pending) until the amount is edited manually.
@@ -67,7 +67,7 @@ const MIN_MOBILE_DIGITS = 6;
 const LOOKUP_DEBOUNCE_MS = 450;
 
 
-// â”€â”€â”€ Custom hook: lead lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Custom hook: lead lookup ─────────────────────────────────────────────────
 
 /**
  * Debounced lead lookup keyed on mobile + country.
@@ -132,7 +132,7 @@ function useLeadLookup({ editing, setForm }) {
 }
 
 
-// â”€â”€â”€ Custom hook: customer lookup (existing orders) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Custom hook: customer lookup (existing orders) ───────────────────────────
 
 /**
  * Debounced lookup that fetches a customer's saved delivery details from their
@@ -140,7 +140,7 @@ function useLeadLookup({ editing, setForm }) {
  * complements the mobile-based lead lookup: it lets a user start from the
  * customer name and still recover the delivery address / city on record.
  *
- * Only fills fields that are still empty â€” never overwrites what the user typed.
+ * Only fills fields that are still empty — never overwrites what the user typed.
  * custState: 'idle' | 'checking' | 'found' | 'none'
  */
 const MIN_CUSTOMER_CHARS = 2;
@@ -190,7 +190,7 @@ function useCustomerLookup({ editing, setForm }) {
 }
 
 
-// â”€â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 /** Inline status badge shown beneath the mobile field while creating an order. */
 function LeadStatus({ leadState }) {
@@ -201,7 +201,7 @@ function LeadStatus({ leadState }) {
         style={{ color: 'var(--text-muted)' }}
       >
         <Loader2 size={12} className="animate-spin" />
-        Checking for existing leadâ€¦
+        Checking for existing lead…
       </span>
     );
   }
@@ -210,7 +210,7 @@ function LeadStatus({ leadState }) {
     return (
       <span className="mt-1 flex items-center gap-1 text-[11px] font-bold text-ok">
         <UserCheck size={12} />
-        Existing lead found â€” details auto-filled.
+        Existing lead found — details auto-filled.
       </span>
     );
   }
@@ -222,7 +222,7 @@ function LeadStatus({ leadState }) {
         style={{ color: 'var(--primary)' }}
       >
         <UserPlus size={12} />
-        New lead â€” will be created on save.
+        New lead — will be created on save.
       </span>
     );
   }
@@ -276,7 +276,7 @@ function OrderTotalsBar({ subTotal, discount, grandTotal }) {
 }
 
 
-// â”€â”€â”€ Section: Order Details card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Section: Order Details card ──────────────────────────────────────────────
 
 function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState, custState }) {
   return (
@@ -284,7 +284,7 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState,
       <CardHead title="Order Details" />
       <CardBody>
 
-        {/* Row 1 â€“ meta fields */}
+        {/* Row 1 – meta fields */}
         <div className="mb-3 grid gap-3 md:grid-cols-4">
           <Field label="Sales Order #">
             <Input
@@ -308,7 +308,7 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState,
                 value={form.salesperson}
                 onChange={(e) => set('salesperson', e.target.value)}
               >
-                <option value="">Selectâ€¦</option>
+                <option value="">Select…</option>
                 {sales.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
@@ -338,7 +338,7 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState,
         </div>
 
 
-        {/* Row 2 â€“ customer fields */}
+        {/* Row 2 – customer fields */}
         <div className="grid gap-3 md:grid-cols-3">
           <Field label="Billed To (Customer) *">
             <Input
@@ -349,7 +349,7 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState,
             {!editing && custState === 'checking' && (
               <span className="mt-1 flex items-center gap-1 text-[11px]" style={{ color: 'var(--text-muted)' }}>
                 <Loader2 size={12} className="animate-spin" />
-                Looking up saved detailsâ€¦
+                Looking up saved details…
               </span>
             )}
             {!editing && custState === 'found' && (
@@ -373,7 +373,7 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState,
           </Field>
         </div>
 
-        {/* Row 3 â€“ contact + delivery */}
+        {/* Row 3 – contact + delivery */}
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <Field label="Contact / Mobile *">
             <div className="flex">
@@ -396,7 +396,7 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState,
             />
           </Field>
 
-          {/* Entered manually â€” never auto-filled from the customer's mobile. */}
+          {/* Entered manually — never auto-filled from the customer's mobile. */}
           <Field label="Delivery Contact No. (manual)">
             <Input
               type="tel"
@@ -405,7 +405,7 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState,
               onChange={(e) => set('deliveryContact', e.target.value.replace(/[^0-9+\-\s()]/g, ''))}
             />
             <span className="mt-1 block text-[10px]" style={{ color: 'var(--text-muted)' }}>
-              Shown as "Delivery Contact No." on the order form â€” include the country code.
+              Shown as "Delivery Contact No." on the order form — include the country code.
             </span>
           </Field>
         </div>
@@ -416,7 +416,7 @@ function OrderDetailsCard({ form, set, sales, editing, isAdmin, user, leadState,
 }
 
 
-// â”€â”€â”€ Section: Order Items card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Section: Order Items card ────────────────────────────────────────────────
 
 function OrderItemsCard({ form, set, subTotal, grandTotal }) {
   return (
@@ -430,6 +430,7 @@ function OrderItemsCard({ form, set, subTotal, grandTotal }) {
         <OrderItemsEditor
           items={form.items}
           onChange={(items) => set('items', items)}
+          poPriceMap={poPriceMap}
         />
         <OrderTotalsBar
           subTotal={subTotal}
@@ -442,17 +443,17 @@ function OrderItemsCard({ form, set, subTotal, grandTotal }) {
 }
 
 
-// â”€â”€â”€ Section: Discount & Notes card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Section: Discount & Notes card ──────────────────────────────────────────
 
 function DiscountNotesCard({ form, set, grandTotal = 0, onDueChange }) {
-  // Auto-derived from Due Amount vs Grand Total â€” purely informational, shows
+  // Auto-derived from Due Amount vs Grand Total — purely informational, shows
   // how the order's payment currently stands: fully paid, part-paid, or the
   // full amount still pending.
   const due = Number(form.due) || 0;
   const paymentState =
-    due <= 0 ? { label: 'Paid â€” Complete', cls: 'bg-ok-light text-ok' } :
-    due >= grandTotal && grandTotal > 0 ? { label: 'Due â€” Pending', cls: 'bg-danger-light text-danger' } :
-    { label: 'Partial â€” Pending', cls: 'bg-warn-light text-warn' };
+    due <= 0 ? { label: 'Paid — Complete', cls: 'bg-ok-light text-ok' } :
+    due >= grandTotal && grandTotal > 0 ? { label: 'Due — Pending', cls: 'bg-danger-light text-danger' } :
+    { label: 'Partial — Pending', cls: 'bg-warn-light text-warn' };
 
   return (
     <Card>
@@ -499,7 +500,7 @@ function DiscountNotesCard({ form, set, grandTotal = 0, onDueChange }) {
             <Textarea
               rows={2}
               value={form.notes}
-              placeholder="Any special instructionsâ€¦"
+              placeholder="Any special instructions…"
               onChange={(e) => set('notes', e.target.value)}
             />
           </Field>
@@ -510,7 +511,7 @@ function DiscountNotesCard({ form, set, grandTotal = 0, onDueChange }) {
 }
 
 
-// â”€â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function OrderForm() {
   const { id }             = useParams();
@@ -525,27 +526,27 @@ export default function OrderForm() {
   const [form, setForm]       = useState(INITIAL_FORM);
 
   // Whether Due Amount should keep auto-tracking the Grand Total (true) or has
-  // been manually overridden by the user (false â€” stops auto-resync so a
+  // been manually overridden by the user (false — stops auto-resync so a
   // custom partial-payment value is never silently clobbered).
   const dueAutoRef = useRef(true);
 
-  // Existing-lead confirmation popup â€” shown when saving a new order and the
+  // Existing-lead confirmation popup — shown when saving a new order and the
   // mobile number matches a customer already in the CRM (possibly owned by
   // someone else). Holds everything needed to resume the save once
   // acknowledged: { lead, items, isEdit } (isEdit unused here but keeps shape
   // consistent with how the save flow already branches).
   const [existingLeadPopup, setExistingLeadPopup] = useState(null);
 
-  // â”€â”€ Lead lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Lead lookup ────────────────────────────────────────────────────────────
   const { leadId, leadState, onMobileChange, onCountryChange } = useLeadLookup({
     editing,
     setForm,
   });
 
-  // â”€â”€ Customer lookup (existing orders) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Customer lookup (existing orders) ──────────────────────────────────────
   const { custState, onCustomerChange } = useCustomerLookup({ editing, setForm });
 
-  // â”€â”€ Derived totals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Derived totals ─────────────────────────────────────────────────────────
   const subTotal = useMemo(
     () => form.items.reduce((sum, it) => sum + (it.qty || 0) * (it.price || 0), 0),
     [form.items],
@@ -555,7 +556,7 @@ export default function OrderForm() {
     subTotal * (1 - (Number(form.discount) || 0) / 100),
   );
 
-  // â”€â”€ Bootstrap: load sales users & existing order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Bootstrap: load sales users & existing order ───────────────────────────
   useEffect(() => {
     (async () => {
       if (isAdmin) {
@@ -568,7 +569,7 @@ export default function OrderForm() {
       if (editing) {
         try {
           const o = await orderApi.get(id);
-          dueAutoRef.current = false; // an existing order's due amount is authoritative â€” don't auto-override it
+          dueAutoRef.current = false; // an existing order's due amount is authoritative — don't auto-override it
           setForm({
             date:        o.date?.slice(0, 10) || todayStr(),
             customer:    o.customer,
@@ -597,10 +598,10 @@ export default function OrderForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // â”€â”€ Form field setter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Form field setter ──────────────────────────────────────────────────────
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  // â”€â”€ Field change handlers that also trigger side-effects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Field change handlers that also trigger side-effects ───────────────────
   const handleMobileChange = (value) => {
     set('mobile', value);
     onMobileChange(value, form.country);
@@ -616,7 +617,7 @@ export default function OrderForm() {
     set('due', PAID_TERMS.includes(value) ? 0 : Math.round(grandTotal * 100) / 100);
   };
 
-  // A manual edit to Due Amount stops the auto-tracking above â€” the user's
+  // A manual edit to Due Amount stops the auto-tracking above — the user's
   // custom (e.g. partial-payment) value is never silently overwritten again.
   const handleDueChange = (value) => {
     dueAutoRef.current = false;
@@ -624,7 +625,7 @@ export default function OrderForm() {
   };
 
   // Keep Due Amount synced to the Grand Total whenever items/discount change
-  // â€” but only while auto-tracking is active (see handlePayTermsChange /
+  // — but only while auto-tracking is active (see handlePayTermsChange /
   // handleDueChange above).
   useEffect(() => {
     if (!dueAutoRef.current) return;
@@ -643,7 +644,7 @@ export default function OrderForm() {
     onCustomerChange(value, form.mobile, form.country);
   };
 
-  // â”€â”€ Save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Save ───────────────────────────────────────────────────────────────────
   const save = async () => {
     // All fields required except Notes, Discount, Due.
     const digits = (form.mobile || '').replace(/\D/g, '');
@@ -673,19 +674,19 @@ export default function OrderForm() {
       (it) => !it.modelCode.trim() || !(Number(it.qty) > 0) || !(Number(it.price) > 0)
     );
     if (badItem !== -1) {
-      return show(`Item #${badItem + 1} is incomplete â€” model code, quantity (>0) and price (>0) are all required.`, 'error');
+      return show(`Item #${badItem + 1} is incomplete — model code, quantity (>0) and price (>0) are all required.`, 'error');
     }
 
     setBusy(true);
     try {
       // If this is a new order with an unmatched mobile, we may need to
       // create a CRM lead first. leadId (from the debounced background
-      // lookup) is NOT trusted here on its own â€” if the user fills in a
+      // lookup) is NOT trusted here on its own — if the user fills in a
       // known customer's number and hits Save quickly, the background
       // lookup may not have resolved yet, so leadId would still be null
       // even though a lead genuinely exists. A fresh, synchronous lookup
       // right before deciding is what actually prevents creating a
-      // duplicate lead â€” cross-employee: this matches on phone number
+      // duplicate lead — cross-employee: this matches on phone number
       // company-wide, not just leads owned by the current user.
       const mobileDigits = (form.mobile || '').replace(/\D/g, '');
       let confirmedLead = null;
@@ -693,11 +694,11 @@ export default function OrderForm() {
         try {
           const freshLookup = await leadApi.lookup(mobileDigits, form.country);
           if (freshLookup && freshLookup.exists && freshLookup.lead) confirmedLead = freshLookup.lead;
-        } catch { /* lookup failure â€” fall through and let the server's own duplicate check decide */ }
+        } catch { /* lookup failure — fall through and let the server's own duplicate check decide */ }
       }
 
       if (confirmedLead) {
-        // Fetch the existing customer's data into any still-blank fields â€”
+        // Fetch the existing customer's data into any still-blank fields —
         // never overwrite what was already typed for THIS order.
         setForm((prev) => ({
           ...prev,
@@ -706,7 +707,7 @@ export default function OrderForm() {
           delivery: prev.delivery || confirmedLead.delivery || prev.delivery,
         }));
         // Pause here and let the salesperson see exactly who this is before
-        // the order actually saves â€” a toast is too easy to miss for
+        // the order actually saves — a toast is too easy to miss for
         // something this important (it's the whole point of not creating a
         // duplicate lead).
         setBusy(false);
@@ -748,7 +749,7 @@ export default function OrderForm() {
           });
         } catch (leadErr) {
           // A duplicate-phone conflict from the server is expected here and
-          // is fine â€” it means the lead already exists, so the order simply
+          // is fine — it means the lead already exists, so the order simply
           // proceeds without creating a second one. Anything else (a real
           // validation error) is surfaced instead of silently disappearing,
           // so a genuine problem doesn't go unnoticed.
@@ -777,12 +778,14 @@ export default function OrderForm() {
           const mobileDigits = (form.mobile || '').replace(/\D/g, '');
           if (mobileDigits.length >= 5) {
             const lookup = await leadApi.lookup(mobileDigits, form.country);
-            if (lookup?.exists && lookup?.lead?._id && !lookup.lead.converted) {
-              // Mark lead as Buyer (Won) without creating a duplicate order
+            if (lookup?.exists && lookup?.lead?._id) {
+              // Mark lead as Buyer (Won) — always fires on new order
+              // even if lead was previously converted (monthly reset sets
+              // converted=true stays but status resets to Interested)
               await leadApi.markBuyer(lookup.lead._id, { orderNo: created.orderNo });
             }
           }
-        } catch { /* non-fatal â€” order already saved */ }
+        } catch { /* non-fatal — order already saved */ }
       }
 
       navigate('/orders');
@@ -793,7 +796,7 @@ export default function OrderForm() {
     }
   };
 
-  // Called when the salesperson acknowledges the existing-lead popup â€”
+  // Called when the salesperson acknowledges the existing-lead popup —
   // resumes the save using the confirmed match.
   const confirmExistingLeadAndSave = async () => {
     if (!existingLeadPopup) return;
@@ -802,9 +805,9 @@ export default function OrderForm() {
     await finishSave(items, true);
   };
 
-  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (loading) return <Spinner label="Loading orderâ€¦" />;
+  if (loading) return <Spinner label="Loading order…" />;
 
   return (
     <>
@@ -844,7 +847,7 @@ export default function OrderForm() {
         </Button>
         <Button disabled={busy} onClick={save}>
           <Save size={14} className="mr-1.5" />
-          {busy ? 'Savingâ€¦' : 'Save Order'}
+          {busy ? 'Saving…' : 'Save Order'}
         </Button>
       </div>
 
@@ -865,19 +868,19 @@ export default function OrderForm() {
               {existingLeadPopup.lead.status && (
                 <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>
                   Status: <strong>{existingLeadPopup.lead.status}</strong>
-                  {existingLeadPopup.lead.orderNo ? ` Â· previously ordered #${existingLeadPopup.lead.orderNo}` : ''}
+                  {existingLeadPopup.lead.orderNo ? ` · previously ordered #${existingLeadPopup.lead.orderNo}` : ''}
                 </p>
               )}
             </div>
           </div>
           <p className="mb-3 flex items-start gap-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
             <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-            This number already exists as a lead in your CRM. Continuing will use their saved details for this order â€” no new (duplicate) lead will be created.
+            This number already exists as a lead in your CRM. Continuing will use their saved details for this order — no new (duplicate) lead will be created.
           </p>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setExistingLeadPopup(null)}>Cancel</Button>
             <Button disabled={busy} onClick={confirmExistingLeadAndSave}>
-              {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Savingâ€¦</> : 'Continue & Save Order'}
+              {busy ? <><Loader2 size={13} className="mr-1.5 animate-spin" />Saving…</> : 'Continue & Save Order'}
             </Button>
           </div>
         </Modal>

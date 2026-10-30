@@ -76,8 +76,17 @@ export default function Reports() {
   );
   const [query, setQuery] = useState({ period: 'month' });
   const { data: sales, loading: salesLoading } = useFetch(() => reportApi.sales(query), [JSON.stringify(query)]);
-  const { data: allOrders } = useFetch(() => api.get('/orders').then(r => r.data.orders || []), []);
-  const { data: allPOs }    = useFetch(() => api.get('/purchase-orders').then(r => r.data.purchaseOrders || []), []);
+  // Lazy-loaded on export only — avoids fetching thousands of records on page load
+  const [allOrders, setAllOrders] = useState(null);
+  const [allPOs, setAllPOs]       = useState(null);
+  const fetchExportData = async () => {
+    const [ord, po] = await Promise.all([
+      allOrders ? Promise.resolve(allOrders) : api.get('/orders').then(r => r.data.orders || []),
+      allPOs    ? Promise.resolve(allPOs)    : api.get('/purchase-orders').then(r => r.data.purchaseOrders || []),
+    ]);
+    setAllOrders(ord); setAllPOs(po);
+    return { allOrders: ord, allPOs: po };
+  };
 
   const [employees, setEmployees] = useState([]);
   const [search, setSearch] = useState('');
@@ -270,6 +279,7 @@ export default function Reports() {
   });
 
   const exportPdf = async () => {
+    if (!allOrders || !allPOs) { await fetchExportData(); }
     setExporting(true);
     try {
       await exportSectionsPdf({

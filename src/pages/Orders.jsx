@@ -507,7 +507,6 @@ export default function Orders() {
             iIdx === 0 ? (o.salespersonName || '—') : '',
             iIdx === 0 ? (o.payTerms || '—') : '',
             iIdx === 0 ? o.status : '',
-            it.modelCode || it.sku || '—',
             it.description || it.name || '—',
             it.size || '—',
             it.color || '—',
@@ -523,7 +522,7 @@ export default function Orders() {
       title: 'Orders Report',
       columns: ['Sl. No', 'Order #', 'Date', 'Customer', 'Mobile', 'City', 'Country',
         'Salesperson', 'Pay Terms', 'Status',
-        'Article No.', 'Description', 'Size', 'Color', 'Qty', 'Line Amt (AED)',
+        'Description', 'Size', 'Color', 'Qty', 'Line Amt (AED)',
         'Order Total (AED)', 'Due (AED)'],
       rows,
       meta: {

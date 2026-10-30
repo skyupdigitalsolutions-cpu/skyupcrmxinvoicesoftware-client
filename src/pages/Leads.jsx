@@ -607,6 +607,10 @@ export default function Leads() {
       const st = (f.dateFrom || f.dateTo) ? statusAtDate(l, f.dateTo || f.dateFrom) : l.status;
       return leadStageOf({ ...l, status: st }) === 'Enquiry';
     }).length;
+    const opportunity = list.filter((l) => {
+      const st = (f.dateFrom || f.dateTo) ? statusAtDate(l, f.dateTo || f.dateFrom) : l.status;
+      return leadStageOf({ ...l, status: st }) === 'Opportunity';
+    }).length;
     const converted = list.filter((l) => {
       const st = (f.dateFrom || f.dateTo) ? statusAtDate(l, f.dateTo || f.dateFrom) : l.status;
       return st === 'Won' || l.converted;
@@ -614,6 +618,7 @@ export default function Leads() {
     return {
       total,
       enquiry,
+      opportunity,
       converted,
       rate: total ? Math.round((converted / total) * 100) : 0,
     };
@@ -671,8 +676,8 @@ export default function Leads() {
     try {
       const r = await leadApi.bulkCreate(importRows.leads);
       const reasons = (r.errors || []).map((e) => e.replace(/^Row (\d+)/, 'Lead #$1'));
-      setImportResult({ created: r.created || 0, skipped: r.skipped || 0, failed: r.failed || 0, reasons });
-      show(`Import done — ${r.created || 0} added, ${r.skipped || 0} duplicates, ${r.failed || 0} failed.`, r.failed ? 'error' : 'success');
+      setImportResult({ created: r.created || 0, merged: r.merged || 0, skipped: r.skipped || 0, failed: r.failed || 0, reasons });
+      show(`Import done — ${r.created || 0} added, ${r.merged || 0} updated, ${r.skipped || 0} skipped, ${r.failed || 0} failed.`, r.failed ? 'error' : 'success');
       refetch();
     } catch (err) {
       // Nothing was imported — show the server's exact reason (e.g. lead limit exceeded)
@@ -742,10 +747,11 @@ export default function Leads() {
       {/* ── Stats strip ─────────────────────────────────────────────────────── */}
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 flex-shrink-0">
         {[
-          ['Total Contacts',  stats.total,       'border-gold',  <Target size={16} />],
-          ['Enquiry',      stats.enquiry,      'border-info',  <Target size={16} />],
-          ['Buyers',       stats.converted,    'border-ok',  <Users size={16} />],
-          ['Conversion %', `${stats.rate}%`,   'border-warn',  <Percent size={16} />],
+          ['Total Contacts',  stats.total,        'border-gold',  <Target size={16} />],
+          ['Enquiry',         stats.enquiry,      'border-info',  <Target size={16} />],
+          ['Opportunity',     stats.opportunity,  'border-warn',  <Target size={16} />],
+          ['Buyers',          stats.converted,    'border-ok',    <Users size={16} />],
+          ['Conversion %',    `${stats.rate}%`,   'border-gold',  <Percent size={16} />],
         ].map(([l, v, c, icon]) => (
           <div key={l} className={`rounded-lg bg-white p-4 shadow-card border-l-4 ${c} flex items-center gap-3`}>
             <div className="text-ink-3">{icon}</div>
@@ -1082,7 +1088,7 @@ export default function Leads() {
         {importResult && !importResult.blocked && (
           <div className="mt-3 flex items-center gap-2 rounded-md bg-ok-light px-3 py-2 text-xs text-ok">
             <CheckCircle size={14} />
-            Imported {importResult.created} · {importResult.skipped} duplicates skipped · {importResult.failed} failed.
+            {importResult.created} added · {importResult.merged || 0} updated · {importResult.skipped} skipped · {importResult.failed} failed.
           </div>
         )}
         {importResult?.reasons?.length > 0 && (
