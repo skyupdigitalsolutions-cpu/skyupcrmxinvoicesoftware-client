@@ -360,6 +360,14 @@ export default function Reports() {
         </div>
       </div>
 
+      {sales && sales.build !== 'sales-report-v3' && (
+        <div className="mb-3 rounded-lg border px-3 py-2 text-xs font-semibold"
+          style={{ background: 'var(--warn-light, #FFF7E6)', borderColor: '#F5C26B', color: '#8A5A00' }}>
+          ⚠ Your backend server is running an older version of the reports API, so some report data
+          (like “By Salesperson”) may be incomplete. Deploy the latest server and restart it.
+        </div>
+      )}
+
       {sales?.period && (
         <p className="mb-3 text-[13px] font-bold text-info">
           {formatDate(sales.period.from)} — {formatDate(sales.period.to)}
