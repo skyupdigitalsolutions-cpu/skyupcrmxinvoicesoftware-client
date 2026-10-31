@@ -614,6 +614,26 @@ function MonthlyComparison({ data, loading }) {
         })}
       </div>
 
+      {/* Sales cards — orders & revenue, current month vs previous */}
+      <div className="mb-4 grid grid-cols-2 gap-3">
+        {[['orders', 'Orders', '#2563EB', (v) => v], ['revenue', 'Revenue', '#B8860B', (v) => fmtAED(v)]].map(([key, label, color, fmt]) => {
+          const cur = months[months.length - 1]?.[key] || 0;
+          const prev = months[months.length - 2]?.[key] || 0;
+          const diff = cur - prev;
+          const pct = prev ? Math.round((diff / prev) * 100) : null;
+          return (
+            <div key={key} className="rounded-xl border p-3" style={{ borderColor: color + '30', background: 'var(--bg-surface)' }}>
+              <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color }}>{label} this month</div>
+              <div className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>{fmt(cur)}</div>
+              <div className="text-[11px] mt-1 font-semibold" style={{ color: diff > 0 ? '#16a34a' : diff < 0 ? '#dc2626' : 'var(--text-muted)' }}>
+                {diff > 0 ? `▲ +${key === 'revenue' ? fmtAED(diff) : diff}` : diff < 0 ? `▼ ${key === 'revenue' ? fmtAED(diff) : diff}` : '— No change'}
+                {pct !== null && diff !== 0 ? ` (${pct > 0 ? '+' : ''}${pct}%)` : ''} vs last month
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       {/* Bar chart comparison */}
       <div className="rounded-xl border p-4 mb-4" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-card)' }}>
         <div className="flex items-center justify-between mb-4">
@@ -662,7 +682,9 @@ function MonthlyComparison({ data, loading }) {
               <th className="px-4 py-2.5 text-center font-bold" style={{ color: '#F59E0B' }}>Opportunity</th>
               <th className="px-4 py-2.5 text-center font-bold" style={{ color: '#2563EB' }}>Enquiry</th>
               <th className="px-4 py-2.5 text-center font-bold" style={{ color: '#6B7280' }}>New</th>
-              <th className="px-4 py-2.5 text-center font-bold" style={{ color: 'var(--text-secondary)' }}>Total</th>
+              <th className="px-4 py-2.5 text-center font-bold" style={{ color: 'var(--text-secondary)' }}>Total Leads</th>
+              <th className="px-4 py-2.5 text-center font-bold" style={{ color: '#2563EB' }}>Orders</th>
+              <th className="px-4 py-2.5 text-right font-bold" style={{ color: '#B8860B' }}>Revenue</th>
             </tr>
           </thead>
           <tbody>
@@ -690,6 +712,8 @@ function MonthlyComparison({ data, loading }) {
                     );
                   })}
                   <td className="px-4 py-2.5 text-center font-bold" style={{ color: 'var(--text-primary)' }}>{m.total}</td>
+                  <td className="px-4 py-2.5 text-center font-bold" style={{ color: '#2563EB' }}>{m.orders ?? 0}</td>
+                  <td className="px-4 py-2.5 text-right font-bold" style={{ color: 'var(--text-primary)' }}>{fmtAED(m.revenue || 0)}</td>
                 </tr>
               );
             })}

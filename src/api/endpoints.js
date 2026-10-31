@@ -78,6 +78,7 @@ export const reportApi = {
     dashboard: (params) => api.get('/reports/dashboard', { params }).then((r) => r.data),
     daily: (params) => api.get('/reports/daily', { params }).then((r) => r.data),
     sales: (params) => api.get('/reports/sales', { params }).then((r) => r.data),
+    monthlyComparison: (params) => api.get('/reports/monthly-comparison', { params }).then((r) => r.data),
 };
 
 export const leadApi = {
