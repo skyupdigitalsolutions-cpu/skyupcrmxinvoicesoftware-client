@@ -41,6 +41,13 @@ export default function OrderCheckModal({ onClose, onChanged }) {
 
   const s = data?.summary;
   const rows = data ? [...data.rows].sort((a, b) => (a.state === 'ok') - (b.state === 'ok')) : [];
+  // Orders that belong to the same CRM customer (same lead) — they count as ONE Buyer.
+  const sharedWith = {};
+  if (data) {
+    const byLead = {};
+    data.rows.forEach((r) => { if (r.leadId) (byLead[r.leadId] = byLead[r.leadId] || []).push(r.orderNo); });
+    data.rows.forEach((r) => { const g = r.leadId && byLead[r.leadId]; if (g && g.length > 1) sharedWith[r.orderNo] = g.filter((x) => x !== r.orderNo); });
+  }
 
   return (
     <Modal open onClose={onClose} title={`Orders vs Buyers — ${data?.month || 'this month'}`} width="sm:max-w-4xl">
@@ -53,7 +60,9 @@ export default function OrderCheckModal({ onClose, onChanged }) {
             (several orders from one customer count as <em>one</em> Buyer).{' '}
             {s.missing > 0 && <><strong>{s.missing}</strong> not marked as Buyer. </>}
             {s.noLead > 0 && <><strong>{s.noLead}</strong> have no lead in the CRM. </>}
-            {s.missing === 0 && s.noLead === 0 && 'Every order has a Buyer.'}
+            {s.missing === 0 && s.noLead === 0 && (s.orders === s.distinctCustomers
+              ? 'Every order has a Buyer.'
+              : `Every order is linked to a Buyer — ${s.orders - s.distinctCustomers} order${s.orders - s.distinctCustomers > 1 ? 's are' : ' is'} from a customer who already ordered (see "same customer as" below).`)}
           </p>
           <div className="max-h-[50vh] overflow-auto rounded-lg border">
             <table className="w-full text-[12px]">
@@ -68,7 +77,14 @@ export default function OrderCheckModal({ onClose, onChanged }) {
                     <td className="px-2.5 py-1.5">{r.customer}</td>
                     <td className="px-2.5 py-1.5 whitespace-nowrap">{r.mobile}</td>
                     <td className="px-2.5 py-1.5">{r.salespersonName || '—'}</td>
-                    <td className="px-2.5 py-1.5">{r.leadName ? `${r.leadName} (${r.leadStatus})` : '—'}</td>
+                    <td className="px-2.5 py-1.5">
+                      {r.leadName ? `${r.leadName} (${r.leadStatus})` : '—'}
+                      {sharedWith[r.orderNo] && (
+                        <div className="text-[10px] font-semibold text-info" title="Orders from the same customer count as one Buyer">
+                          same customer as {sharedWith[r.orderNo].map((n) => `#${n}`).join(', ')}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-2.5 py-1.5"><span className={`status ${(STATE[r.state] || STATE.error).cls}`} title={r.error}>{(STATE[r.state] || STATE.error).label}</span></td>
                   </tr>
                 ))}

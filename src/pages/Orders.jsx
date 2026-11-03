@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Eye, Pencil, Truck, FileText, Trash2, ClipboardList,
-  MessageCircle, Printer, X, Check, Download, Phone, FolderOpen, RefreshCw,
+  MessageCircle, Printer, X, Check, Download, Phone, FolderOpen, RefreshCw, Receipt,
 } from 'lucide-react';
 import { orderApi, invoiceApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -15,6 +15,7 @@ import { Card } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import StatusBadge from '../components/ui/StatusBadge.jsx';
 import Modal from '../components/ui/Modal.jsx';
+import OrderReceiptsModal from '../components/OrderReceiptsModal.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import { Field, Select, Input, Textarea } from '../components/ui/Field.jsx';
@@ -362,6 +363,7 @@ export default function Orders() {
   const [statusForm, setStatusForm] = useState({ status: 'Confirmed', note: '' });
   const [viewOrder, setViewOrder] = useState(null);
   const [printOrder, setPrintOrder] = useState(null);
+  const [receiptOrder, setReceiptOrder] = useState(null);   // order whose receipts panel is open
 
   useEffect(() => { const s = params.get('status'); if (s) setF((p) => ({ ...p, status: s })); }, [params]);
   useEffect(() => { if (error) show(error, 'error'); }, [error]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -670,6 +672,7 @@ export default function Orders() {
                         <MessageCircle size={14} />
                       </a>
                       <IconBtn icon={Download} size="sm" variant="outline" title={pdfBusy === o._id ? 'Preparing PDF…' : 'Download PDF'} disabled={pdfBusy === o._id} onClick={() => downloadOrderPdf(o)} />
+                      {o.status !== 'Cancelled' && <IconBtn icon={Receipt} size="sm" variant="outline" title="Receipt" onClick={() => setReceiptOrder(o)} />}
                       {o.status !== 'Cancelled' && o.status !== 'Invoiced' && !o.invoiceId && <IconBtn icon={FileText} size="sm" variant="outline" title="Convert to Invoice" onClick={() => convert(o)} />}
                       {isAdmin && <IconBtn icon={Trash2} size="sm" variant="red" title="Delete" onClick={() => del(o)} />}
                     </div>
@@ -750,6 +753,11 @@ export default function Orders() {
           </>
         )}
       </Modal>
+
+      {/* ── Receipts for an order (convert → record payment → preview/edit → download) ── */}
+      {receiptOrder && (
+        <OrderReceiptsModal order={receiptOrder} branding={branding} onClose={() => setReceiptOrder(null)} onChanged={refetch} />
+      )}
 
       {/* ── Status update modal ──────────────────────────────────────────────── */}
       <Modal open={!!statusModal} onClose={() => setStatusModal(null)}
