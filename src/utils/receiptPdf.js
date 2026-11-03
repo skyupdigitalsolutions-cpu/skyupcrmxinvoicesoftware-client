@@ -221,8 +221,12 @@ export async function buildReceiptPdfBlob(invoice, payment, branding = {}, opts 
   // Balance counts every payment on the invoice, with THIS payment taken at the amount
   // printed on the receipt (it can differ from the recorded one when edited in the preview).
   const recorded = payment._id ? (invoice.payments || []).find((p) => String(p._id) === String(payment._id)) : null;
-  const totalPaid = (invoice.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0)
-    - (recorded ? Number(recorded.amount) || 0 : 0) + (recorded ? paid : 0);
+  // `payment.standalone` = a receipt printed straight from an ORDER (no invoice, nothing stored):
+  // the amount on the receipt is the only money received.
+  const totalPaid = payment.standalone
+    ? paid
+    : (invoice.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0)
+      - (recorded ? Number(recorded.amount) || 0 : 0) + (recorded ? paid : 0);
   const due = Math.max(0, (invoice.total || 0) - totalPaid);
   const cents = Math.round(paid * 100);
   const dhs = Math.floor(cents / 100);
@@ -232,7 +236,9 @@ export async function buildReceiptPdfBlob(invoice, payment, branding = {}, opts 
   const isCash = method === 'Cash';
   const cashValue = only(method === 'Cheque' ? (payment.note || 'Cheque') : method);
   const bankValue = only(method === 'Bank Transfer' ? (payment.note || '') : '');
-  let beingValue = `Payment for Invoice INV-${invoice.invoiceNo} | Order #${invoice.orderNo}`;
+  let beingValue = invoice.invoiceNo
+    ? `Payment for Invoice INV-${invoice.invoiceNo} | Order #${invoice.orderNo}`
+    : `Payment for Order #${invoice.orderNo}`;
   if (due > 0) beingValue += ` | Balance AED ${fmt2(due)}`;
   beingValue = only(beingValue);
 
@@ -347,6 +353,6 @@ export async function buildReceiptPdfBlob(invoice, payment, branding = {}, opts 
 
   return {
     blob: doc.output('blob'),
-    filename: blank ? VOUCHER.blankFilename : `Receipt-${payment.receiptNo}-INV${invoice.invoiceNo}.pdf`,
+    filename: blank ? VOUCHER.blankFilename : `Receipt-${payment.receiptNo}-${invoice.invoiceNo ? `INV${invoice.invoiceNo}` : `ORD${invoice.orderNo}`}.pdf`,
   };
 }

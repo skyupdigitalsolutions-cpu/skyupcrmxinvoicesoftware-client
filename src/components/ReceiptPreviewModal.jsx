@@ -63,7 +63,7 @@ export default function ReceiptPreviewModal({ invoice, payment, branding, onClos
   };
 
   return (
-    <Modal open onClose={onClose} title={`Receipt #${payment.receiptNo} — INV-${invoice.invoiceNo}`} width="sm:max-w-3xl">
+    <Modal open onClose={onClose} title={invoice.invoiceNo ? `Receipt #${payment.receiptNo} — INV-${invoice.invoiceNo}` : `Receipt ${payment.receiptNo} — Order #${invoice.orderNo}`} width="sm:max-w-3xl">
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <div className="w-48">
           <Field label="Amount (AED)">
@@ -78,8 +78,10 @@ export default function ReceiptPreviewModal({ invoice, payment, branding, onClos
         )}
       </div>
       <p className="mb-2 text-[11px] text-ink-3">
-        Edit the amount to see it on the receipt before downloading. This changes the downloaded
-        receipt only — the payment recorded on the invoice stays as {original.toFixed(2)}.
+        Edit the amount to see it on the receipt before downloading.{' '}
+        {payment.standalone
+          ? 'This receipt is printed from the order only — nothing is recorded.'
+          : `This changes the downloaded receipt only — the payment recorded on the invoice stays as ${original.toFixed(2)}.`}
       </p>
       {!valid && <p className="mb-2 text-[12px] font-semibold text-red-600">Enter a valid amount (0 or more).</p>}
       {error && <p className="mb-2 text-[12px] font-semibold text-red-600">{error}</p>}

@@ -28,6 +28,7 @@ export default function OrderReceiptsModal({ order, branding, onClose, onChanged
   const [preview, setPreview] = useState(null);          // payment being previewed
   const [showPay, setShowPay] = useState(false);
   const [pay, setPay] = useState({ amount: '', method: 'Cash', date: today(), note: '' });
+  const [quick, setQuick] = useState({ method: 'Cash', date: today(), note: '', receiptNo: `R${order.orderNo}` });
 
   const defaultAmount = (inv) => {
     const due = Number(inv.due);
@@ -72,6 +73,17 @@ export default function OrderReceiptsModal({ order, branding, onClose, onChanged
     finally { setBusy(false); }
   };
 
+  // Receipt straight from the order — no invoice, nothing recorded. The amount starts as what the
+  // order says has been received (total − due), or the full total, and is editable in the preview.
+  const orderAsInvoice = { orderNo: order.orderNo, customer: order.customer, total: Number(order.grandTotal) || 0, payments: [] };
+  const received = (Number(order.grandTotal) || 0) - (Number(order.due) || 0);
+  const quickPayment = {
+    standalone: true,
+    receiptNo: (quick.receiptNo || '').trim() || `R${order.orderNo}`,
+    amount: received > 0 ? Number(received.toFixed(2)) : Number(order.grandTotal) || 0,
+    method: quick.method, date: quick.date, note: quick.note,
+  };
+
   const paid = sumPaid(invoice);
   const due = invoice ? (Number.isFinite(Number(invoice.due)) ? Number(invoice.due) : Math.max(0, invoice.total - paid)) : 0;
   const cancelled = order.status === 'Cancelled';
@@ -87,20 +99,36 @@ export default function OrderReceiptsModal({ order, branding, onClose, onChanged
             {error && <p className="text-[12px] font-semibold text-red-600">{error}</p>}
             {loading && <Spinner label="Loading…" />}
 
-            {/* No invoice yet */}
-            {!loading && !invoice && (
-              <div className="rounded-lg border border-dashed p-4 text-center">
-                <p className="mb-3 text-[12px] text-ink-2">
-                  {cancelled
-                    ? 'This order is cancelled, so no receipt can be issued.'
-                    : 'Receipts are issued against an invoice. Convert this order to an invoice to record a payment and print its receipt.'}
+            {/* No invoice yet → print a receipt straight from the order */}
+            {!loading && !invoice && !cancelled && (
+              <div className="space-y-2.5 rounded-lg border bg-gray-50 p-3">
+                <div className="text-[12px] font-bold text-navy">Receipt from this order</div>
+                <p className="text-[11px] text-ink-3">
+                  No invoice needed. Set the details, then preview — you can edit the amount before downloading.
+                  Nothing is recorded; convert to an invoice if you want payments tracked.
                 </p>
-                {!cancelled && (
-                  <Button onClick={convert} disabled={busy}>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Method"><Select value={quick.method} onChange={(e) => setQuick((f) => ({ ...f, method: e.target.value }))}>{METHODS.map((m) => <option key={m}>{m}</option>)}</Select></Field>
+                  <Field label="Date"><Input type="date" value={quick.date} onChange={(e) => setQuick((f) => ({ ...f, date: e.target.value }))} /></Field>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Receipt no."><Input value={quick.receiptNo} onChange={(e) => setQuick((f) => ({ ...f, receiptNo: e.target.value }))} /></Field>
+                  <Field label="Cheque no. / note"><Input value={quick.note} onChange={(e) => setQuick((f) => ({ ...f, note: e.target.value }))} placeholder="optional" /></Field>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button className="flex-1" onClick={() => setPreview(quickPayment)}>
+                    <span className="flex items-center justify-center gap-1.5"><Receipt size={13} />Preview &amp; download receipt</span>
+                  </Button>
+                  <Button variant="outline" onClick={convert} disabled={busy} title="Create an invoice so payments and receipts are tracked">
                     <span className="flex items-center gap-1.5"><FileText size={13} />{busy ? 'Creating…' : 'Convert to Invoice'}</span>
                   </Button>
-                )}
+                </div>
               </div>
+            )}
+            {!loading && !invoice && cancelled && (
+              <p className="rounded-lg border border-dashed p-4 text-center text-[12px] text-ink-2">
+                This order is cancelled, so no receipt can be issued.
+              </p>
             )}
 
             {/* Invoice + payments */}
@@ -154,9 +182,9 @@ export default function OrderReceiptsModal({ order, branding, onClose, onChanged
         </Modal>
       )}
 
-      {preview && invoice && (
+      {preview && (invoice || preview.standalone) && (
         <ReceiptPreviewModal
-          invoice={invoice}
+          invoice={preview.standalone ? orderAsInvoice : invoice}
           payment={preview}
           branding={branding}
           onClose={() => setPreview(null)}
