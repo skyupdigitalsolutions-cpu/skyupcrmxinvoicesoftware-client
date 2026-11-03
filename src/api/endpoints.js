@@ -98,6 +98,8 @@ export const leadApi = {
     deletedContacts: (params) => api.get('/leads/deleted/report', { params }).then((r) => r.data.contacts),
     listDuplicates: () => api.get('/leads/duplicates').then((r) => r.data.groups),
     merge: (body) => api.post('/leads/merge', body).then((r) => r.data),
+    orderCheck: (month) => api.get('/leads/order-check', { params: month ? { month } : undefined }).then((r) => r.data), // { month, rows, summary }
+    orderCheckFix: (body) => api.post('/leads/order-check', body).then((r) => r.data),
 };
 
 export const attendanceApi = {

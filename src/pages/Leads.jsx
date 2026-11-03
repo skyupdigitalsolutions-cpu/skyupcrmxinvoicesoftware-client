@@ -21,6 +21,7 @@ import EmptyState from '../components/ui/EmptyState.jsx';
 import { Field, Input, Select, Textarea } from '../components/ui/Field.jsx';
 import CountrySelect from '../components/ui/CountrySelect.jsx';
 import OrderItemsEditor, { blankItem } from '../components/OrderItemsEditor.jsx';
+import OrderCheckModal from '../components/OrderCheckModal.jsx';
 import { exportTablePdf, exportTableCsv } from '../utils/exportPdf.js';
 import { exportLeadsForUpdate, buildUpdatePlan, UPDATE_CHUNK } from '../utils/leadBulkUpdate.js';
 import {
@@ -392,9 +393,11 @@ export default function Leads() {
   const asOfKey = `${f.dateFrom}|${f.dateTo}`;
   const { data: leads, loading, refetch } = useFetch(() => {
     const asOf = f.dateTo || (f.dateFrom ? localToday() : '');
+    // No date filter → the server also counts leads with an order dated THIS month as Buyers
+    // (their stored status can lag behind the orders).
     return leadApi.list(asOf
       ? { asOf, from: f.dateFrom || undefined, tz: new Date().getTimezoneOffset() }
-      : undefined);
+      : { buyersMonth: localToday().slice(0, 7) });
   }, [asOfKey]);
 
   // Sync every filter change into the URL so browser Back restores it exactly.
@@ -418,6 +421,7 @@ export default function Leads() {
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [orderCheckOpen, setOrderCheckOpen] = useState(false);
   // Bulk update (export → edit → re-upload) — admin only
   const [updOpen, setUpdOpen] = useState(false);
   const [updPlan, setUpdPlan] = useState(null);
@@ -775,7 +779,12 @@ export default function Leads() {
         badge={filtered.length}
         actions={
           <div className="flex gap-2">
-          
+            {isAdmin && (
+              <Button variant="outline" onClick={() => setOrderCheckOpen(true)}
+                title="Compare this month's orders with Buyers and fix any that are missing">
+                Order check
+              </Button>
+            )}
             <Button variant="outline" onClick={openImport}>
               <Upload size={14} className="mr-1.5" />Import CSV
             </Button>
@@ -961,9 +970,9 @@ export default function Leads() {
                       <span className={`status ${leadStageClass(leadStageOf(l), l)}`}>{leadStageOf(l)}</span>
                     </td>
                     <td className="px-2.5 py-2">
-                      {(f.dateFrom || f.dateTo) && l.currentStatus && l.currentStatus !== l.status ? (
+                      {l.currentStatus && l.currentStatus !== l.status ? (
                         <div className="flex flex-col gap-0.5">
-                          <span className={`status ${leadStatusClass(l.status)}`} title={`Status on ${f.dateTo || f.dateFrom}`}>{l.status}</span>
+                          <span className={`status ${leadStatusClass(l.status)}`} title={(f.dateFrom || f.dateTo) ? `Status on ${f.dateTo || f.dateFrom}` : 'Buyer — has an order this month'}>{l.status}</span>
                           <span className="text-[10px] text-ink-3">now: {l.currentStatus}</span>
                         </div>
                       ) : (
@@ -1088,6 +1097,9 @@ export default function Leads() {
         onSaved={refetch}
         onOpenExisting={(lid) => { setForm(null); navigate(`/leads/${lid}`, { state: { from: location.pathname + location.search } }); }}
       />
+
+      {/* ── Orders vs Buyers check (admin) ───────────────────────────────────── */}
+      {orderCheckOpen && <OrderCheckModal onClose={() => setOrderCheckOpen(false)} onChanged={refetch} />}
 
       {/* ── Import CSV modal ─────────────────────────────────────────────────── */}
       <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import Leads from CSV" width="min-w-[560px]">
