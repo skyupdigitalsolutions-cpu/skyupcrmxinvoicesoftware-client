@@ -136,7 +136,10 @@ export default function Reports() {
         const leadOwnerId = l.owner ? String(l.owner?._id || l.owner) : '';
         const byId   = leadOwnerId && leadOwnerId === empId;
         const byName = !leadOwnerId && employeeName && l.ownerName === employeeName;
-        if (!byId && !byName) return false;
+        // A buyer also belongs to the salesperson on the order(s) placed in the period,
+        // even when the lead is owned by someone else (e.g. admin keyed the order).
+        const byOrder = Array.isArray(l.orderSalespersons) && l.orderSalespersons.includes(empId);
+        if (!byId && !byName && !byOrder) return false;
       }
       if (ctry && l.country !== ctry) return false;
       if (from || to) return inRange(l.createdAt, from, to) || !!l.buyerActivityInRange;
@@ -517,7 +520,7 @@ export default function Reports() {
                         <td className="px-2.5 py-2 text-xs whitespace-nowrap">{formatDate(l.createdAt)}</td>
                         <td className="max-w-[140px] truncate px-2.5 py-2 text-xs italic text-ink-3">{l.remark || '—'}</td>
                         <td className="px-2.5 py-2">
-                          <Button size="sm" variant="outline" onClick={() => setEditLead(l)}>
+                          <Button size="sm" variant="outline" onClick={() => setEditLead({ ...l, status: l.currentStatus || l.status })}>
                             <Pencil size={13} />
                           </Button>
                         </td>

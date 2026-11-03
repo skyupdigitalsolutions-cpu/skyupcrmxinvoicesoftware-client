@@ -383,9 +383,15 @@ export default function Leads() {
   // With a date filter, ask the server for each lead's status on the end date
   // (so a customer who bought on the 30th shows as Buyer in the 30th's report
   // and as Opportunity in next month's, after the monthly reset).
+  // Only "From" picked → report runs from that date through today (previously it
+  // collapsed to that single day and dropped every lead created after it).
+  const localToday = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
   const asOfKey = `${f.dateFrom}|${f.dateTo}`;
   const { data: leads, loading, refetch } = useFetch(() => {
-    const asOf = f.dateTo || f.dateFrom;
+    const asOf = f.dateTo || (f.dateFrom ? localToday() : '');
     return leadApi.list(asOf
       ? { asOf, from: f.dateFrom || undefined, tz: new Date().getTimezoneOffset() }
       : undefined);
@@ -447,6 +453,17 @@ export default function Leads() {
       .then((u) => setSales(u.filter((x) => x.role === 'sales' && x.active)))
       .catch(() => {});
   }, [isAdmin]);
+
+  // "✏️ Edit Lead" on the lead detail page returns here with { editId } — open that
+  // lead's edit form (live status, not the as-of one), then clear the state so a
+  // refresh / Back doesn't reopen it.
+  useEffect(() => {
+    const editId = location.state?.editId;
+    if (!editId || !leads) return;
+    const target = leads.find((x) => String(x._id) === String(editId));
+    if (target) setForm({ ...target, status: target.currentStatus || target.status, owner: target.owner || '' });
+    navigate(location.pathname + location.search, { replace: true, state: {} });
+  }, [leads, location.state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset to page 1 whenever filter values change
   const fKey = JSON.stringify(f);
@@ -549,7 +566,16 @@ export default function Leads() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [sales, leads]);
 
-  const buildExport = () => {
+  // The list endpoint only returns each lead's LAST note (keeps the 7500+ lead
+  // payload small), so exports pull the full note history on demand.
+  const fetchNotesById = async () => {
+    const rows = await leadApi.list({ fields: '_id,notes' });
+    const map = new Map();
+    (rows || []).forEach((r) => map.set(String(r._id), r.notes || []));
+    return map;
+  };
+
+  const buildExport = (notesById = new Map()) => {
     const empName = f.employee.length === 1 ? (employeeOptions.find((u) => String(u.id) === f.employee[0])?.name || 'All') : f.employee.length > 1 ? `${f.employee.length} Employees` : 'All';
     return {
       title: 'Leads Report',
@@ -559,9 +585,10 @@ export default function Leads() {
         'Remark', 'Notes', 'Order #', 'Date',
       ],
       rows: filtered.map((l, idx) => {
-        // Combine all notes into one cell
-        const notesText = (l.notes || [])
-          .map((n) => `[${new Date(n.at).toLocaleDateString()} ${n.byName || ''}] ${n.text || ''}`)
+        // Every note on the lead, oldest first, in one cell: [date Name] text | …
+        const allNotes = notesById.get(String(l._id)) || l.notes || [];
+        const notesText = allNotes
+          .map((n) => `[${formatDate(n.at)}${n.byName ? ' ' + n.byName : ''}] ${n.text || ''}`)
           .join(' | ') || '—';
         return [
           idx + 1,
@@ -588,13 +615,15 @@ export default function Leads() {
   const exportPdf = async () => {
     setExporting(true);
     try {
-      await exportTablePdf(buildExport());
+      await exportTablePdf(buildExport(await fetchNotesById()));
     } catch (e) { show(e.message || 'Export failed. Check your connection.', 'error'); }
     finally { setExporting(false); }
   };
-  const exportCsv = () => {
-    try { exportTableCsv(buildExport()); }
+  const exportCsv = async () => {
+    setExporting(true);
+    try { exportTableCsv(buildExport(await fetchNotesById())); }
     catch (e) { show(e.message || 'CSV export failed.', 'error'); }
+    finally { setExporting(false); }
   };
 
   const stats = useMemo(() => {
@@ -628,7 +657,10 @@ export default function Leads() {
   };
 
   const del = async (lead) => {
-    if (!confirm(`Delete lead "${lead.name}"?`)) return;
+    const msg = lead.converted
+      ? `Delete lead "${lead.name}"?\n\nThis customer is a Buyer${lead.orderNo ? ` (Order #${lead.orderNo})` : ''}. The lead will be removed (and archived in Deleted Contacts); their orders and invoices are NOT deleted.`
+      : `Delete lead "${lead.name}"?`;
+    if (!confirm(msg)) return;
     try { await leadApi.remove(lead._id); show('Lead deleted.'); refetch(); }
     catch (e) { show(apiError(e), 'error'); }
   };
@@ -857,7 +889,7 @@ export default function Leads() {
           </Button>
         )}
         {isAdmin && (
-          <Button variant="outline" size="sm" disabled={!filtered.length} onClick={exportCsv}>
+          <Button variant="outline" size="sm" disabled={exporting || !filtered.length} onClick={exportCsv}>
             <span className="flex items-center gap-1.5"><Download size={13} />Export CSV</span>
           </Button>
         )}
@@ -952,17 +984,19 @@ export default function Leads() {
                           <Eye size={13} />
                         </Button>
 
-                        {!l.converted && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            title="Edit"
-                            onClick={() => setForm({ ...l, owner: l.owner || '' })}
-                          >
-                            <Pencil size={13} />
-                          </Button>
-                        )}
-                        {isAdmin && !l.converted && (
+                        {/* Edit / Delete are available for converted (Buyer) leads too.
+                            With a date filter `l.status` is the status on that date, so the
+                            form is opened with the lead's LIVE status (currentStatus) —
+                            otherwise saving would overwrite it with the historical one. */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          title="Edit"
+                          onClick={() => setForm({ ...l, status: l.currentStatus || l.status, owner: l.owner || '' })}
+                        >
+                          <Pencil size={13} />
+                        </Button>
+                        {isAdmin && (
                           <Button
                             size="sm"
                             variant="red"

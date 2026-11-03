@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { FileText, Pencil, Trash2, MessageCircle, Download, RefreshCw, Save, FolderOpen, X, Receipt, PlusCircle, Banknote } from 'lucide-react';
 import { buildReceiptPdfBlob } from '../utils/receiptPdf.js';
+import ReceiptPreviewModal from '../components/ReceiptPreviewModal.jsx';
 import { invoiceApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -40,6 +41,7 @@ export default function Invoices() {
   const [payForm, setPayForm] = useState({ amount: '', method: 'Cash', date: '', note: '' });
   const [payBusy, setPayBusy] = useState(false);
   const [viewPayments, setViewPayments] = useState(null); // invoice whose payments to view
+  const [receiptPreview, setReceiptPreview] = useState(null); // { invoice, payment } being previewed
 
   const filtered = useMemo(() => {
     if (!invoices) return [];
@@ -166,18 +168,6 @@ export default function Invoices() {
     await clearDownloadFolder();
     setPdfFolder(null);
     show('Save folder cleared — PDFs will use normal browser downloads.');
-  };
-
-  const downloadReceipt = async (invoice, payment) => {
-    setReceiptBusy(invoice._id);
-    try {
-      const { blob, filename } = await buildReceiptPdfBlob(invoice, payment, branding);
-      const url = URL.createObjectURL(blob);
-      Object.assign(document.createElement('a'), { href: url, download: filename }).click();
-      URL.revokeObjectURL(url);
-      show(`${filename} downloaded.`, 'success');
-    } catch (e) { show('Could not generate receipt.', 'error'); }
-    finally { setReceiptBusy(null); }
   };
 
   // Blank receipt voucher (same template, no data) — print and fill by hand.
@@ -480,7 +470,7 @@ export default function Invoices() {
       )}
 
       {/* ── View Payments / Download Receipts Modal ── */}
-      {viewPayments && (
+      {viewPayments && !receiptPreview && (
         <Modal open onClose={() => setViewPayments(null)} title={`Payments — INV-${viewPayments.invoiceNo}`} width="sm:max-w-lg">
           <div className="p-4 space-y-2">
             {(viewPayments.payments || []).length === 0 && (
@@ -495,9 +485,8 @@ export default function Invoices() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-green-700">{(p.amount||0).toLocaleString('en-AE',{style:'currency',currency:'AED'})}</span>
-                  <Button size="sm" variant="outline" title="Download Receipt"
-                    disabled={receiptBusy === viewPayments._id}
-                    onClick={() => downloadReceipt(viewPayments, p)}>
+                  <Button size="sm" variant="outline" title="Preview & Download Receipt"
+                    onClick={() => setReceiptPreview({ invoice: viewPayments, payment: p })}>
                     <Receipt size={12} />
                   </Button>
                   {isAdmin && (
@@ -510,6 +499,17 @@ export default function Invoices() {
             ))}
           </div>
         </Modal>
+      )}
+
+      {/* ── Receipt preview (editable amount) before download ── */}
+      {receiptPreview && (
+        <ReceiptPreviewModal
+          invoice={receiptPreview.invoice}
+          payment={receiptPreview.payment}
+          branding={branding}
+          onClose={() => setReceiptPreview(null)}
+          onDownloaded={(name) => show(`${name} downloaded.`, 'success')}
+        />
       )}
 
     </div>

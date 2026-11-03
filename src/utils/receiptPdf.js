@@ -181,48 +181,6 @@ function iconMail(doc, x, y, rgb, s = 1) {
   doc.lines([[4 * s, 3 * s], [4 * s, -3 * s]], x - 4 * s, y - 2.6 * s, [1, 1]);
 }
 
-// ── WAK SHW logo (blue rounded box, white "VV" mark, wordmark, tagline) ─────
-// Drawn as vectors so it stays sharp at any size. All numbers are in "logo
-// units" measured from the printed logo (box = 910 x 485 units).
-function drawLogo(doc, x, y, w) {
-  const u = w / 910;
-  const h = 485 * u;
-  doc.setFillColor(...BLUE);
-  doc.roundedRect(x, y, w, h, 40 * u, 40 * u, 'F');
-
-  // mark: two overlapping chevrons + a small tick
-  doc.setDrawColor(...WHITE);
-  doc.setLineCap('round'); doc.setLineJoin('round');
-  const MS = 1.3, MCX = 457, MCY = 112;            // mark scale + centre
-  const seg = (raw, width) => {
-    const pts = raw.map(([px, py]) => [MCX + (px - MCX) * MS, MCY + (py - MCY) * MS]);
-    doc.setLineWidth(width * MS * u);
-    const [x0, y0] = pts[0];
-    doc.lines(pts.slice(1).map((p, i) => [(p[0] - pts[i][0]) * u, (p[1] - pts[i][1]) * u]), x + x0 * u, y + y0 * u, [1, 1], 'S');
-  };
-  seg([[362, 76], [415, 158], [482, 76]], 40);       // big V
-  seg([[466, 92], [498, 160], [552, 82]], 26);       // second V
-  seg([[536, 160], [572, 124]], 9);                  // tick
-  doc.setLineCap('butt'); doc.setLineJoin('miter');
-
-  // wordmark
-  doc.setTextColor(...WHITE); doc.setFont('helvetica', 'bold');
-  const word = 'WAK SHW';
-  let fs = 30; doc.setFontSize(fs);
-  while (fs > 8 && doc.getTextWidth(word) > 800 * u) { fs -= 0.5; doc.setFontSize(fs); }
-  doc.text(word, x + w / 2, y + 365 * u, { align: 'center' });
-
-  // tagline, letter-spaced to the logo's width
-  const tag = 'WHOLESALE FOOTWEAR';
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(6.2);
-  const tw = doc.getTextWidth(tag);
-  const target = 585 * u;
-  const cs = Math.max(0, (target - tw) / (tag.length - 1));
-  doc.setCharSpace(cs);
-  doc.text(tag, x + w / 2 - target / 2, y + 440 * u);
-  doc.setCharSpace(0);
-}
-
 // "One Thousand Five Hundred Ninety Six and Fifty Fils Only"
 function amountWords(dhs, fils) {
   const w = toWords(dhs).replace(/ Only$/, '');
@@ -260,7 +218,11 @@ export async function buildReceiptPdfBlob(invoice, payment, branding = {}, opts 
   const nameEn = clean(normName(b.legalName || b.headerName || VOUCHER.nameEn)).toUpperCase() || VOUCHER.nameEn;
   const nameAr = String(b.legalNameAr || '').trim() || VOUCHER.nameAr;
   const paid = Number(payment.amount) || 0;
-  const totalPaid = (invoice.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  // Balance counts every payment on the invoice, with THIS payment taken at the amount
+  // printed on the receipt (it can differ from the recorded one when edited in the preview).
+  const recorded = payment._id ? (invoice.payments || []).find((p) => String(p._id) === String(payment._id)) : null;
+  const totalPaid = (invoice.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0)
+    - (recorded ? Number(recorded.amount) || 0 : 0) + (recorded ? paid : 0);
   const due = Math.max(0, (invoice.total || 0) - totalPaid);
   const cents = Math.round(paid * 100);
   const dhs = Math.floor(cents / 100);
@@ -275,9 +237,10 @@ export async function buildReceiptPdfBlob(invoice, payment, branding = {}, opts 
   beingValue = only(beingValue);
 
   // ── Header: logo + phones (left) ──────────────────────────────────────────
+  // No logo on the voucher. The old logo box's footprint (logoW x logoH) is kept only as
+  // layout spacing so the phones, rule and address block stay where they were.
   const TOP = 46;
   const logoW = 112;
-  drawLogo(doc, L, TOP, logoW);
   const logoH = 485 * (logoW / 910);
 
   VOUCHER.phones.forEach((ph, i) => {
@@ -291,9 +254,9 @@ export async function buildReceiptPdfBlob(invoice, payment, branding = {}, opts 
   // ── Header: names, rule, address ──────────────────────────────────────────
   const ruleY = TOP + 0.37 * logoH;
   doc.setDrawColor(...BLUE); doc.setLineWidth(1.6);
-  doc.line(L + logoW + 2, ruleY, R, ruleY);
+  doc.line(L, ruleY, R, ruleY);
 
-  const nameMaxW = R - (L + logoW + 16);
+  const nameMaxW = CW;
   drawTextImg(doc, nameAr, R, ruleY - 8, 26, BLUE, { family: KUFI, weight: '700', rtl: true }, 'right', nameMaxW);
   drawTextImg(doc, nameEn, R, ruleY + 28, 26, BLUE, { family: HEAD, weight: 'bold' }, 'right', nameMaxW);
 

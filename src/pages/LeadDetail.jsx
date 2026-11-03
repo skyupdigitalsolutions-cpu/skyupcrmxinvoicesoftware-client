@@ -90,7 +90,7 @@ export default function LeadDetail() {
         actions={
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => { if (location.state?.from) navigate(location.state.from); else navigate(-1); }}>← Back to Leads</Button>
-            {canEdit && !lead.converted && (
+            {canEdit && (
               <Button onClick={() => navigate(location.state?.from || '/leads', { state: { editId: id } })}>✏️ Edit Lead</Button>
             )}
           </div>
