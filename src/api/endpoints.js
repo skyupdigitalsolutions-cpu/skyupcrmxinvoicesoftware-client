@@ -82,7 +82,8 @@ export const reportApi = {
 };
 
 export const leadApi = {
-    list: (params) => api.get('/leads', { params }).then((r) => r.data.leads),
+    // `meta` (admin, buyersMonth only) rides along as a property on the array: { month, orders, customers, withoutLead }
+    list: (params) => api.get('/leads', { params }).then((r) => { const a = r.data.leads; if (r.data.meta) a.meta = r.data.meta; return a; }),
     get: (id) => api.get(`/leads/${id}`).then((r) => r.data), // returns { lead, isOwner, canEdit, canContribute }
     create: (body) => api.post('/leads', body).then((r) => r.data.lead),
     bulkCreate: (leads) => api.post('/leads/bulk', { leads }).then((r) => r.data), // { created, skipped, failed, errors }

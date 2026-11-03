@@ -62,6 +62,14 @@ const getPeriodBounds = (query) => {
   return { from: undefined, to: undefined }; // "All Time"
 };
 
+// Local YYYY-MM-DD for a Date (not UTC — the office day).
+const ymdLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// First and last day of the PREVIOUS calendar month.
+const lastMonthBounds = () => {
+  const n = new Date();
+  return { from: ymdLocal(new Date(n.getFullYear(), n.getMonth() - 1, 1)), to: ymdLocal(new Date(n.getFullYear(), n.getMonth(), 0)) };
+};
+
 // ── Single merged report page: Leads + Sales Analytics share one filter bar,
 // one combined stat row, side-by-side panels, and one export. ──────────────
 export default function Reports() {
@@ -79,8 +87,9 @@ export default function Reports() {
   // monthly Buyer → Opportunity reset.
   const bounds = getPeriodBounds(query);
   const { data: leads, loading: leadsLoading, refetch: refetchLeads } = useFetch(
+    // A custom range with only "From" runs from that date through today (it used to collapse to that one day).
     () => leadApi.list(bounds.to || bounds.from
-      ? { asOf: bounds.to || bounds.from, from: bounds.from, tz: new Date().getTimezoneOffset() }
+      ? { asOf: bounds.to || ymdLocal(new Date()), from: bounds.from, tz: new Date().getTimezoneOffset() }
       : undefined),
     [bounds.from, bounds.to]
   );
@@ -341,6 +350,17 @@ export default function Reports() {
             {{ today: 'Today', week: 'This Week', month: 'This Month', year: 'This Year' }[p]}
           </Button>
         ))}
+        {(() => {
+          const lm = lastMonthBounds();
+          const active = !query.period && query.from === lm.from && query.to === lm.to;
+          return (
+            <Button size="sm" variant={active ? 'gold' : 'outline'}
+              title="Statuses and stages exactly as they were at the end of last month"
+              onClick={() => setQuery((q) => ({ ...q, period: undefined, from: lm.from, to: lm.to }))}>
+              Last Month
+            </Button>
+          );
+        })()}
         <span className="text-gray-300">|</span>
         <span className="text-[11px] text-ink-3">Custom:</span>
         <Input className="!w-auto" type="date" value={query.from || ''} onChange={(e) => setQuery((q) => ({ ...q, period: undefined, from: e.target.value }))} />

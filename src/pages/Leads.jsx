@@ -648,6 +648,23 @@ export default function Leads() {
     };
   }, [filtered, f.dateFrom, f.dateTo]);
 
+  // Under the Buyers card: how this month's orders map onto buyers (admin, no date filter).
+  const buyersNote = (() => {
+    const m = !f.dateFrom && !f.dateTo ? leads?.meta : null;
+    if (!m || !m.orders) return null;
+    const gap = m.orders !== m.customers || m.withoutLead > 0;
+    const parts = [`${m.orders} order${m.orders === 1 ? '' : 's'} this month`];
+    if (m.customers !== m.orders) parts.push(`${m.customers} customer${m.customers === 1 ? '' : 's'}`);
+    if (m.withoutLead > 0) parts.push(`${m.withoutLead} with no lead`);
+    return (
+      <button type="button" onClick={() => setOrderCheckOpen(true)}
+        className={`mt-0.5 block text-left text-[10px] hover:underline ${m.withoutLead > 0 ? 'font-bold text-warn' : 'text-ink-3'}`}
+        title="Open the Orders vs Buyers check">
+        {parts.join(' · ')}{gap ? ' ›' : ''}
+      </button>
+    );
+  })();
+
   const doConvert = async () => {
     const valid = items.filter((it) => it.modelCode.trim());
     if (!valid.length) return show('Add at least one item to create the order.', 'error');
@@ -830,14 +847,15 @@ export default function Leads() {
           ['Total Contacts',  stats.total,        'border-gold',  <Target size={16} />],
           ['Enquiry',         stats.enquiry,      'border-info',  <Target size={16} />],
           ['Opportunity',     stats.opportunity,  'border-warn',  <Target size={16} />],
-          ['Buyers',          stats.converted,    'border-ok',    <Users size={16} />],
+          ['Buyers',          stats.converted,    'border-ok',    <Users size={16} />, buyersNote],
           ['Conversion %',    `${stats.rate}%`,   'border-gold',  <Percent size={16} />],
-        ].map(([l, v, c, icon]) => (
+        ].map(([l, v, c, icon, note]) => (
           <div key={l} className={`rounded-lg bg-white p-4 shadow-card border-l-4 ${c} flex items-center gap-3`}>
             <div className="text-ink-3">{icon}</div>
             <div>
               <div className="text-2xl font-black text-navy">{v}</div>
               <div className="mt-0.5 text-[11px] text-ink-2">{l}</div>
+              {note}
             </div>
           </div>
         ))}
@@ -878,6 +896,23 @@ export default function Leads() {
           style={{ borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
           title="To date"
         />
+        <button
+          type="button"
+          className="rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold hover:bg-black/5"
+          style={{ borderColor: 'var(--input-border)', background: 'var(--input-bg)', color: 'var(--text-primary)' }}
+          title="Show last month as it was at the end of that month — statuses, stages and Buyers — ready to export"
+          onClick={() => {
+            const n = new Date();
+            const p2 = (x) => String(x).padStart(2, '0');
+            const ymd = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+            updateFilter({
+              dateFrom: ymd(new Date(n.getFullYear(), n.getMonth() - 1, 1)),
+              dateTo: ymd(new Date(n.getFullYear(), n.getMonth(), 0)),
+            });
+          }}
+        >
+          Last month
+        </button>
         <Button
           variant="outline"
           size="sm"
