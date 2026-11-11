@@ -350,6 +350,11 @@ function PrintOrderForm({ order, branding }) {
 }
 
 // ── Main Orders page ──────────────────────────────────────────────────────────
+// Sum of order values. Cancelled orders are not sales, so they are left out —
+// unless the list is filtered to Cancelled, where their own total is what's wanted.
+const ordersValue = (list, statusFilter) =>
+  list.reduce((s, o) => s + (o.status === 'Cancelled' && statusFilter !== 'Cancelled' ? 0 : (o.grandTotal || 0)), 0);
+
 export default function Orders() {
   const navigate = useNavigate();
   const { isAdmin, branding } = useAuth();
@@ -486,39 +491,41 @@ export default function Orders() {
   const buildExport = () => {
     const empMatch = f.employee ? (users || []).find((u) => String(u.id || u._id) === String(f.employee)) : null;
     const empName = f.employee ? (empMatch ? empMatch.name : undefined) : 'All';
-    // One row per item for full item detail
+    // One row per item for full item detail. Every item row repeats the order's
+    // details (Sl. No, Order #, Date, Customer, … Order Total, Due) so no cell is
+    // left blank and the sheet can be sorted / filtered by any column.
     const rows = [];
     filtered.forEach((o, idx) => {
+      const orderCols = [
+        idx + 1,
+        `#${o.orderNo}`,
+        formatDate(o.date),
+        o.customer,
+        fmtMobile(o.mobile, o.country) || '—',
+        o.city || '—',
+        o.country,
+        o.salespersonName || '—',
+        o.payTerms || '—',
+        o.status,
+      ];
+      const totalCols = [fmt2(o.grandTotal), fmt2(o.due || 0)];
       const items = o.items || [];
       if (!items.length) {
-        rows.push([idx + 1, `#${o.orderNo}`, formatDate(o.date), o.customer,
-          fmtMobile(o.mobile, o.country) || '—', o.city || '—', o.country,
-          o.salespersonName || '—', o.payTerms || '—', o.status,
-          '—', '—', '—', '—', '', '', fmt2(o.grandTotal), fmt2(o.due || 0)]);
-      } else {
-        items.forEach((it, iIdx) => {
-          const lineAmt = fmt2((it.qty || 0) * (it.price || it.rate || 0));
-          rows.push([
-            iIdx === 0 ? idx + 1 : '',
-            iIdx === 0 ? `#${o.orderNo}` : '',
-            iIdx === 0 ? formatDate(o.date) : '',
-            iIdx === 0 ? o.customer : '',
-            iIdx === 0 ? (fmtMobile(o.mobile, o.country) || '—') : '',
-            iIdx === 0 ? (o.city || '—') : '',
-            iIdx === 0 ? o.country : '',
-            iIdx === 0 ? (o.salespersonName || '—') : '',
-            iIdx === 0 ? (o.payTerms || '—') : '',
-            iIdx === 0 ? o.status : '',
-            it.description || it.name || '—',
-            it.size || '—',
-            it.color || '—',
-            it.qty ?? '',
-            lineAmt,
-            iIdx === 0 ? fmt2(o.grandTotal) : '',
-            iIdx === 0 ? fmt2(o.due || 0) : '',
-          ]);
-        });
+        rows.push([...orderCols, '—', '—', '—', '—', '', ...totalCols]);
+        return;
       }
+      items.forEach((it) => {
+        const lineAmt = fmt2((it.qty || 0) * (it.price || it.rate || 0));
+        rows.push([
+          ...orderCols,
+          it.description || it.name || '—',
+          it.size || '—',
+          it.color || '—',
+          it.qty ?? '',
+          lineAmt,
+          ...totalCols,
+        ]);
+      });
     });
     return {
       title: 'Orders Report',
@@ -530,7 +537,7 @@ export default function Orders() {
       meta: {
         Employee: empName || 'All',
         Records: filtered.length,
-        'Total Value (AED)': fmt2(filtered.reduce((s, o) => s + (o.grandTotal || 0), 0)),
+        'Total Value (AED)': fmt2(ordersValue(filtered, f.status)),
       },
     };
   };
@@ -620,7 +627,7 @@ export default function Orders() {
         </span>
         <span>·</span>
         <span>
-          Value: <strong style={{ color: 'var(--text-primary)' }}>{fmtAED(filtered.reduce((s, o) => s + (o.grandTotal || 0), 0))}</strong>
+          Value: <strong style={{ color: 'var(--text-primary)' }}>{fmtAED(ordersValue(filtered, f.status))}</strong>
         </span>
       </div>
 

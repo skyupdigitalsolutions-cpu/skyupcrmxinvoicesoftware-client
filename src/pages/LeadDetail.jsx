@@ -245,11 +245,14 @@ const FIELD_LABELS = {
   name: 'Name', mobile: 'Mobile', country: 'Country', city: 'City', email: 'Email',
   source: 'Source', campaign: 'Campaign', interest: 'Interest', remark: 'Remark',
   delivery: 'Delivery', status: 'Status', followUpAt: 'Follow-up date', owner: 'Owner',
+  buyerVoid: 'Buyer removed', orderNo: 'Order #',
 };
 
 const fmtHistVal = (field, v) => {
   if (v === null || v === undefined || v === '') return '—';
   if (field === 'followUpAt') return formatDate(v);
+  // buyerVoid: from = when they became a Buyer, to = the order that was cancelled
+  if (field === 'buyerVoid') return typeof v === 'number' ? `Order #${v} cancelled` : `Buyer since ${fmtDateTime(v)}`;
   return String(v);
 };
 
