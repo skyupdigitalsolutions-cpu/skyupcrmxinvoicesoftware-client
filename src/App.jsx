@@ -24,6 +24,7 @@ import Developer from './pages/Developer.jsx';
 import Subscription from './pages/Subscription.jsx';
 import SensySettings from './pages/SensySettings.jsx';
 import PurchaseOrders from './pages/PurchaseOrders.jsx';
+import TallyIntegration from './pages/TallyIntegration.jsx';
 
 const Shell = ({ children, admin }) => (
   <ProtectedRoute adminOnly={admin}><AppLayout>{children}</AppLayout></ProtectedRoute>
@@ -66,6 +67,7 @@ export default function App() {
       <Route path="/chat"             element={<Shell><Chat /></Shell>} />
       <Route path="/purchase-orders"    element={<Shell><PurchaseOrders /></Shell>} />
       <Route path="/integrations/sensy" element={<Shell admin><SensySettings /></Shell>} />
+      <Route path="/integrations/tally" element={<Shell admin><TallyIntegration /></Shell>} />
       <Route path="*"                 element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

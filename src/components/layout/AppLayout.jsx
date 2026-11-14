@@ -31,6 +31,7 @@ const NAV = [
   { to: '/chat',             label: 'Chat',             icon: MessageSquare },
   { to: '/purchase-orders',  label: 'Purchase Orders',  icon: ShoppingCart },
   { to: '/integrations/sensy', label: 'Sensy Integration', icon: Plug, admin: true },
+  { to: '/integrations/tally', label: 'Tally Integration', icon: Plug, admin: true },
 ];
 
 const DEV_NAV = [

@@ -27,6 +27,7 @@ import {
   savePdfBlob, folderPickerSupported,
 } from '../utils/pdfSaver.js';
 import { orderWhatsAppUrl } from '../utils/whatsapp.js';
+import { TallySyncControl, useTallyStatuses } from '../components/TallySync.jsx';
 
 // ── Amount → words (up to 9,999,999) ─────────────────────────────────────────
 const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
@@ -401,6 +402,10 @@ export default function Orders() {
     });
   }, [orders, f]);
 
+  // Tally sync badges / action (no-op if the integration isn't deployed).
+  const tallyIds = useMemo(() => (orders || []).map((o) => o._id), [orders]);
+  const { statuses: tallyStatuses, reload: reloadTally } = useTallyStatuses('SALES_ORDER', tallyIds);
+
   // Same delivery stages tracked in the Delivery Tracker page — read the
   // real current stage from the status log rather than guessing it.
   // Invoiced orders are always at least 'Confirmed' (matches the Tracker).
@@ -681,6 +686,9 @@ export default function Orders() {
                       <IconBtn icon={Download} size="sm" variant="outline" title={pdfBusy === o._id ? 'Preparing PDF…' : 'Download PDF'} disabled={pdfBusy === o._id} onClick={() => downloadOrderPdf(o)} />
                       {o.status !== 'Cancelled' && <IconBtn icon={Receipt} size="sm" variant="outline" title="Receipt" onClick={() => setReceiptOrder(o)} />}
                       {o.status !== 'Cancelled' && o.status !== 'Invoiced' && !o.invoiceId && <IconBtn icon={FileText} size="sm" variant="outline" title="Convert to Invoice" onClick={() => convert(o)} />}
+                      <TallySyncControl type="SALES_ORDER" doc={o} status={tallyStatuses[o._id]}
+                        eligible={!['Pending', 'Cancelled'].includes(o.status)} isAdmin={isAdmin}
+                        onChanged={reloadTally} notify={show} />
                       {isAdmin && <IconBtn icon={Trash2} size="sm" variant="red" title="Delete" onClick={() => del(o)} />}
                     </div>
                   </td>

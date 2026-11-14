@@ -14,6 +14,7 @@ import EmptyState from '../components/ui/EmptyState.jsx';
 import { Field, Input, Select, Textarea } from '../components/ui/Field.jsx';
 import { formatDate, fmtAED, fmtNum } from '../utils/format.js';
 import { buildPurchaseOrderPdfBlob } from '../utils/purchaseOrderPdf.js';
+import { TallySyncControl, useTallyStatuses } from '../components/TallySync.jsx';
 
 // ── API helper (no separate endpoints file change needed) ────────────────────
 const poApi = {
@@ -309,6 +310,9 @@ export default function PurchaseOrders() {
   const { show } = useToast();
 
   const { data: pos, loading, refetch } = useFetch(() => poApi.list(), []);
+  // Tally sync badges / action (no-op if the integration isn't deployed).
+  const tallyIds = useMemo(() => (pos || []).map((p) => p._id), [pos]);
+  const { statuses: tallyStatuses, reload: reloadTally } = useTallyStatuses('PURCHASE_ORDER', tallyIds);
 
   const [search, setSearch]           = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -533,6 +537,9 @@ export default function PurchaseOrders() {
                         >
                           <Pencil size={13} />
                         </Button>
+                        <TallySyncControl type="PURCHASE_ORDER" doc={p} status={tallyStatuses[p._id]}
+                          eligible={['Ordered', 'Received'].includes(p.status)} isAdmin={isAdmin}
+                          onChanged={reloadTally} notify={show} />
                         {isAdmin && (
                           <Button size="sm" variant="red" title="Delete" onClick={() => del(p)}>
                             <Trash2 size={13} />
