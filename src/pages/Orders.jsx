@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Search, Eye, Pencil, Truck, FileText, Trash2, ClipboardList,
-  MessageCircle, Printer, X, Check, Download, Phone, FolderOpen, RefreshCw, Receipt,
+  MessageCircle, Printer, X, Check, Download, Phone, FolderOpen, RefreshCw, Receipt, History, RotateCcw,
 } from 'lucide-react';
 import { orderApi, invoiceApi, userApi } from '../api/endpoints.js';
 import { useFetch } from '../hooks/useApi.js';
@@ -481,10 +481,37 @@ export default function Orders() {
   };
 
   const del = async (o) => {
-    if (!confirm(`Delete order #${o.orderNo}? This cannot be undone.`)) return;
-    try { await orderApi.remove(o._id); show('Order deleted.'); refetch(); }
-    catch (e) { show(apiError(e), 'error'); }
+    const reason = prompt(`Delete order #${o.orderNo} (${o.customer})?\n\nReason for deleting (e.g. "duplicate", "wrong items — re-entered"):`);
+    if (reason === null) return; // cancelled
+    try {
+      await orderApi.remove(o._id, reason.trim());
+      show(`Order #${o.orderNo} deleted. It is kept under "Deleted Orders" and can be restored.`);
+      refetch();
+    } catch (e) { show(apiError(e), 'error'); }
   };
+
+  // ── Deleted orders archive (admin) ─────────────────────────────────────────
+  const [deletedOpen, setDeletedOpen] = useState(false);
+  const [deletedRows, setDeletedRows] = useState(null);
+  const [restoringId, setRestoringId] = useState(null);
+  const openDeleted = async () => {
+    setDeletedOpen(true);
+    setDeletedRows(null);
+    try { setDeletedRows(await orderApi.listDeleted()); }
+    catch (e) { setDeletedRows([]); show(apiError(e), 'error'); }
+  };
+  const restore = async (row) => {
+    if (!confirm(`Restore order #${row.orderNo} (${row.customer})?`)) return;
+    setRestoringId(row._id);
+    try {
+      await orderApi.restoreDeleted(row._id);
+      show(`Order #${row.orderNo} restored.`, 'success');
+      setDeletedRows(await orderApi.listDeleted());
+      refetch();
+    } catch (e) { show(apiError(e), 'error'); }
+    finally { setRestoringId(null); }
+  };
+  const fmtDateTime = (d) => (d ? new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 
   const handlePrint = (o) => {
     setPrintOrder(o);
@@ -613,6 +640,11 @@ export default function Orders() {
             style={{ color: 'var(--text-muted)' }}>
             <X size={12} />
           </button>
+        )}
+        {isAdmin && (
+          <Button variant="outline" size="sm" onClick={openDeleted} title="Orders that were deleted — who, when, why — and restore them">
+            <span className="flex items-center gap-1.5"><History size={13} />Deleted Orders</span>
+          </Button>
         )}
         {isAdmin && (
           <Button variant="outline" size="sm" disabled={!filtered.length} onClick={exportCsv}>
@@ -766,6 +798,49 @@ export default function Orders() {
               )}
             </div>
           </>
+        )}
+      </Modal>
+
+      {/* ── Deleted orders archive (admin) ────────────────────────────────────── */}
+      <Modal open={deletedOpen} onClose={() => setDeletedOpen(false)}
+        title={<span className="flex items-center gap-1.5"><History size={16} /> Deleted Orders</span>} width="min-w-[760px]">
+        {deletedRows === null ? (
+          <Spinner label="Loading deleted orders…" />
+        ) : deletedRows.length === 0 ? (
+          <EmptyState title="No deleted orders" hint="Orders deleted from now on will appear here with who deleted them, when and why." />
+        ) : (
+          <div className="max-h-[60vh] overflow-auto rounded-lg border border-gray-100">
+            <table className="w-full border-collapse text-[12px]">
+              <thead><tr className="bg-navy-800 text-white">
+                {['Order #', 'Customer', 'Amount', 'Salesperson', 'Deleted by', 'Deleted on', 'Reason', ''].map((h) => (
+                  <th key={h} className="px-2.5 py-1.5 text-left font-bold uppercase tracking-wide">{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {deletedRows.map((r) => (
+                  <tr key={r._id} className="border-b border-gray-100 align-top last:border-0">
+                    <td className="px-2.5 py-1.5 font-bold tabular-nums">#{r.orderNo}</td>
+                    <td className="px-2.5 py-1.5">{r.customer}<div className="text-[10px] text-ink-3">{r.status}</div></td>
+                    <td className="px-2.5 py-1.5 whitespace-nowrap tabular-nums">{fmtAED(r.grandTotal)}</td>
+                    <td className="px-2.5 py-1.5">{r.salespersonName || '—'}</td>
+                    <td className="px-2.5 py-1.5 font-semibold">{r.deletedByName || '—'}</td>
+                    <td className="px-2.5 py-1.5 whitespace-nowrap">{fmtDateTime(r.createdAt)}</td>
+                    <td className="px-2.5 py-1.5">{r.reason || <span style={{ color: 'var(--text-hint)' }}>—</span>}</td>
+                    <td className="px-2.5 py-1.5 whitespace-nowrap">
+                      {r.restoredAt ? (
+                        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                          Restored by {r.restoredByName || '—'}<br />{fmtDateTime(r.restoredAt)}
+                        </span>
+                      ) : (
+                        <IconBtn icon={RotateCcw} size="sm" variant="outline" label={restoringId === r._id ? 'Restoring…' : 'Restore'}
+                          disabled={restoringId === r._id} onClick={() => restore(r)} />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Modal>
 

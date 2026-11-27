@@ -15,7 +15,9 @@ export const orderApi = {
     update: (id, body) => api.put(`/orders/${id}`, body).then((r) => r.data.order),
     setStatus: (id, body) => api.patch(`/orders/${id}/status`, body).then((r) => r.data.order),
     customerLookup: (params) => api.get('/orders/customer-lookup', { params }).then((r) => r.data),
-    remove: (id) => api.delete(`/orders/${id}`).then((r) => r.data),
+    remove: (id, reason = '') => api.delete(`/orders/${id}`, { params: reason ? { reason } : {} }).then((r) => r.data),
+    listDeleted: () => api.get('/orders/deleted').then((r) => r.data.orders),
+    restoreDeleted: (id) => api.post(`/orders/deleted/${id}/restore`).then((r) => r.data.order),
 };
 
 export const whatsappApi = {
