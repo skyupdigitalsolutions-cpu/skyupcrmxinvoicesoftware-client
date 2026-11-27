@@ -641,7 +641,7 @@ export default function Orders() {
             <X size={12} />
           </button>
         )}
-        {isAdmin && (
+        {false && isAdmin && (
           <Button variant="outline" size="sm" onClick={openDeleted} title="Orders that were deleted — who, when, why — and restore them">
             <span className="flex items-center gap-1.5"><History size={13} />Deleted Orders</span>
           </Button>
